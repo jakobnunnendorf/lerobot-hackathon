@@ -42,6 +42,18 @@ The judges require at least two cameras (`kb/judges-requirements.md`).
 - How the policy behaves when it starts again on a cable that is half cut.
 - How reliably "cable is severed" can be seen. Mount the cables under slight tension so the ends fall apart when cut.
 
+## Stretch: route around an obstacle
+
+Added 2026-11-20. First thing to drop if time runs short.
+
+- The joint angles say where every part of the arm is. A small hand-written arm model turns them into the positions of elbow, wrist and tool. The camera only has to find the obstacle on the table.
+- Level 1, virtual fence: if a part of the arm is about to enter a keep-out zone around the obstacle, the supervisor pulls the arm back. Same mechanism as the hand guard.
+- Level 2, route selection: three or four routes are taught from the start pose to a fixed pose just in front of the cables (over, left, right). The arm model checks each route against the obstacle and the arm takes the first one that clears. Then the learned policy does the cut. A judge moves the obstacle and the arm picks another way.
+- Not planned: a full motion planner, or changing the policy's commands while it runs.
+- **This affects recording.** All cutting demonstrations start from the fixed pose in front of the cables, not from the rest position. Then the policy does not depend on how the arm got there, and routing can be added or dropped without retraining. Decide this before recording starts.
+- The obstacle is a fat foam or cardboard tube, not steel. Failed runs will hit it, and the arm model will be off by a centimetre or more.
+- LeRobot's own arm model cannot be used on Windows (`kb/kinematics-on-windows.md`), so the model is written by hand and runs on any of our laptops.
+
 ## Why it can be built in parallel
 
 The supervisor needs a policy to drive, but any policy will do for testing the pull-back and restart, including the throwaway one from the first smoke test. So it can be built on Saturday while the real data is recorded.

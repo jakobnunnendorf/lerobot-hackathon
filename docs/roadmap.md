@@ -79,17 +79,27 @@ A recorded video of the best run is made on Saturday evening for every tier, in 
 | Time | Work |
 | --- | --- |
 | 09:30-11:00 | Finish bench tests (H1), fix the scene, freeze it (S2, H2) |
-| 11:00-13:00 | Record base episodes |
-| 13:00 | Data check over lunch (H3) |
-| 14:00-16:00 | Record the rest, delete bad episodes, push datasets to the Hub (S3, H4) |
-| 16:00-20:00 | Training runs. Meanwhile: target selection code, demo flow, presentation draft |
-| 20:00 | Count 10 runs per skill (H5) |
+| 11:00-13:00 | Record the first skill completely (about 40 episodes), on the recording laptop |
+| 13:00 | Data check over lunch (H3). If the data is good, the first skill starts training on the GPU laptop straight away |
+| 14:00-16:00 | Record the other skills, delete bad episodes, push datasets to the Hub (S3, H4) |
+| 16:00-20:00 | The first skill is tried on the arm as soon as it has trained. The others train one after another. Meanwhile: supervisor code, demo flow, presentation draft |
+| 20:00 | Count 10 runs for every skill that has finished training (H5) |
 | 20:30-21:00 | First full run-through, feature freeze (S4, H6) |
-| 22:00 onwards | Correction episodes on the weakest skill, fine-tuning overnight, started by 23:00 |
+| 22:00 onwards | Skills still to train, correction episodes on the weakest skill, fine-tuning overnight, started by 23:00 |
+
+## Machines
+
+Facts and open checks are in `kb/machines.md`.
+
+- **GPU laptop (Kamel, mobile RTX 4070):** the only training machine, and the machine that runs the demo. It trains one skill at a time, which is why the first skill is recorded and started before the others.
+- **Recording laptop:** any other laptop drives the robot while the GPU laptop trains. It must use the same calibration files and robot id as the demo machine.
+- **Backup demo laptop:** a second laptop that can run the full demo. Set up and tried on Saturday evening, not on Sunday morning.
+- The GPU laptop stays on its charger with sleep and automatic updates switched off for the weekend.
 
 ## Not yet known, and it changes this plan
 
-- Which machine trains, and whether there are cloud credits. Without a strong GPU only the small policy (ACT) is realistic. See `research/lerobot-training-feasibility.md`.
+- Whether there are cloud credits. Without them the one GPU laptop (8 GB class) makes ACT the only realistic policy. See `kb/machines.md` and `research/lerobot-training-feasibility.md`.
+- How long one training run takes on the GPU laptop. If it is more than about two hours, not every skill is trained by H5 and the rest moves to the night.
 - Whether a second arm is available. The organizers list one SO-101 per team.
 - Whether a cutting tool is allowed at the venue. *(current idea)*
 - This year's judging criteria.
