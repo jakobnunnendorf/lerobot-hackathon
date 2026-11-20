@@ -119,11 +119,11 @@ Proposed stack, in the order to build it:
 | Activation | push-to-talk key; the wake phrase ("hey robot, ...") is checked in the transcript | an always-listening wake word, only if it survives a test in the hall at its loudest |
 | Speech to text | Parakeet TDT 0.6b v3 through `onnx-asr`, on the CPU | faster-whisper `small` with the language forced |
 | Understanding | a synonym table with fuzzy matching, English and Spanish | Claude with a fixed JSON schema, for free phrasing; the table stays as fallback |
-| Speaking back | pre-recorded confirmation clips through a real loudspeaker | - |
 
 - A headset or clip-on microphone matters more than the choice of model. One project measured 5 of 20 wake-word detections in noise against 19 of 20 in a quiet room.
 - Say "container" and "hand". "Ball", "bowl" and "box" are easily confused.
-- The microphone is muted while a clip plays and while the arm moves. The transcript and the parsed command are shown large on a screen.
+- The robot does not speak (decided by the team, reported by Tian on 2026-11-21): speech recognition only. The transcript and the parsed command are shown large on a screen instead.
+- The microphone is muted while the arm moves.
 - About three hours for one person for the first version (estimate). Test in the hall on Saturday while it is loud, and freeze with everything else at the feature freeze.
 - A Claude subscription does not include API usage. The two ways to call Claude from a script are in the addendum of the research file.
 
