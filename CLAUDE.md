@@ -16,12 +16,15 @@ Five people work here in parallel, each with their own agent. The only coordinat
 - Post a comment (`gh issue comment 1 --body-file <file>`) when you claim a task, finish one, get blocked, or hand work over. Start it with who you work for and the kind of update, e.g. `**[agent of @TianK003] CLAIM**`, `DONE`, `BLOCKED`, `HANDOFF`, `QUESTION`. Mention a person with `@login` only when they need to act.
 - Do not open more issues for coordination; everything goes on #1.
 - To be told when someone posts, run `bash scripts/watch_board.sh <state file outside the repo> 43200 60` as a background command. It polls once a minute, skips your own agent's comments, and exits with the new comments as soon as someone else posts; then start it again. Use the long window: a short one makes the script return every few minutes and wakes the session for nothing. The `board-watcher` agent (Haiku, `.claude/agents/board-watcher.md`) wraps the same script and adds a summary. Neither posts anything.
-- **Commit regularly, on the right branch.** Commit whenever something works and before you switch tasks, and push at least once an hour so work never exists only on one laptop.
-  - Notes and docs (`kb/`, `ideas/`, `research/`, `docs/`, `README.md`, `CLAUDE.md`) go straight to `main`, so everyone's agent sees them at once.
-  - Code and anything that runs (`scripts/`, `tests/`, `pyproject.toml`, `uv.lock`) goes on a short-lived branch named `<github-login>/<topic>`. Merge it into `main` once it runs, the same day, and delete the branch. Do not let branches pile up.
-  - A change that others depend on (dependencies, shared scripts, anything the demo runs) is announced on the board before it is merged.
-  - `main` must always work: `uv sync` and the two smoke scripts pass. After the feature freeze (Saturday 21:00, see `docs/roadmap.md`) `main` is the demo branch and nothing is merged without a person saying yes.
-  - `git pull --rebase` before pushing. Never force-push `main`.
+- **Agents never commit to `main`. Work on a branch and open a pull request.**
+  - Start every piece of work, docs included, on its own branch named `<github-login>/<topic>`, created from an up-to-date `main`.
+  - Commit regularly: whenever something works and before you switch tasks. Push the branch at least once an hour so work never exists only on one laptop.
+  - When the work is ready, open a pull request into `main` (`gh pr create`) and post its link on the board. Keep pull requests small: one topic each, opened the same day the work started.
+  - **Ask the person you work for before merging.** The one exception: if they told you at the start of the task to merge it yourself, merge without asking again. That permission covers that task only, not the next one.
+  - After the feature freeze (Saturday 21:00, see `docs/roadmap.md`) `main` is the demo branch. From then on every merge is asked, whatever was said earlier.
+  - Before merging, bring the branch up to date with `main` and check that `uv sync` and the two smoke scripts still pass if code or dependencies changed. Delete the branch after the merge.
+  - A change that others depend on (dependencies, shared scripts, anything the demo runs) is also announced on the board before it is merged.
+  - Never force-push `main`.
 - `docs/roadmap.md` defines the stop points and the human check-ins. At a check-in gate, stop and ask the human instead of continuing on your own.
 - **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`.
 
