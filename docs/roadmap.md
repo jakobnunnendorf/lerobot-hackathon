@@ -50,6 +50,7 @@ Agents stop at each of these and wait for a human decision on the message board 
 
 - **Anything that moves the robot.** Teleoperation, recording, replay and policy runs are started by a person at the table, with the arm's power switch in reach. An agent may prepare the command, it does not run it.
 - **Any tool with an edge on the robot.** Mounted, removed and reset by a person, and only after a mentor has said it is allowed.
+- **Merging a pull request into `main`**, unless the person said at the start of that task that the agent may merge it.
 - **Deleting or overwriting** datasets, episodes or checkpoints, force-pushing, and changing the `lerobot` or `torch` pins.
 - **Spending money or credits** (cloud training jobs).
 - **Changing the scene after S2.**
@@ -60,8 +61,9 @@ Agents stop at each of these and wait for a human decision on the message board 
 - Agents may on their own: write code and scripts, analyse datasets and logs, prepare commands, watch a training run, write docs, post on the board.
 - An agent does not work for more than about 90 minutes on one task without a human having read its output. At 90 minutes it posts where it is and asks.
 - Results are reported as raw counts ("7/10"), never as "works" or "mostly works".
-- Commits are small and frequent. Notes and docs go straight to `main`, code goes on a short-lived branch and is merged once it runs (rules in `CLAUDE.md`). At every check-in a human looks through what the agents pushed and merged since the last one.
-- After the feature freeze (S4) `main` is the demo branch: nothing is merged without a person saying yes.
+- Agents never commit to `main`. They commit regularly on their own branch and open a pull request (rules in `CLAUDE.md`). An agent merges only after the person it works for says yes, or when that person told it at the start of the task to merge.
+- At every check-in a human looks through the open pull requests, so none of them waits longer than one check-in.
+- After the feature freeze (S4) `main` is the demo branch: every merge is asked, whatever was said earlier.
 
 ## Demo tiers
 
