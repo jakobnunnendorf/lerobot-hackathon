@@ -1,6 +1,6 @@
 # Supervised cable cutting (disassembly cell)
 
-**Status: CANDIDATE.** Grew out of the bomb-defusal placeholder on 2026-11-20. Not locked. The team decides on the message board (issue #1).
+**Status: DROPPED** on 2026-11-20. The team chose `ball-picking-and-handover.md` instead. Kept for the record. The parts about a supervising camera, pulling the arm back and checking results still apply to the new idea.
 
 ## In one line
 

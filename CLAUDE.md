@@ -4,9 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Team project for the [Bilbao Physical AI Hackathon](https://hackathonbilbao.eus/home-page-eus): 5 people, about 2 days (started 2026-11-20), LeRobot SO-101 arms (leader + follower, possibly a second pair). Optimise for a working robot demo by the deadline, not for clean abstractions.
+Team project for the [Bilbao Physical AI Hackathon](https://hackathonbilbao.eus/home-page-eus): 5 people, about 2 days (started 2026-11-20, deadline Sunday 2026-11-22 11:00), one LeRobot SO-101 arm (leader + follower) and two cameras. Optimise for a working robot demo by the deadline, not for clean abstractions.
 
-**The project idea is a PLACEHOLDER.** The current candidate is "bomb defusal with computer vision" (the arm finds and cuts the correct wire on a mock device). It is not finalized; the team is still ideating. Until the message board says the idea is locked, keep code idea-agnostic (teleop, recording, training, perception plumbing) and do not bake "bomb", "wire" or similar into module names, dataset names or task strings. Idea status lives in `ideas/`.
+**The idea** (chosen by the team on 2026-11-20; the earlier bomb-defusal and cable-cutting ideas are dropped): a bowl holds one target ball (yellow and green stripes) among gray tinfoil balls. If the target ball can be seen, the arm picks it up wherever it lies. If it cannot be seen, the arm picks one gray ball, drops it into the gray hole and looks again. Holding the target ball, it puts it into a human hand and shakes hands if a hand is detected, and puts it down otherwise. Full description, build plan and open questions: `ideas/ball-picking-and-handover.md`.
+
+## How the demo is structured
+
+Read `ideas/ball-picking-and-handover.md` before writing demo code. The parts that span several files:
+
+- **A supervisor decides, skills act.** A decision tree over the two camera feeds picks the next skill: target ball visible well enough to grasp? PICK, otherwise CLEAR GRAY (one gray ball into the gray hole) and look again; holding the ball and a hand is seen? GIVE then SHAKE, otherwise PUT DOWN. It decides only while the arm is parked, because the arm hides the bowl from the camera while it works.
+- **Skills are separate and short.** PICK and CLEAR GRAY are learned policies. GIVE, PUT DOWN and SHAKE start as replays of one recorded episode each; GIVE becomes a learned policy if time allows. One dataset per skill, each with its own task sentence, all with the same camera names, resolution and `--robot.id`.
+- **Two anchor poses make skills chain.** HOME (above the bowl, gripper open) and CARRY (above the bowl, gripper closed on the target ball). Every demonstration and every replay starts and ends in one of them. CLEAR GRAY goes from HOME to HOME. GIVE and PUT DOWN demonstrations start with the ball already held.
+- **A policy never reports that it is done.** Each skill has a time budget, then the supervisor checks the result (gripper reading, camera).
+- **The learned skills are ACT policies, one per skill.** Training runs in the cloud; inference has to run on a team laptop, and the only GPU laptop has 8 GB. pi0.5 was tested there on 2026-11-20 and ran out of memory while loading. See `kb/machines.md`.
 
 ## Coordination (read before doing any work)
 
@@ -44,6 +54,11 @@ Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-
 
 - **LeRobot is a pinned dependency (0.7.0), not vendored.** Its source sits in `.venv/Lib/site-packages/lerobot` (Windows) or `.venv/lib/python3.12/site-packages/lerobot`. Config and flag names change between LeRobot releases, so check them there or in the version-matched docs (https://huggingface.co/docs/lerobot/v0.7.0/en/index) instead of relying on memory of another version.
 - **0.7.0 changed the CLI.** According to `research/lerobot-training-feasibility.md` (read from the v0.7.0 docs and source, not yet run on our machines): policies are run on the robot with `lerobot-rollout`, not with `lerobot-record`; `lerobot-record` adds a timestamp to the dataset name unless `--dataset.no_stamp=true`; experiment tracking flags are `--trackio.*`; the two-arm types are `bi_so_follower` and `bi_so_leader`. That file has the full commands. When one is confirmed on hardware, record it in `kb/`.
+- **Several skills in one demo need our own control loop.** Read from the v0.7.0 source, not yet run (`research/lerobot-multi-skill-runner.md` has the details and an untested sketch): `lerobot-rollout` and `RolloutController` own exactly one policy and one robot connection and cannot switch policies. The demo therefore connects the robot once, loads all policies up front and runs a plain 30 Hz loop (`get_observation`, `predict_action`, `send_action`). `lerobot-replay` also opens its own connection, so replays inside the demo are done in that same loop.
+- **Never reset, disconnect or reconnect the robot while it holds the ball.** `RolloutController.reset()` moves all six joints including the gripper back to the pose at connect time, `disconnect()` switches torque off by default, and `connect()` briefly switches it off as well. Switching skills inside one loop sends nothing, so the arm holds.
+- **ACT ignores the task sentence.** `set_task`, `/subtask` and the planner only affect language-conditioned policies (SmolVLA, pi0.5 and similar).
+- **Only the control loop talks to the motors.** Vision code runs in another thread or process and reads frames with `cameras[name].read_latest()` or from a shared copy of the observation. Slowing the control loop below the recorded 30 fps hurts the policy.
+- **Hand detection (MediaPipe) goes in its own environment and process.** Its OpenCV package clashes with the one LeRobot installs (from web research, not yet tried here).
 - **torch comes from the CUDA 12.8 wheel index for every platform** (`[tool.uv.sources]` in `pyproject.toml`). `uv.lock` therefore has only Linux and Windows torch wheels and no macOS one, while `README.md` still describes a macOS/`mps` setup. As of 2026-11-20 this mismatch is open on the board; check there before touching the torch pins.
 - `pyproject.toml` and `uv.lock` are committed together whenever dependencies change (`uv add <pkg>`).
 - `outputs/`, `data/`, `wandb/` and `*.safetensors` are git-ignored. Datasets and checkpoints go to the Hugging Face Hub, never into git.
@@ -54,5 +69,5 @@ Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-
 - `tests/` - smoke scripts (see above).
 - `kb/` - knowledge base: verified facts the team learned the hard way (port mapping, calibration notes, camera settings, what worked and what failed). One topic per file.
 - `ideas/` - candidate project ideas, one file per idea, each with a status line.
-- `research/` - external research with source links (hackathon rules, domain, LeRobot feasibility).
+- `research/` - external research with source links (hackathon rules, the ball-picking idea, LeRobot feasibility and the multi-skill runner). `research/README.md` says which files belong to dropped ideas.
 - `docs/` - all other documentation (roadmap, runbooks, demo script, pitch). Only `README.md` and this file stay at the repo root.

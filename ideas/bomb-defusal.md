@@ -1,6 +1,6 @@
 # Bomb defusal with computer vision
 
-**Status: PLACEHOLDER.** This is the working idea while the team ideates. It is not finalized and may change or be dropped.
+**Status: DROPPED** on 2026-11-20. The team chose `ball-picking-and-handover.md` instead. Kept for the record.
 
 ## The idea as it stands (2026-11-20)
 
