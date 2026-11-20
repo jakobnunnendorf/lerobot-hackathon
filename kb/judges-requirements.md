@@ -7,4 +7,4 @@
 
 The solution has to use at least 2 cameras.
 
-State on 2026-11-20: the second camera is only pointing at the arm and has no role yet. How to use it in a way that is not generic is being discussed on the message board (issue #1).
+How we use them (`ideas/ball-picking-and-handover.md`): both cameras feed the learned skills. The top camera also lets the supervisor decide whether the target ball is visible and whether a hand is there. The wrist camera, from a fixed look-in pose, can upgrade "not visible" to "visible".

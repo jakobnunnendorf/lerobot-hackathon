@@ -2,6 +2,8 @@
 
 Our team project for the LeRobot physical-AI hackathon in Bilbao. Hardware: SO-101 follower arm (+ leader arm), optionally a second arm.
 
+**What we are building:** the arm finds the one target ball (yellow and green stripes) among gray tinfoil balls in a bowl and picks it up. If the target ball is hidden, it takes gray balls out one at a time, drops each into the gray hole and looks again. Then it puts the target ball into a person's hand and shakes hands, or puts it down if there is no hand. Details: `ideas/ball-picking-and-handover.md`. Plan and deadlines: `docs/roadmap.md`.
+
 LeRobot is installed as a package (pinned to **0.7.0** in `pyproject.toml`), so nobody needs to clone the LeRobot repo.
 Use the matching docs: https://huggingface.co/docs/lerobot/v0.7.0/en/index
 
