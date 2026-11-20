@@ -6,7 +6,9 @@
 ## Facts
 
 - **The final demo has to run inference on our own laptops**, not on an organizers' machine.
-- **Kamel's laptop has a mobile RTX 4070.** That card normally has 8 GB of video memory; Kamel to confirm, together with the operating system.
+- **Kamel's laptop: NVIDIA RTX 4070 Laptop GPU with 8 GB, running Ubuntu 24.04 under WSL2 on Windows.** Confirmed by Kamel on the message board (2026-11-20). `tests/cuda.py` and `tests/lerobot_check.py` both pass there: torch 2.11.0+cu128, CUDA available, ACT builds, peak GPU memory in the check about 1 GB.
+- **WSL2 does not see USB devices by default.** The arm's serial ports and the cameras have to be passed into WSL (usbipd-win), and cameras are the usual trouble spot. Not yet tried on Kamel's laptop. If it does not work, the robot and the demo run from a native Windows environment on the same laptop (`uv.lock` has Windows wheels with CUDA) and WSL is kept for training. WSL and Windows have separate calibration files and separate dataset caches.
+- In Kamel's WSL environment the LeRobot kinematics dependencies can install, because Linux wheels exist (`kb/kinematics-on-windows.md`). That only helps if the robot is also driven from WSL.
 - Tian's laptop (Windows 11): no NVIDIA GPU found and `uv` is not installed yet (checked 2026-11-20). It can record and run code, it cannot train.
 
 - **About 30 EUR of compute on Hugging Face.** Tian believes this is the amount (2026-11-20). Not confirmed: the exact amount, which account holds it, and whether it covers training jobs.
