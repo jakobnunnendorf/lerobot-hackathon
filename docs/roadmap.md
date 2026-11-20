@@ -60,7 +60,8 @@ Agents stop at each of these and wait for a human decision on the message board 
 - Agents may on their own: write code and scripts, analyse datasets and logs, prepare commands, watch a training run, write docs, post on the board.
 - An agent does not work for more than about 90 minutes on one task without a human having read its output. At 90 minutes it posts where it is and asks.
 - Results are reported as raw counts ("7/10"), never as "works" or "mostly works".
-- Commits are small and frequent on `main`. At every check-in a human looks through what the agents pushed since the last one.
+- Commits are small and frequent. Notes and docs go straight to `main`, code goes on a short-lived branch and is merged once it runs (rules in `CLAUDE.md`). At every check-in a human looks through what the agents pushed and merged since the last one.
+- After the feature freeze (S4) `main` is the demo branch: nothing is merged without a person saying yes.
 
 ## Demo tiers
 
