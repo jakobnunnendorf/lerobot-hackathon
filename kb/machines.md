@@ -9,10 +9,14 @@
 - **Kamel's laptop has a mobile RTX 4070.** That card normally has 8 GB of video memory; Kamel to confirm, together with the operating system.
 - Tian's laptop (Windows 11): no NVIDIA GPU found and `uv` is not installed yet (checked 2026-11-20). It can record and run code, it cannot train.
 
+- **About 30 EUR of compute on Hugging Face.** Tian believes this is the amount (2026-11-20). Not confirmed: the exact amount, which account holds it, and whether it covers training jobs.
+
 ## What follows from that
 
-- 8 GB is enough for ACT (about 2-6 GB by the LeRobot hardware guide) and tight or too small for the larger policies. Unless cloud credits appear, ACT is the policy.
-- Kamel's laptop is both the only training machine and the demo machine. While it trains, another laptop should drive the robot for recording, which needs no GPU.
+- 8 GB is enough for ACT (about 2-6 GB by the LeRobot hardware guide) and tight or too small for the larger policies. On the laptop alone, ACT is the policy.
+- Kamel's laptop is the only local training machine and the demo machine. While it trains, another laptop should drive the robot for recording, which needs no GPU.
+- If the Hugging Face credit can pay for training jobs, the skills can train in the cloud at the same time and Kamel's laptop stays free for trying policies on the arm. `lerobot-train` takes `--job.target=<hardware>` for this (see `research/lerobot-training-feasibility.md`), and the dataset has to be on the Hub first.
+- 30 EUR is a small budget. The current price per hour is not checked; `hf jobs hardware` lists the options. By the LeRobot hardware guide one ACT run takes about 1-2 hours on a mid-range cloud GPU, so a handful of ACT runs should fit and one attempt at a larger policy might. Every paid job is started by a person, and the running total is written on the message board.
 - Whichever laptop drives the robot needs the same calibration files and the same `--robot.id` that were used when recording. A policy run with a different calibration behaves differently. Copy the calibration files between laptops instead of recalibrating. Where 0.7.0 stores them is not checked yet.
 - A second laptop should be able to run the whole demo in case Kamel's fails on Sunday. ACT plans many steps per inference, so running it on a CPU may be fast enough. Not tested: `uv run python tests/lerobot_check.py` on a laptop without a GPU prints the inference time.
 

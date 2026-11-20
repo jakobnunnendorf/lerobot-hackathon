@@ -98,7 +98,7 @@ Facts and open checks are in `kb/machines.md`.
 
 ## Not yet known, and it changes this plan
 
-- Whether there are cloud credits. Without them the one GPU laptop (8 GB class) makes ACT the only realistic policy. See `kb/machines.md` and `research/lerobot-training-feasibility.md`.
+- Whether the Hugging Face credit (about 30 EUR, not confirmed) can pay for training jobs. If it can, skills train in the cloud in parallel and the GPU laptop stays free for the robot. If not, the one GPU laptop (8 GB class) trains one ACT skill at a time. See `kb/machines.md` and `research/lerobot-training-feasibility.md`.
 - How long one training run takes on the GPU laptop. If it is more than about two hours, not every skill is trained by H5 and the rest moves to the night.
 - Whether a second arm is available. The organizers list one SO-101 per team.
 - Whether a cutting tool is allowed at the venue. *(current idea)*
