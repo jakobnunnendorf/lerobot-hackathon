@@ -5,5 +5,16 @@ description = "Our team project for the LeRobot physical-AI hackathon in Bilbao"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "lerobot[core-scripts,feetech,smolvla,training]==0.7.0",
+    "lerobot[all,core-scripts,feetech,smolvla,training]==0.7.0",
+    "torch",
+    "torchvision",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
