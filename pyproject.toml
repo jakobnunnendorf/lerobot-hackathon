@@ -1,0 +1,9 @@
+[project]
+name = "lerobot-hackathon"
+version = "0.1.0"
+description = "Our team project for the LeRobot physical-AI hackathon in Bilbao"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "lerobot[core-scripts,feetech,smolvla,training]==0.7.0",
+]
