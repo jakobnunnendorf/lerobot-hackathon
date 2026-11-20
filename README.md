@@ -77,4 +77,13 @@ Commit `pyproject.toml` and `uv.lock` so everyone gets the same versions.
 ## Layout
 
 - `scripts/` - our own scripts (data collection helpers, demo app, ...)
+- `tests/` - smoke scripts (`uv run python tests/cuda.py`, `uv run python tests/lerobot_check.py`)
+- `kb/` - knowledge base: verified facts we learned (ports, calibration, what worked)
+- `ideas/` - candidate project ideas with their status
+- `research/` - external research with sources
+- `docs/` - all other documentation (roadmap, runbooks, demo script)
 - `outputs/`, `data/` - local training runs and data (git-ignored)
+
+## Working together
+
+Coordination between everyone (people and coding agents) happens on one GitHub issue, the message board: https://github.com/jakobnunnendorf/lerobot-hackathon/issues/1. `CLAUDE.md` describes the rules agents follow.
