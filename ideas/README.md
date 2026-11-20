@@ -6,4 +6,4 @@ Only one idea may be `LOCKED`, and it is locked by the humans on the message boa
 
 | Idea | Status |
 | --- | --- |
-| [Bomb defusal with computer vision](bomb-defusal.md) | PLACEHOLDER, team is still ideating |
+| [Bomb defusal with computer vision](bomb-defusal.md) | PLACEHOLDER, team is still ideating. First critique is in the file. |

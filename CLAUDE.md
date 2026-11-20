@@ -17,6 +17,7 @@ Five people work here in parallel, each with their own agent. The only coordinat
 - Do not open more issues for coordination; everything goes on #1.
 - Commit small and often, directly on `main` (the team works trunk-based, no PR flow). `git pull --rebase` before every push, never force-push, and say what you pushed on the board when others depend on it.
 - `docs/roadmap.md` defines the stop points and the human check-ins. At a check-in gate, stop and ask the human instead of continuing on your own.
+- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`.
 
 ## Commands
 
@@ -33,6 +34,7 @@ Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-
 ## Things that are easy to get wrong
 
 - **LeRobot is a pinned dependency (0.7.0), not vendored.** Its source sits in `.venv/Lib/site-packages/lerobot` (Windows) or `.venv/lib/python3.12/site-packages/lerobot`. Config and flag names change between LeRobot releases, so check them there or in the version-matched docs (https://huggingface.co/docs/lerobot/v0.7.0/en/index) instead of relying on memory of another version.
+- **0.7.0 changed the CLI.** According to `research/lerobot-training-feasibility.md` (read from the v0.7.0 docs and source, not yet run on our machines): policies are run on the robot with `lerobot-rollout`, not with `lerobot-record`; `lerobot-record` adds a timestamp to the dataset name unless `--dataset.no_stamp=true`; experiment tracking flags are `--trackio.*`; the two-arm types are `bi_so_follower` and `bi_so_leader`. That file has the full commands. When one is confirmed on hardware, record it in `kb/`.
 - **torch comes from the CUDA 12.8 wheel index for every platform** (`[tool.uv.sources]` in `pyproject.toml`). `uv.lock` therefore has only Linux and Windows torch wheels and no macOS one, while `README.md` still describes a macOS/`mps` setup. As of 2026-11-20 this mismatch is open on the board; check there before touching the torch pins.
 - `pyproject.toml` and `uv.lock` are committed together whenever dependencies change (`uv add <pkg>`).
 - `outputs/`, `data/`, `wandb/` and `*.safetensors` are git-ignored. Datasets and checkpoints go to the Hugging Face Hub, never into git.
