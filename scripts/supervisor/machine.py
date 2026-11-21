@@ -44,6 +44,12 @@ class Settings:
     verify_s: float = 0.5
     hand_wait_s: float = 3.0
     frame_every_ticks: int = 2
+    # Held-ball check (Sensors.held_ball_area): the wanted ball must cover at least this many px of the wrist
+    # frame at rest. None = not measured yet: the area is logged at every VERIFY_HOLD but decides nothing.
+    # MEASURE AT THE TABLE: wrist frame at rest holding the striped target vs holding a red or a blue ball
+    # (the gripper reads the same for both, median 13.4 vs 12.7), and set it between the two.
+    min_held_target_area_px: int | None = None
+    held_check_frames: int = 5
 
 
 @dataclass
@@ -72,6 +78,12 @@ class Sensors:
     # (striped or unknown). It picks the container. Default: the colour that was asked for. Replace it with a
     # detector on the wrist/top frame once scripts/vision/colour_detector.py exists.
     ball_colour: Callable[[], str | None] | None = None
+    # HOOK for the held-ball check: the area in px of the wanted ball ("striped", "red", "blue") in the wrist
+    # frame, called at rest after the gripper band says holding. None: no detector, the gripper band alone
+    # decides (it reads the same for the target and a red/blue ball). Robot mode plugs in #24's ColourVisibility
+    # (scripts/vision/supervisor_adapter.py) when it is there. An error or a missing wrist frame counts as
+    # "unavailable": the ball is accepted as before and the log says held_check=unavailable.
+    held_ball_area: Callable[[np.ndarray, str], int] | None = None
     # Called when a round ends, whatever the outcome: clears the one-round command (destination, target).
     finish_round: Callable[[], None] = lambda: None
 
@@ -117,6 +129,8 @@ class Round:
     started: float
     pick_attempts: int = 0
     clear_attempts: int = 0
+    wrong_balls: int = 0
+    putting_back_wrong_ball: bool = False
     outcome: str | None = None
     after_rest: State = State.LOOK
     target: str | None = None
@@ -168,7 +182,7 @@ class Supervisor:
             self.round.outcome = "aborted"
         self.log.write(event="round_end", round=number, outcome=self.round.outcome,
                        pick_attempts=self.round.pick_attempts, clear_attempts=self.round.clear_attempts,
-                       duration_s=round(self.clock.now() - self.round.started, 2),
+                       wrong_balls=self.round.wrong_balls, duration_s=round(self.clock.now() - self.round.started, 2),
                        states=[s.value for s in self.round.states])
         return self.round
 
@@ -283,12 +297,52 @@ class Supervisor:
         if holding:
             if self.s.gripper_hold is not None:
                 self.arm.send({**self.arm.last_sent, "gripper.pos": self.s.gripper_hold})
+            verdict = self._check_held_ball(details)
+            if verdict == "timeout":
+                return State.ABORT, "arm did not reach the rest pose for the held-ball check", details
+            if verdict == "wrong":
+                return self._wrong_ball(details)
             return self._destination(details)
         if self.round.pick_attempts < self.s.max_pick_attempts:
             self.round.after_rest = self._first_state()
             return State.REST, "not holding, retry", details
         self.round.outcome, self.round.after_rest = "gave_up", State.DONE
         return State.REST, f"not holding after {self.round.pick_attempts} picks, giving up", details
+
+    def _wanted_ball(self) -> str:
+        return self.round.target if self.round.target in COLOURS else "striped"
+
+    # The gripper reads the same for the striped target and a red/blue ball, so the wrist camera decides.
+    # Verdicts: off (no hook), unavailable (hook failed: accept), unmeasured (no threshold: log only, accept),
+    # target, wrong, timeout (could not settle at rest).
+    def _check_held_ball(self, details: dict) -> str:
+        if self.sensors.held_ball_area is None:
+            details["held_check"] = "off"
+            return "off"
+        if self._move_to_rest(holding=True) == "timeout":
+            details["held_check"] = "timeout"
+            return "timeout"
+        wanted = self._wanted_ball()
+        try:
+            frames = [obs["wrist"] for obs in self._wait(self.s.held_check_frames / self.s.fps)][: self.s.held_check_frames]
+            area = int(statistics.median(self.sensors.held_ball_area(frame, wanted) for frame in frames))
+        except Exception as error:  # noqa: BLE001 - a failed detector must not end the round
+            details.update(held_check="unavailable", held_check_error=repr(error))
+            return "unavailable"
+        threshold = self.s.min_held_target_area_px
+        verdict = "unmeasured" if threshold is None else "target" if area >= threshold else "wrong"
+        details.update(held_check=verdict, held_ball=wanted, held_area_px=area, held_threshold_px=threshold)
+        return verdict
+
+    def _wrong_ball(self, details: dict):
+        # Never handed over. Sorted by the colour sensor if there is one, else the generic put-down pose (the
+        # target's colour would be a guess). PUT_DOWN then retries PICK within the pick budget.
+        self.round.wrong_balls += 1
+        self.round.putting_back_wrong_ball = True
+        colour = self.sensors.ball_colour() if self.sensors.ball_colour else None
+        self.round.colour = colour if colour in COLOURS else None
+        details["colour"] = self.round.colour
+        return State.PUT_DOWN, f"holding, but not the {self._wanted_ball()} ball; put it down", details
 
     # The hand decision is made in the present pose, where the tracker sees the hands that GIVE will serve.
     def _ball_colour(self) -> str | None:
@@ -338,5 +392,12 @@ class Supervisor:
         details = {"skill": result, "reading": round(reading, 2), "container": self.round.colour if container else "default"}
         if holding:
             return State.ABORT, "still holding after PUT_DOWN", details
+        if self.round.putting_back_wrong_ball:
+            self.round.putting_back_wrong_ball = False
+            if self.round.pick_attempts < self.s.max_pick_attempts:
+                self.round.after_rest = self._first_state()
+                return State.REST, "wrong ball put down, retry", details
+            self.round.outcome, self.round.after_rest = "wrong_ball", State.DONE
+            return State.REST, f"wrong ball put down after {self.round.pick_attempts} picks, giving up", details
         self.round.outcome, self.round.after_rest = "put_down", State.DONE
         return State.REST, "ball put down", details

@@ -34,6 +34,9 @@ class World:
     release_ok: bool = False
     block_after_pick: bool = False
     blocked_at: np.ndarray | None = None
+    # Ball each successful pick ends up holding, in order; the last one repeats.
+    held_balls: list[str] = field(default_factory=lambda: ["striped"])
+    held_ball: str | None = None
     violations: list[str] = field(default_factory=list)
 
 
@@ -49,7 +52,8 @@ class FakeArm:
         if self.world.blocked_at is not None:
             goal[:5] = self.world.blocked_at
         gripper = HELD_READING if self.world.holding else (EMPTY_CLOSED_READING if goal[5] < 5 else goal[5])
-        self.last_obs = {**action_of(np.concatenate([goal[:5], [gripper]])), "top": np.zeros((4, 4, 3), np.uint8)}
+        self.last_obs = {**action_of(np.concatenate([goal[:5], [gripper]])), "top": np.zeros((4, 4, 3), np.uint8),
+                         "wrist": np.zeros((4, 4, 3), np.uint8)}
         return self.last_obs
 
     def send(self, action: dict) -> None:
@@ -100,6 +104,7 @@ def pick_effect(world: World):
             world.blocked_at = pose_of(last_sent)[:5]
         if world.holding:
             world.buried = 0
+            world.held_ball = world.held_balls.pop(0) if len(world.held_balls) > 1 else world.held_balls[0]
         return _with_gripper(last_sent, CLOSED_GOAL)
     return effect
 
@@ -108,7 +113,7 @@ def release_effect(world: World, success: str):
     def effect(outcome, last_sent):
         if outcome != success:
             return None
-        world.holding = False
+        world.holding, world.held_ball = False, None
         return _with_gripper(last_sent, 60.0)
     return effect
 
@@ -158,12 +163,30 @@ class Scenario:
     containers: bool = False
     colour_pick: bool = False
     settings: dict = field(default_factory=dict)
+    held_balls: list[str] = field(default_factory=lambda: ["striped"])
+    # Held-ball check: "off" (no hook), "on" (fake wrist detector, threshold 300 px), "unavailable" (hook raises).
+    held_check: str = "off"
+    colour_sensor: bool = False
+
+
+FAKE_HELD_AREA_PX, FAKE_HELD_THRESHOLD_PX = 900, 300
+
+
+def fake_held_ball_area(world: World, mode: str):
+    if mode == "off":
+        return None
+
+    def area(frame, wanted):
+        if mode == "unavailable":
+            raise RuntimeError("no wrist frame")
+        return FAKE_HELD_AREA_PX if world.holding and world.held_ball == wanted else 0
+    return area
 
 
 def build(scenario: Scenario):
     abort = threading.Event()
     world = World(buried=scenario.buried, hand=scenario.hand, destination=scenario.destination,
-                  block_after_pick=scenario.block_after_pick)
+                  block_after_pick=scenario.block_after_pick, held_balls=list(scenario.held_balls))
     arm = FakeArm(world, abort)
     containers = {c: scripted("put_down_" + c, world, ["ok"], release_effect(world, "ok")) for c in ("red", "blue")}
     skills = Skills(
@@ -179,8 +202,11 @@ def build(scenario: Scenario):
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
     )
     sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
-                      palms_seen=lambda: world.hand, destination=lambda: world.destination)
-    settings = Settings(**scenario.settings)
+                      palms_seen=lambda: world.hand, destination=lambda: world.destination,
+                      held_ball_area=fake_held_ball_area(world, scenario.held_check),
+                      ball_colour=(lambda: world.held_ball) if scenario.colour_sensor else None)
+    held = {"min_held_target_area_px": FAKE_HELD_THRESHOLD_PX} if scenario.held_check != "off" else {}
+    settings = Settings(**{**held, **scenario.settings})
     clock = FakeClock(settings.fps, abort, scenario.abort_at_tick)
     return arm, skills, sensors, settings, abort, clock, world
 
@@ -214,4 +240,20 @@ SCENARIOS = [
     Scenario("striped_container_uses_generic_pose", [R, P, V, U, R, D], "put_down", target="striped",
              destination="container", containers=True),
     Scenario("shake_hook", [R, P, V, G, S, R, D], "given", shake=True),
+    # Held-ball check: the gripper reads the same for the striped target and a red/blue ball.
+    Scenario("held_check_target_is_given", [R, P, V, G, R, D], "given", held_check="on"),
+    Scenario("held_check_red_ball_put_down_then_retry", [R, P, V, U, R, P, V, G, R, D], "given",
+             held_balls=["red", "striped"], held_check="on"),
+    Scenario("held_check_red_ball_every_pick", [R, P, V, U, R, P, V, U, R, P, V, U, R, D], "wrong_ball",
+             held_balls=["red"], held_check="on"),
+    Scenario("held_check_red_ball_sorted_into_red_container", [R, P, V, U, R, P, V, G, R, D], "given",
+             held_balls=["red", "striped"], held_check="on", containers=True, colour_sensor=True),
+    Scenario("held_check_red_ball_voice_container_still_retries", [R, P, V, U, R, P, V, U, R, D], "put_down",
+             held_balls=["red", "striped"], held_check="on", destination="container"),
+    Scenario("held_check_red_target_held_red_is_accepted", [R, P, V, U, R, D], "put_down", target="red",
+             destination="container", containers=True, colour_pick=True, held_balls=["red"], held_check="on"),
+    Scenario("held_check_unmeasured_threshold_logs_only", [R, P, V, G, R, D], "given", held_balls=["red"],
+             held_check="on", settings={"min_held_target_area_px": None}),
+    Scenario("held_check_detector_unavailable_accepts", [R, P, V, G, R, D], "given", held_balls=["red"],
+             held_check="unavailable"),
 ]

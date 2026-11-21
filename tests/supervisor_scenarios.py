@@ -42,7 +42,7 @@ def fake_scenarios(log_path: str) -> None:
             problems.append(world.violations[0])
         if arm.sends_after_abort:
             problems.append(f"{arm.sends_after_abort} actions sent after abort")
-        if scenario.outcome in ("given", "put_down", "gave_up") and not np.allclose(pose_of(arm.last_sent), pose_of(FakeArm(World(), abort).last_sent)):
+        if scenario.outcome in ("given", "put_down", "gave_up", "wrong_ball") and not np.allclose(pose_of(arm.last_sent), pose_of(FakeArm(World(), abort).last_sent)):
             problems.append("did not end at the rest pose")
         check(f"scenario {scenario.name}", not problems, "; ".join(problems))
     with open(log_path) as lines:
@@ -170,6 +170,69 @@ def round_hygiene(log_path: str) -> None:
     check("a stale shared-memory block is unlinked on start", gone)
 
 
+def held_ball_check(log_path: str) -> None:
+    def run(name: str) -> list[dict]:
+        scenario = next(s for s in SCENARIOS if s.name == name)
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        log = TransitionLog(log_path, echo=False)
+        Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+        log.file.close()
+        with open(log_path) as lines:
+            events = [json.loads(line) for line in lines]
+        open(log_path, "w").close()
+        return events
+
+    def verify(events):
+        return [e for e in events if e["event"] == "transition" and e["source"] == "VERIFY_HOLD"]
+
+    events = run("held_check_target_is_given")
+    checks = verify(events)
+    check("held check: striped target in the wrist frame -> handed over, area and threshold logged",
+          [(e["target"], e["held_check"], e["held_area_px"], e["held_threshold_px"]) for e in checks]
+          == [("GIVE", "target", 900, 300)], str(checks))
+    events = run("held_check_red_ball_every_pick")
+    checks = verify(events)
+    gives = [e for e in events if e["event"] == "transition" and e["target"] == "GIVE"]
+    end = next(e for e in events if e["event"] == "round_end")
+    check("held check: red ball held -> never handed over, put down 3 times, outcome wrong_ball",
+          not gives and [e["held_check"] for e in checks] == ["wrong"] * 3 and end["wrong_balls"] == 3
+          and end["outcome"] == "wrong_ball", f"{[e['held_check'] for e in checks]} {end}")
+    events = run("held_check_red_ball_sorted_into_red_container")
+    puts = [e["container"] for e in events if e["event"] == "transition" and e["source"] == "PUT_DOWN"]
+    check("held check: a wrong red ball goes to the red container when the colour sensor says red",
+          puts == ["red"], str(puts))
+    events = run("held_check_red_ball_put_down_then_retry")
+    puts = [e["container"] for e in events if e["event"] == "transition" and e["source"] == "PUT_DOWN"]
+    check("held check: without a colour sensor the wrong ball goes to the generic put-down pose",
+          puts == ["default"], str(puts))
+    checks = verify(run("held_check_detector_unavailable_accepts"))
+    check("held check: detector unavailable -> accepted as before (gripper band), logged with the error",
+          [(e["target"], e["held_check"]) for e in checks] == [("GIVE", "unavailable")]
+          and "no wrist frame" in checks[0]["held_check_error"], str(checks))
+    checks = verify(run("held_check_unmeasured_threshold_logs_only"))
+    check("held check: no threshold yet -> the area is logged, the ball is accepted",
+          [(e["target"], e["held_check"], e["held_area_px"]) for e in checks] == [("GIVE", "unmeasured", 0)], str(checks))
+    checks = verify(run("pick_then_give"))
+    check("held check: no hook -> held_check off, flow unchanged", [e["held_check"] for e in checks] == ["off"], str(checks))
+
+
+def vision_adapter(vision_dir: Path) -> None:
+    import cv2
+    from run_supervisor import held_ball_area
+
+    area = held_ball_area(vision_dir)
+    # A 640x480 wrist frame with one ball close to the camera, larger than any ball in the top camera's bowl.
+    frames = {}
+    for name, rgb in (("striped", (200, 200, 40)), ("red", (200, 20, 20)), ("blue", (20, 40, 200))):
+        frame = np.full((480, 640, 3), 230, np.uint8)
+        cv2.circle(frame, (320, 300), 90, rgb, cv2.FILLED)
+        frames[name] = frame
+    areas = {(held, wanted): area(frames[held], wanted) for held in frames for wanted in frames}
+    ok = all((areas[held, wanted] > 10_000) == (held == wanted) for held, wanted in areas)
+    check("held check wired to #24's ColourVisibility: each ball found only as itself in a wrist frame, no bowl ROI",
+          ok, str({f"{h}->{w}": a for (h, w), a in areas.items()}))
+
+
 def speed_cap() -> None:
     last = {key: 0.0 for key in KEYS}
     wanted = {**last, "shoulder_pan.pos": 10.0, "elbow_flex.pos": -5.0, "gripper.pos": 40.0}
@@ -234,12 +297,20 @@ def main() -> None:
     p.add_argument("--handover-dir", default=str(SUPERVISOR.parent / "handover"),
                    help="directory with #13's handover_loop.py; that test is skipped if it is missing")
     p.add_argument("--skip-policy", action="store_true")
+    p.add_argument("--vision-dir", default=str(SUPERVISOR.parent / "vision"),
+                   help="directory with #24's colour_detector.py and supervisor_adapter.py; that test is skipped if missing")
     args = p.parse_args()
     with tempfile.TemporaryDirectory() as work:
         fake_scenarios(f"{work}/fake.jsonl")
         voice_container()
         round_hygiene(f"{work}/hygiene.jsonl")
+        held_ball_check(f"{work}/held.jsonl")
         speed_cap()
+        vision_dir = Path(args.vision_dir)
+        if (vision_dir / "supervisor_adapter.py").exists():
+            vision_adapter(vision_dir)
+        else:
+            print(f"SKIP  held check with #24's detector: no supervisor_adapter.py in {vision_dir}")
         if not args.skip_policy:
             policy_runner()
             policy_runner(("camera1", "camera2"), {"top": "camera1", "wrist": "camera2"}, n_action_steps=20)
