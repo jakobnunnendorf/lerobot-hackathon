@@ -1,6 +1,7 @@
 # Written by Claude
 # Repeated PICK evaluation on the SO-101: SPACE starts a run from HOME, the policy runs until the arm is back
-# home holding a ball or the time cap hits, the result is written to a CSV. Runbook: docs/eval-pick-runbook.md.
+# home holding a ball or the time cap hits, the result is written to a CSV. Several policies are compared on the
+# same layouts, newest checkpoint of each by default. Runbook: docs/eval-pick-runbook.md.
 # Own loop instead of lerobot-rollout: rollout disconnects after every run, which switches torque off and drops the ball.
 
 import argparse
@@ -19,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-from huggingface_hub import snapshot_download
+from huggingface_hub import HfApi, snapshot_download
 from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.common.control_utils import predict_action
 from lerobot.configs.policies import PreTrainedConfig
@@ -98,13 +99,30 @@ def wait_key(allowed: str) -> str:
     return k
 
 
-def resolve_checkpoint(policy: str, step: str | None) -> str:
-    if Path(policy).is_dir():
-        return str(Path(policy) / "checkpoints" / step) if step else policy
-    if not step:
-        return policy
-    local = snapshot_download(policy, allow_patterns=[f"checkpoints/{step}/*"])
-    return str(Path(local) / "checkpoints" / step)
+def latest_step(paths) -> str | None:
+    steps = {p.split("/")[1] for p in paths if p.startswith("checkpoints/") and p.split("/")[1].isdigit()}
+    return max(steps) if steps else None
+
+
+def model_dir(path: Path) -> str:
+    # LeRobot run dirs keep the weights in <step>/pretrained_model; our Hub repo keeps them in <step>/ directly.
+    return str(path / "pretrained_model") if (path / "pretrained_model").is_dir() else str(path)
+
+
+def resolve_checkpoint(spec: str) -> tuple[str, str]:
+    """`spec` is a Hub repo id or a local dir, optionally `@<step>`; without a step the newest checkpoint is used."""
+    source, _, step = spec.partition("@")
+    if Path(source).is_dir():
+        root = Path(source)
+        step = step or latest_step(p.relative_to(root).as_posix() for p in root.glob("checkpoints/*"))
+        path = root / "checkpoints" / step if step else root
+    else:
+        step = step or latest_step(HfApi().list_repo_files(source))
+        if step:
+            path = Path(snapshot_download(source, allow_patterns=[f"checkpoints/{step}/*"])) / "checkpoints" / step
+        else:
+            path = Path(snapshot_download(source))
+    return model_dir(path), f"{source}@{step}" if step else source
 
 
 class Policy:
@@ -235,35 +253,58 @@ def ask(prompt: str, options: dict) -> str:
     return options[wait_key("".join(options))]
 
 
-def summary(rows: list) -> str:
-    lines = []
+def tally(rows: list) -> str:
+    parts = []
     for state in START_STATES.values():
         done = [r for r in rows if r["start_state"] == state]
         if done:
-            ok = sum(r["result"] == "success" for r in done)
-            lines.append(f"{state}: {ok}/{len(done)}")
-    total = sum(r["result"] == "success" for r in rows)
+            parts.append(f"{state} {sum(r['result'] == 'success' for r in done)}/{len(done)}")
+    parts.append(f"all {sum(r['result'] == 'success' for r in rows)}/{len(rows)}")
     failures = Counter(r["result"] for r in rows if r["result"] != "success")
-    lines.append(f"all: {total}/{len(rows)}")
     if failures:
-        lines.append("failures: " + ", ".join(f"{k} {v}" for k, v in failures.most_common()))
-    return " | ".join(lines)
+        parts.append("failures: " + ", ".join(f"{k} {v}" for k, v in failures.most_common()))
+    return " | ".join(parts)
+
+
+def summary(rows: list, names: list) -> str:
+    return "\n".join(f"  {n}: {tally([r for r in rows if r['policy'] == n])}" for n in names if any(
+        r["policy"] == n for r in rows))
+
+
+def schedule(names: list, first_layout: int, layouts: int) -> list:
+    # Every policy runs each layout once; the order flips every layout so no policy always goes first.
+    return [(k, n) for k in range(first_layout, first_layout + layouts) for n in (names if k % 2 else names[::-1])]
+
+
+def parse_policies(specs: list) -> dict:
+    policies = {}
+    for spec in specs:
+        name, _, source = spec.rpartition("=")
+        name = name or source.partition("@")[0].rstrip("/").split("/")[-1]
+        policies[name] = source
+    return policies
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Repeated PICK evaluation on the SO-101 (SPACE starts each run).")
-    p.add_argument("--policy", default="Space0code/act_redblue_from_foil", help="Hub repo id or local checkpoint dir")
-    p.add_argument("--step", help="checkpoint step folder, e.g. 015000; omit for the repo root (newest)")
-    p.add_argument("--runs", type=int, default=10)
+    p.add_argument(
+        "--policy",
+        action="append",
+        help="[name=]<Hub repo id or local run dir>[@step]; repeat to compare policies on the same layouts. "
+        "Without @step the newest checkpoint is used. Default: Space0code/act_redblue_from_foil",
+    )
+    p.add_argument("--runs", type=int, default=10, help="layouts; every policy runs each layout once")
     p.add_argument("--seconds", type=float, default=90.0)
-    p.add_argument("--n-action-steps", type=int, help="override the checkpoint's n_action_steps (default 100)")
+    p.add_argument("--n-action-steps", type=int, help="override the checkpoints' n_action_steps (default 100)")
     p.add_argument("--log-dir", default=str(Path.home() / "so101" / "evals"))
     args = p.parse_args()
 
-    path = resolve_checkpoint(args.policy, args.step)
-    label = f"{args.policy}@{args.step}" if args.step else args.policy
-    print(f"Loading {label} from {path}", flush=True)
-    policy = Policy(path, args.n_action_steps)
+    policies, labels = {}, {}
+    for name, spec in parse_policies(args.policy or ["Space0code/act_redblue_from_foil"]).items():
+        path, labels[name] = resolve_checkpoint(spec)
+        print(f"Loading {name}: {labels[name]} from {path}", flush=True)
+        policies[name] = Policy(path, args.n_action_steps)
+    names = list(policies)
     robot = make_robot()
     features = {
         **hw_to_dataset_features(robot.action_features, ACTION),
@@ -271,31 +312,38 @@ def main() -> None:
     }
     log = Path(args.log_dir) / f"eval_{datetime.now():%Y%m%d_%H%M%S}.csv"
     log.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["run", "started", "checkpoint", "n_action_steps", "cap_s", "seconds", "end", "gripper_end",
-              "left_home", "late_ticks_pct", "start_state", "result"]
+    fields = ["run", "layout", "policy", "checkpoint", "started", "n_action_steps", "cap_s", "seconds", "end",
+              "gripper_end", "left_home", "late_ticks_pct", "start_state", "result"]
     rows: list = []
 
     robot.connect()
     try:
         # The first inference initialises CUDA and takes seconds; do it before the first timed run.
-        policy.act(build_dataset_frame(features, robot.get_observation(), prefix=OBS_STR), features, robot.robot_type)
+        frame = build_dataset_frame(features, robot.get_observation(), prefix=OBS_STR)
+        for policy in policies.values():
+            policy.act(frame, features, robot.robot_type)
         with keyboard(), open(log, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fields)
             writer.writeheader()
-            run, target = 1, args.runs
+            queue, layouts, start_states = schedule(names, 1, args.runs), args.runs, {}
+            run = 1
             while True:
-                if run > target:
-                    banner(f"{target} RUNS DONE  -  {summary(rows)}", "30;42")
-                    banner("SPACE = 5 more runs,  q = quit (arm goes HOME, then limp)")
+                if not queue:
+                    banner(f"{layouts} LAYOUTS DONE", "30;42")
+                    print(summary(rows, names), flush=True)
+                    banner("SPACE = 5 more layouts,  q = quit (arm goes HOME, then limp)")
                     if wait_key(" q") == "q":
                         break
-                    target += 5
-                banner(f"RUN {run}/{target}: set up the bowl, hands out. SPACE = start,  q = quit")
+                    queue, layouts = schedule(names, layouts + 1, 5), layouts + 5
+                layout, name = queue.pop(0)
+                policy = policies[name]
+                setup = "the SAME layout as the last run" if layout in start_states else "a NEW layout"
+                banner(f"RUN {run}  LAYOUT {layout}/{layouts}  POLICY {name}: set up {setup}. SPACE = start,  q = quit")
                 say(f"Run {run}. Press space to start")
                 if wait_key(" q") == "q":
                     break
                 move_to(robot, HOME)
-                banner(f"RUN {run} RUNNING  -  max {args.seconds:.0f} s.  SPACE = end now,  ESC = abort (arm holds)", "97;41")
+                banner(f"RUN {run} ({name}) RUNNING  -  max {args.seconds:.0f} s.  SPACE = end now,  ESC = abort (arm holds)", "97;41")
                 say("Robot starting")
                 started = datetime.now().isoformat(timespec="seconds")
                 outcome = run_once(robot, policy, features, args.seconds)
@@ -305,20 +353,24 @@ def main() -> None:
                     f" (holding is about {HOLDING[0]:.0f}-{HOLDING[1]:.0f}), slow ticks {outcome['late_ticks_pct']}%",
                     flush=True,
                 )
+                if layout not in start_states:
+                    start_states[layout] = ask("Ball at start?", START_STATES)
                 row = {
                     "run": run,
+                    "layout": layout,
+                    "policy": name,
+                    "checkpoint": labels[name],
                     "started": started,
-                    "checkpoint": label,
                     "n_action_steps": policy.n_action_steps,
                     "cap_s": args.seconds,
                     **outcome,
-                    "start_state": ask("Ball at start?", START_STATES),
+                    "start_state": start_states[layout],
                     "result": ask("Result?", RESULTS),
                 }
                 writer.writerow(row)
                 f.flush()
                 rows.append(row)
-                print(f"  so far: {summary(rows)}", flush=True)
+                print(summary(rows, names), flush=True)
                 banner("Hold a hand under the gripper. SPACE = open the gripper")
                 wait_key(" ")
                 move_to(robot, {"gripper.pos": GRIPPER_OPEN})
@@ -326,7 +378,7 @@ def main() -> None:
             move_to(robot, HOME)
     finally:
         robot.disconnect()  # torque off: the arm goes limp, so it is sent HOME first on a normal quit
-        print(f"\nLog: {log}\n{summary(rows) if rows else 'no runs'}", flush=True)
+        print(f"\nLog: {log}\n{summary(rows, names) if rows else 'no runs'}", flush=True)
 
 
 if __name__ == "__main__":
