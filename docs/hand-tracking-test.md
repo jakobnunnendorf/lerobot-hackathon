@@ -49,7 +49,7 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 Check:
 - Terminal 2 prints `camera: 640x480 at 30 fps, backend V4L2`. Then, twice a second, the hand in robot coordinates, for example `x +0.251 y -0.048 m open palm`.
 - Hold the open palm 20 cm above a point you can measure, for example 25 cm straight ahead of the base's turning axis. x should read about 0.25 and y about 0.00, within about 2 cm. Move the hand 10 cm to the robot's left: y should grow by about 0.10. Note 2-3 readings next to the ruler values.
-- Terminal 1 shows `follow` while the hand is seen, with `tip=(x, y, +0.280)` moving to the hand's x and y. It shows `hold` when the hand disappears, and `home` after 3 s.
+- Terminal 1 shows `follow` while the hand is seen, with `tip=(x, y, +0.280)` moving to the hand's x and y. It shows `hold` when the hand disappears, and `home` after 5 s.
 
 Ctrl+C in both terminals.
 
@@ -102,7 +102,7 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 What should happen:
 - No hand: the arm holds still.
 - Open palm at 20 cm: the gripper first rises to 28 cm, then moves over the palm and follows it slowly.
-- Hand gone: the arm stops, and after 3 s it returns to the start pose.
+- Hand gone: the arm stops, and after 5 s it returns to the start pose.
 - Two open palms under it for 1 s: it opens the gripper (the drop; harmless without a ball), closes and opens it 3 times fast (`--celebrate 3`), then folds back into the rest pose (`--rest`, the joints Balazs read at rest, 7064702491) and stays there. Start the loop again for the next round.
 
 **Stop: Ctrl+C in terminal 1.** The arm stays where it is, with torque on. If it moves **away from the hand or mirrored** (hand to the left, arm to the right), stop at once and post terminal 1's last lines.

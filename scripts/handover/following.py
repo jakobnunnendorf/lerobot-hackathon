@@ -25,7 +25,8 @@ class Decision:
 class FollowSettings:
     # 0.28 m: confirmed on the arm by Balazs (board 7064755928, "works fine"), raised from 0.25 after T2.
     hover_height: float = 0.28
-    lost_to_home_s: float = 3.0
+    # 5 s, not 3 (Tian, 2026-11-21): in T2 the arm hid the palm in about 40% of tracker frames (board 7064755928).
+    lost_to_home_s: float = 5.0
     drop_radius: float = 0.03
     drop_dwell_s: float = 1.0
     open_time_s: float = 1.0
