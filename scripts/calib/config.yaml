@@ -1,0 +1,55 @@
+# Top camera exactly as the robot program opens it (CAMERAS in scripts/so101/common.sh on molnrb/so101-robot-skill).
+# A different pixel format or size can change the field of view, and a calibration is valid only at the size it was made at.
+camera:
+  index_or_path: /dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0
+  width: 640
+  height: 480
+  fps: 30
+  fourcc: MJPG
+  backend: auto  # auto = V4L2 on Linux (LeRobot is given backend 200, which is V4L2), the default backend elsewhere
+  # Off by default: V4L2 keeps the setting after the script exits, so the PICK policies would see a differently
+  # exposed image than in their training data. Exposure does not change the geometry.
+  manual_exposure: false
+
+board:
+  inner_corners: [7, 5]  # along the long side, along the short side (8 x 6 squares)
+  square_x_m: 0.02875    # along the long side: 8 squares measured 230 mm
+  square_y_m: 0.0290     # along the short side: 6 squares measured 173-175 mm
+  board_thickness_m: 0.003
+
+# Measured in the robot frame: origin on the table below the shoulder_pan axis, x forward, y left, z up.
+# Left empty on purpose: calibrate_extrinsics.py stops until the measurements are given (here or on its command line).
+# How to measure, and the corner numbering: docs/camera-calibration-runbook.md.
+extrinsics:
+  # Ruler x, y in millimetres of the four outermost inner corners (where four squares meet), board flat on the table.
+  # 1 = the one nearest the square of red tape on the cardboard; 2 = from 1 along the long side (six squares);
+  # 3 = diagonally opposite 1; 4 = from 1 along the short side (four squares). No rotation sense is assumed: the
+  # script reads from these values whether z = (2 - 1) x (4 - 1) points up or down.
+  # Example:  board_corners_in_base_mm: {1: [215.0, 82.0], 2: [216.0, -90.5], 3: [331.0, -89.0], 4: [330.0, 83.5]}
+  board_corners_in_base_mm: {1: [99.6, -173.4], 2: [270.2, -171.4], 3: [269.2, -56.2], 4: [98.5, -59.4]}
+  # The alternative to the four corners: corner 1 in metres and the direction from corner 1 to corner 2
+  # (0 = robot +x, 90 = robot +y). Used only when board_corners_in_base_mm is empty.
+  board_origin_in_base_xyz_m: null
+  board_yaw_in_base_deg: null
+  # The pattern looks the same turned by 180 degrees, so the image alone cannot tell corner 1 from corner 3. Three
+  # tie-breakers; every one that decides must agree: the red tape (found automatically next to the board);
+  # origin_image_corner, the image corner that corner 1 lies towards seen from the board's centre (top-left,
+  # top-right, bottom-left or bottom-right), used when the tape is not found; camera_position_in_base_m, the lens
+  # position to +-5 cm, which decides unless the camera is almost straight above the board's centre.
+  origin_image_corner: null
+  camera_position_in_base_m: [0.460, -0.539, 0.840]
+
+touch:
+  # The point the gripper touches and the person clicks, in gripper_frame_link coordinates (z points out of the
+  # gripper). Fixed here rather than taken from kinematics.TOOL_POINT, which will move to the held ball's centre.
+  # (0, 0, 0.0063) is the end of the fixed jaw: the frame's origin sits on the jaw's inner face 6.3 mm short of its
+  # end. Sign checked in the URDF model (Kamel's agent, 2026-11-21: the point lands on the jaw's end, 104.4 mm along
+  # gripper_link), not yet on the arm.
+  tool_point_m: [0.0, 0.0, 0.0063]
+  min_points: 6
+
+validate:
+  grid_x_m: [0.10, 0.45]
+  grid_y_m: [-0.25, 0.25]
+  grid_step_m: 0.05
+  hand_plane_z_m: 0.15
