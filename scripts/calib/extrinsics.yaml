@@ -1,0 +1,42 @@
+created: '2026-11-21T15:19:56'
+method: board
+source: calib_frames/table/board_00.png
+intrinsics_created: '2026-11-21T14:54:37'
+image_width: 640
+image_height: 480
+T_base_cam:
+- [0.8094826895908517, 0.43063947253656687, -0.39910828097922124, 0.5154312147970552]
+- [0.5871423201642768, -0.5952087168759754, 0.548625992117549, -0.5640954853597253]
+- [-0.0012927199508666054, -0.6784366057696789, -0.7346578120641243, 0.8833361689942242]
+- [0.0, 0.0, 0.0, 1.0]
+camera_position_in_base_m: [0.5154312147970552, -0.5640954853597253, 0.8833361689942242]
+board_reprojection_rms_px: 0.25144439787782974
+board:
+  frame: origin corner 1 (red tape), x towards corner 2, y towards corner 4, z = x cross y
+  z_points: up
+  corner1_in_base_m: [0.09890670107508631, -0.17424585681923627, 0.003]
+  yaw_in_base_deg: 0.7646451852389153
+  thickness_m: 0.003
+  square_x_m: 0.02875
+  square_y_m: 0.029
+  corner_pixels:
+    1: [189.8572540283203, 319.92333984375]
+    2: [362.44500732421875, 427.4581298828125]
+    3: [440.95770263671875, 325.07220458984375]
+    4: [272.4429016113281, 228.63294982910156]
+  measured_with: 'four measured corners, fitted: corner 1 at (0.0989, -0.1742) m, yaw 0.8 deg, z = x cross y points up'
+  corner_residuals_mm: {1: 1.1, 2: 1.3, 3: 0.7, 4: 1.6}
+corner1_decided_by: ['the measured corners say z = x cross y points up; that leaves two pattern ends 180 degrees apart, which
+    the measurements cannot tell apart', 'red tape: 647 px patch at pixel (105, 329), corner 1 is the pattern end nearest
+    it', 'camera_position_in_base_m: the candidates put the camera 0.07 m and 1.06 m from it, the nearer one wins']
+config:
+  board_corners_in_base_mm:
+    1: [99.6, -173.4]
+    2: [270.2, -171.4]
+    3: [269.2, -56.2]
+    4: [98.5, -59.4]
+  board_origin_in_base_xyz_m: null
+  board_yaw_in_base_deg: null
+  origin_image_corner: null
+  camera_position_in_base_m: [0.46, -0.539, 0.84]
+warnings: []

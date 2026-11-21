@@ -116,7 +116,7 @@ Proposed stack, in the order to build it:
 
 | Piece | First version | Upgrade |
 | --- | --- | --- |
-| Activation | push-to-talk key; the wake phrase ("hey robot, ...") is checked in the transcript | an always-listening wake word, only if it survives a test in the hall at its loudest |
+| Activation | push-to-talk key (Enter), no wake phrase: a "hey bot" check in the transcript was built and dropped as unreliable (`decisions/voice-commands.md`) | an always-listening wake word, only if it survives a test in the hall at its loudest |
 | Speech to text | Parakeet TDT 0.6b v3 through `onnx-asr`, on the CPU | faster-whisper `small` with the language forced |
 | Understanding | a synonym table with fuzzy matching, English and Spanish | Claude with a fixed JSON schema, for free phrasing; the table stays as fallback |
 

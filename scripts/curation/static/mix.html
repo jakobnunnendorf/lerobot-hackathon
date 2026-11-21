@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 mix builder</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="mix.css">
+</head>
+<body>
+<header>
+  <a href="/">&larr; curation</a>
+  <b>Mix builder</b>
+  <span id="status"></span>
+</header>
+
+<main class="mixb">
+  <section id="form">
+    <h4>Sources</h4>
+    <div id="sources"></div>
+
+    <h4>Filter</h4>
+    <div class="row"><span class="k">verdict</span><span id="verdicts"></span></div>
+    <div class="row"><span class="k">scene</span><span id="scenes"></span></div>
+    <div class="hint">nothing ticked in a group = any value</div>
+    <div class="row"><span class="k"></span><label class="cb"><input type="checkbox" id="nolimit" checked> leave out 120 s timeouts</label></div>
+    <table id="ranges"><thead><tr><th>range</th><th>min</th><th>max</th></tr></thead><tbody></tbody></table>
+    <div class="hint">placeholders show the range over all loaded episodes</div>
+
+    <h4>Task sentence per scene class</h4>
+    <div id="tasks"></div>
+    <div class="hint">empty = keep each episode's own task; a task set by hand on an episode always wins</div>
+
+    <h4>Save</h4>
+    <div class="row"><span class="k">name</span><input id="name" placeholder="e.g. rb_keep_v1"></div>
+    <div class="row"><span class="k">output repo</span><input id="output" placeholder="molnrb/so101_pick_mix_&lt;name&gt;"></div>
+    <div class="row"><span class="k"></span><button id="save">Save mix</button></div>
+    <div id="saveout" hidden>
+      <div id="paths"></div>
+      <button id="copy">copy script</button>
+      <pre id="script"></pre>
+    </div>
+
+    <h4>Saved mixes</h4>
+    <div id="mixes"></div>
+  </section>
+
+  <section id="stats">
+    <div id="warnings" hidden></div>
+    <div id="total"></div>
+    <div id="byclass"></div>
+    <div id="bydataset"></div>
+    <h4>Pick style</h4>
+    <div id="style"></div>
+    <div class="hists"><div id="hist-open"></div><div id="hist-close"></div></div>
+    <h4>Task sentences</h4>
+    <div id="tasklist"></div>
+  </section>
+
+  <section id="picked">
+    <div class="listhead">
+      <b>Episodes</b>
+      <label class="cb"><input type="checkbox" id="showall"> show all in sources</label>
+      <button id="clearhand">clear hand edits</button>
+    </div>
+    <div id="listcount" class="hint"></div>
+    <div id="listwrap">
+      <table id="list">
+        <thead><tr><th></th><th>dataset</th><th>ep</th><th>verdict</th><th>scene</th><th>s</th><th>open</th><th>at close</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script src="mix.js"></script>
+</body>
+</html>

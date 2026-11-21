@@ -12,6 +12,7 @@ wheels/
 # LeRobot outputs and local data
 outputs/
 data/
+calib_frames/
 wandb/
 *.safetensors
 

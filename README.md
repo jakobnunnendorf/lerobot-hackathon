@@ -67,6 +67,19 @@ uv run lerobot-train --dataset.repo_id=<hf-user>/<dataset-name> --policy.type=ac
 
 Use `--policy.device=cuda` on an NVIDIA GPU. Hugging Face login for pushing datasets/models: `uv run hf auth login`.
 
+## Our datasets
+
+Recorded by the team on the SO-101 (top + wrist camera, 30 fps), all at https://huggingface.co/molnrb:
+
+| Dataset | Episodes | Frames |
+|---|---|---|
+| [molnrb/so101_pick_ball](https://huggingface.co/datasets/molnrb/so101_pick_ball) | 49 | 16,903 |
+| [molnrb/so101_pick_blue_ball](https://huggingface.co/datasets/molnrb/so101_pick_blue_ball) | 100 | 47,401 |
+| [molnrb/so101_pick_buried_ball](https://huggingface.co/datasets/molnrb/so101_pick_buried_ball) | 45 | 44,529 |
+| [molnrb/so101_pick_ball_combined](https://huggingface.co/datasets/molnrb/so101_pick_ball_combined) | 145 | 91,930 |
+
+Browse episodes in the browser: https://huggingface.co/spaces/lerobot/visualize_dataset
+
 ## Adding dependencies
 
 ```bash
