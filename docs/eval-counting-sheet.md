@@ -13,10 +13,11 @@ One row per run, filled in by the person at the table. Counts decide the roadmap
 
 ## PICK runs
 
-| # | Ball at start: visible / partly / hidden | Result: success / fail / aborted | Failure mode (missed ball, grabbed gray, stopped, dropped, camera timeout, other) | Stutter (pauses in the motion: none / some / bad) | Gripper reading at end | Seconds |
+| # | Ball at start: visible / partly / hidden | Result: success / fail / aborted | Failure mode (never started, missed ball, grabbed gray, stopped, dropped, camera timeout, other) | Stutter (pauses in the motion: none / some / bad) | Gripper reading at end | Seconds |
 | --- | --- | --- | --- | --- | --- | --- |
 
 - Success = ball held at the end. A gripper reading of about 6-20 means holding, near 1 means a missed grasp, up to about 38 means open jaws (145 episodes, board 7061759444). A foil ball is not measured yet.
+- **Never started** (the arm stays at its rest pose) is its own failure mode: a preprint reports it in 47% of SmolVLA rollouts (https://arxiv.org/abs/2611.00283, one author, one task, not peer reviewed; via the board). Pick checkpoints by counting on the arm, not by held-out loss; a later SmolVLA checkpoint should not be dropped because its eval loss rose.
 - Aborted = the run was stopped by a person or a camera timeout, not by the policy.
 - Count visible, partly visible and hidden separately: 17 of the 45 "buried" training episodes start partly visible (board 7061088625), so dataset names are not labels.
 - Tally at the bottom: successes out of tries for each of the three start states.
