@@ -1,5 +1,6 @@
 import sys
 import threading
+import time
 
 from skills import SCRIPTS, import_from
 
@@ -60,9 +61,21 @@ class Commands:
     def listen_voice(self, host: str, port: int = 8765) -> None:
         self.voice = import_from(SCRIPTS / "voice", "link").CommandReceiver(host, port)
 
+        # Also polled from a thread of its own: the supervisor's tick does not run inside GIVE's loop, and an abort
+        # from the dashboard must land there too.
+        def poll_forever() -> None:
+            while True:
+                self.poll_voice()
+                time.sleep(0.05)
+
+        threading.Thread(target=poll_forever, daemon=True).start()
+
+    # Voice, the dashboard and link.py send {"target", "destination"}; the dashboard's ABORT sends {"abort": true}.
     def poll_voice(self) -> None:
         command = self.voice.poll() if self.voice is not None else None
-        if command is not None and command.get("target") in TARGETS:
+        if command is not None and command.get("abort"):
+            self.abort.set()
+        elif command is not None and command.get("target") in TARGETS:
             self.set_target(command["target"])
             self.set_destination(command.get("destination"))
             self.go.set()
