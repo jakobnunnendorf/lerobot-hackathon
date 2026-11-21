@@ -86,6 +86,7 @@ function renderHead() {
       input = el("input", { placeholder: c.type === "num" ? ">20, 1-3" : "text" });
     }
     input.value = S.filters[c.key] || "";
+    S.filters[c.key] = input.value;
     input.oninput = () => { S.filters[c.key] = input.value; store.set("filters", JSON.stringify(S.filters)); applyView(); };
     filters.append(el("th", {}, input));
   }
@@ -315,19 +316,21 @@ for (const id of ["grip", "joints"]) {
   c.addEventListener("mousedown", e => { scrub(e); c.onmousemove = ev => ev.buttons && scrub(ev); });
 }
 
+const chip = (className, textContent, onclick) => {
+  const b = el("button", { className, textContent, onclick });
+  b.onmousedown = e => e.preventDefault();
+  return b;
+};
+
 function showLabel() {
   const r = S.cur;
   $("#verdicts").innerHTML = "";
   S.meta.verdicts.forEach((v, i) => {
-    const b = el("button", { className: `chip ${v}` + (r.verdict === v ? " on" : ""), textContent: `${i + 1} ${v}` });
-    b.onclick = () => saveLabel({ verdict: v });
-    $("#verdicts").append(b);
+    $("#verdicts").append(chip(`chip ${v}` + (r.verdict === v ? " on" : ""), `${i + 1} ${v}`, () => saveLabel({ verdict: v })));
   });
   $("#scenes").innerHTML = "";
   S.meta.scene_classes.forEach((s, i) => {
-    const b = el("button", { className: "chip" + (r.scene_class === s ? " on" : ""), textContent: `${i + 4} ${s}` });
-    b.onclick = () => saveLabel({ scene_class: s });
-    $("#scenes").append(b);
+    $("#scenes").append(chip("chip" + (r.scene_class === s ? " on" : ""), `${i + 4} ${s}`, () => saveLabel({ scene_class: s })));
   });
   $("#task").value = r.person?.task || "";
   $("#task").placeholder = r.task || r.orig_task || "";
