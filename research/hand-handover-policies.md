@@ -52,7 +52,8 @@ Before the next episode:
 4. **Second hand at different moments**: early, late, never (a few hover-only episodes where no second hand comes and the ball stays). Without the "never" cases the policy learns that hover always ends in a drop.
 5. **The hand that stays is the same demo hand as in the pitch** (palm up, similar height). Vary lighting a little and do not move the top camera between recordings and the demo; a moved camera was the cause of several bad ACT results in the forum thread cited in `research/lerobot-training-feasibility.md`.
 6. **One fixed task sentence for the whole dataset** (for example "hand over the ball"). ACT ignores it, SmolVLA uses it; changing the wording between episodes only adds noise.
-7. Count about 5 episodes per hand-area cell if 20 is all there is; if more time remains, add episodes before adding policies.
+7. **Hold the hands 10-15 cm above the table, 15-35 cm in front of the base.** Tian's agent computed (numpy kinematics on the official URDF, not verified on the arm) that at 30 cm the arm cannot hover over a hand; a policy cannot learn motions the arm cannot make, and teleoperating the leader to 30 cm would produce unreachable or awkward demonstrations. Source: board comment 7061302163.
+8. Count about 5 episodes per hand-area cell if 20 is all there is; if more time remains, add episodes before adding policies.
 
 Open from the board that affect this: the three table questions (camera fixed, hand height, WSL and `use_degrees` or normalised joint values).
 
