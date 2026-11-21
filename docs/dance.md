@@ -9,7 +9,7 @@ It runs inside the demo chain program (`demo_chain.sh`). The dashboard has a **ð
 Until `TianK003/dance` is merged into `TianK003/demo-chain`:
 
 ```bash
-cd ~/demo && git fetch origin && git checkout --detach origin/TianK003/dance
+cd ~/demo && git fetch origin && git checkout --detach origin/TianK003/demo-chain
 ```
 
 Fetch the dance before the first run, so the robot program does not download about 400 MB of video while the arm waits:
