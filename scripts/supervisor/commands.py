@@ -1,3 +1,4 @@
+import re
 import sys
 import threading
 import time
@@ -7,6 +8,38 @@ from skills import SCRIPTS, import_from
 DESTINATION_KEYS = {"h": "hand", "c": "container"}
 TARGETS = ("striped", "red", "blue")
 TARGET_KEYS = {"r": "red", "b": "blue", "s": "striped"}
+PLAN_STEP = re.compile(r"(\d*)([rbs])")
+
+Plan = tuple[tuple[str, int], ...]
+
+
+# Red/blue steps in any order, at most one striped step and only last: the striped ball ends the round (PICK chain).
+def valid_plan(steps) -> Plan | None:
+    try:
+        plan = tuple((step["target"], step["count"]) for step in steps)
+    except (TypeError, KeyError):
+        return None
+    if not plan or any(target not in TARGETS or type(count) is not int or count < 1 for target, count in plan):
+        return None
+    striped = [i for i, (target, _) in enumerate(plan) if target == "striped"]
+    if striped and (striped != [len(plan) - 1] or plan[-1][1] != 1):
+        return None
+    return plan
+
+
+# "p 3b 2r s h": 3 blue, 2 red, then the striped ball, to the hand. Returns (plan, destination) or None.
+def plan_from_keys(line: str) -> tuple[Plan, str | None] | None:
+    steps, destination = [], None
+    for token in line.lower().split()[1:]:
+        if token in DESTINATION_KEYS and destination is None:
+            destination = DESTINATION_KEYS[token]
+            continue
+        match = PLAN_STEP.fullmatch(token)
+        if match is None:
+            return None
+        steps.append({"target": TARGET_KEYS[match[2]], "count": int(match[1] or 1)})
+    plan = valid_plan(steps)
+    return None if plan is None else (plan, destination)
 
 
 class Commands:
@@ -16,6 +49,7 @@ class Commands:
         self._lock = threading.Lock()
         self._destination: str | None = None
         self._target: str | None = None
+        self._plan: Plan | None = None
         self._dance = False
         self.voice = None
 
@@ -28,10 +62,19 @@ class Commands:
         with self._lock:
             return self._destination
 
+    # A single target and a plan replace each other: the newest command wins.
     def set_target(self, target: str | None) -> None:
         if target in (None, *TARGETS):
             with self._lock:
-                self._target = target
+                self._target, self._plan = target, None
+
+    def set_plan(self, plan: Plan) -> None:
+        with self._lock:
+            self._plan, self._target = plan, None
+
+    def plan(self) -> Plan | None:
+        with self._lock:
+            return self._plan
 
     def target(self) -> str | None:
         with self._lock:
@@ -51,7 +94,7 @@ class Commands:
     # stale "hand" or "container" (or a colour), and a dance asked for during a round does not start after it.
     def clear(self) -> None:
         with self._lock:
-            self._destination = self._target = None
+            self._destination = self._target = self._plan = None
             self._dance = False
 
     # Line-based (key + Enter) so it works the same in a Windows console, WSL and macOS.
@@ -59,7 +102,10 @@ class Commands:
         def read():
             for line in sys.stdin:
                 key = line.strip().lower()[:1]
-                if key in ("a", "q"):
+                if key == "p":
+                    if not self._plan_line(line):
+                        continue
+                elif key in ("a", "q"):
                     self.abort.set()
                 elif key in DESTINATION_KEYS:
                     self.set_destination(DESTINATION_KEYS[key])
@@ -71,6 +117,16 @@ class Commands:
                     self.request_dance()
                 self.go.set()
         threading.Thread(target=read, daemon=True).start()
+
+    def _plan_line(self, line: str) -> bool:
+        parsed = plan_from_keys(line)
+        if parsed is None:
+            print(f"plan not understood: {line.strip()!r}; e.g. p 3b 2r s h (3 blue, 2 red, then striped to the hand)",
+                  flush=True)
+            return False
+        self.set_plan(parsed[0])
+        self.set_destination(parsed[1])
+        return True
 
     def listen_voice(self, host: str, port: int = 8765) -> None:
         self.voice = import_from(SCRIPTS / "voice", "link").CommandReceiver(host, port)
@@ -84,14 +140,22 @@ class Commands:
 
         threading.Thread(target=poll_forever, daemon=True).start()
 
-    # Voice, the dashboard and link.py send {"target", "destination"}; the dashboard's ABORT sends {"abort": true} and
-    # its Dance {"dance": true}.
+    # Voice, the dashboard and link.py send {"target", "destination"} or {"plan", "destination"}; the dashboard's ABORT
+    # sends {"abort": true} and its Dance {"dance": true}.
     def poll_voice(self) -> None:
         command = self.voice.poll() if self.voice is not None else None
         if command is not None and command.get("abort"):
             self.abort.set()
         elif command is not None and command.get("dance") is True:
             self.request_dance()
+        elif command is not None and "plan" in command:
+            plan = valid_plan(command["plan"])
+            if plan is None:
+                print(f"plan refused, not valid: {command['plan']}", flush=True)
+                return
+            self.set_plan(plan)
+            self.set_destination(command.get("destination"))
+            self.go.set()
         elif command is not None and command.get("target") in TARGETS:
             self.set_target(command["target"])
             self.set_destination(command.get("destination"))

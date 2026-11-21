@@ -62,6 +62,10 @@ def main() -> None:
             check("top stream: MJPEG part with a JPEG", chunk.startswith(b"--frame") and b"\xff\xd8" in chunk)
             refused = call("/api/command", {"target": "red", "destination": "hand"})
             check("red is refused (no red pick skill)", not refused["ok"] and "red" in refused["reason"], refused["reason"])
+            plan = call("/api/text", {"text": "take out 2 red balls, then give me the striped ball"})
+            check("chat plan parsed and refused: this robot program has no red clear policy", not plan["ok"]
+                  and plan["command"]["plan"][0] == {"target": "red", "count": 2} and "--clear-red-policy" in plan["reason"],
+                  plan["reason"])
             started = call("/api/text", {"text": "give me the ball"})
             check("chat 'give me the ball' -> striped to hand, sent", started["ok"]
                   and started["command"]["destination"] == "hand")

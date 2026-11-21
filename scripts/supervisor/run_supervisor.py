@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from commands import Commands
+from drops import DropRule
 from grasp_check import GraspCheckSettings
 from machine import Aborted, Sensors, Settings, Skills, State, Supervisor, TransitionLog
 from skills import (
@@ -151,7 +152,9 @@ def settings_from(args) -> Settings:
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
                     dance_timeout_s=args.dance_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
-                    hold_min_load=args.hold_min_load,
+                    hold_min_load=args.hold_min_load, step_timeout_s=args.step_timeout,
+                    max_step_reprompts=args.max_step_reprompts,
+                    drop_rule=DropRule(*args.drop_gripper, *args.drop_pan),
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
                     held_check_colours=tuple(args.held_check_colours), held_unseen_floor_px=args.held_unseen_floor,
                     min_held_area_px={**Settings().min_held_area_px, **dict(args.min_held_area)},
@@ -322,6 +325,8 @@ def run_robot(args) -> None:
     rename = dict(pair.split("=", 1) for pair in args.camera_rename)
     pick_policy = LoadedPolicy(args.pick_policy, args.device, args.n_action_steps, rename)
     clear_policy = LoadedPolicy(args.clear_gray_policy, args.device, None, rename) if args.clear_gray_policy else None
+    colour_policies = {colour: LoadedPolicy(path, args.device, None, rename)
+                       for colour, path in clear_colour_paths(args).items()}
     dances = load_dances(args)
     receiver = import_from(handover_dir, "hand_socket").HandReceiver(*split_address(args.hand_listen)) if has_receiver else None
     frame_link_dir = Path(args.handtrack_dir)
@@ -336,7 +341,7 @@ def run_robot(args) -> None:
         print(f"WARNING: no frame_link.py in {frame_link_dir}: the hand tracker gets no top-camera frames", flush=True)
     try:
         run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy,
-                      clear_policy, wrist_writer, dances)
+                      clear_policy, wrist_writer, dances, colour_policies)
     finally:
         # A crash or Ctrl-C must not leave the shared-memory blocks: the next start would fail with FileExistsError.
         for writer in (frame_writer, wrist_writer):
@@ -345,6 +350,20 @@ def run_robot(args) -> None:
                     writer.close()
                 except Exception as error:  # noqa: BLE001 - closing must never hide the original error
                     print(f"frame writer close failed: {error}", file=sys.stderr, flush=True)
+
+
+def clear_colour_paths(args) -> dict[str, str]:
+    paths = {"red": args.clear_red_policy, "blue": args.clear_blue_policy}
+    for colour, path in paths.items():
+        if path is None:
+            print(f"WARNING: no --clear-{colour}-policy: a plan with {colour} balls is refused", flush=True)
+    return {colour: path for colour, path in paths.items() if path}
+
+
+# Each colour's ACT gets its own PolicySkill per prompt; start() resets its action queue, never the robot.
+def clear_colour_skills(colour_policies: dict, features: dict, robot_type: str) -> dict:
+    return {colour: (lambda colour=colour, loaded=loaded: PolicySkill(f"clear_{colour}", loaded, features, robot_type))
+            for colour, loaded in colour_policies.items()}
 
 
 def unlink_stale_block(name: str) -> None:
@@ -377,7 +396,7 @@ def give_settings_from(args) -> GiveSettings:
 
 
 def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy,
-                  clear_policy, wrist_writer=None, dances=()) -> None:
+                  clear_policy, wrist_writer=None, dances=(), colour_policies=None) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
     log = TransitionLog(args.log)
@@ -413,6 +432,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
             present=lambda: holding_move("to_present", arm, args.present_pose),
             put_down=put_down_skill(args, arm),
             put_down_container=container_skills(args, arm),
+            clear_colour=clear_colour_skills(colour_policies or {}, features, robot.robot_type),
             # pick_colour: HOOK for the colour pick (branch jakobnunnendorf/colour-pick). Until it is plugged in, a
             # round that asks for "red" or "blue" is refused before the arm moves.
         )
@@ -424,7 +444,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
             sys.exit(f"--grasp-max-tip-height needs #13's kinematics.py in {handover_dir}")
         skills.dance = dance_skill(args, list(dances), rest, tip_height)
         sensors = Sensors(palms_seen=palms_seen, gripper_load=arm.gripper_load, tip_height=tip_height, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
-                          destination=commands.destination,
+                          destination=commands.destination, plan=commands.plan,
                           target=commands.target, finish_round=commands.clear, held_ball_area=held_check_hook(args),
                           save_wrist_frame=wrist_frame_saver(args.log))
         supervisor = Supervisor(arm, skills, sensors, settings, rest, log, commands.abort, frame_writer=frame_writer,
@@ -432,6 +452,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
         TICKS.context = tick_context(supervisor)
         log.write(event="start", tick_log=tick_log_path(args.log) if args.tick_log else None, rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy,
+                  clear_red_policy=args.clear_red_policy, clear_blue_policy=args.clear_blue_policy,
+                  drop_rule=vars(settings.drop_rule),
                   held_check=sensors.held_ball_area is not None, min_held_target_area_px=args.min_held_target_area,
                   held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours),
                   min_held_area_px=settings.min_held_area_px, camera_fourcc=args.camera_fourcc,
@@ -441,6 +463,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   dance_max_step_deg=dance_cap(args))
         publish_status(args, skills, receiver, settings)
         print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, "
+              "p 3b 2r s h + Enter: plan (3 blue, 2 red into their holes, then striped to the hand), "
               "d + Enter: dance, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
@@ -464,14 +487,16 @@ def tick_log_path(log: str) -> str:
 
 
 def budgets(settings: Settings) -> dict:
-    return {"PICK": settings.pick_timeout_s, "GIVE": settings.give_timeout_s, "PUT_DOWN": settings.put_down_timeout_s,
+    return {"PICK": settings.pick_timeout_s, "STEP": settings.step_timeout_s, "GIVE": settings.give_timeout_s,
+            "PUT_DOWN": settings.put_down_timeout_s,
             "REST": settings.move_timeout_s, "CLEAR_GRAY": settings.clear_timeout_s, "DANCE": settings.dance_timeout_s}
 
 
 def publish_status(args, skills: Skills, receiver, settings: Settings) -> None:
     targets = ["striped", *(["red", "blue"] if skills.pick_colour else [])]
     destinations = [*(["hand"] if skills.give else []), "container"]
-    STATUS.update(available={"targets": targets, "destinations": destinations, "dance": skills.dance is not None},
+    STATUS.update(available={"targets": targets, "destinations": destinations, "dance": skills.dance is not None,
+                             "plan_colours": sorted(skills.clear_colour)},
                   pick_policy=args.pick_policy,
                   log_path=str(Path(args.log).resolve()) if args.log else None, budgets_s=budgets(settings),
                   hold_range=list(settings.hold_range), min_held_target_area_px=args.min_held_target_area)
@@ -538,6 +563,17 @@ def parse_args() -> argparse.Namespace:
                    help="camera names the checkpoint expects, e.g. top=camera1 wrist=camera2 for SmolVLA")
     p.add_argument("--pick-task", default="", help="task sentence; ACT ignores it, SmolVLA needs it")
     p.add_argument("--clear-gray-policy", help="OLD FOIL-BALL TABLE ONLY (gray foil balls, gone since board 7062034477): enables LOOK + CLEAR_GRAY; off by default")
+    p.add_argument("--clear-red-policy", help="ACT checkpoint (Hub id or local dir) that clears red balls into the red "
+                                              "hole, for a plan's red steps; without it a plan with red is refused")
+    p.add_argument("--clear-blue-policy", help="as --clear-red-policy, for blue")
+    p.add_argument("--step-timeout", type=float, default=Settings.step_timeout_s,
+                   help="plan: seconds per prompt of a colour step before a re-prompt (also catches a missed drop)")
+    p.add_argument("--max-step-reprompts", type=int, default=Settings.max_step_reprompts,
+                   help="plan: re-prompts after a timeout with an empty gripper, then the round gives up at rest")
+    p.add_argument("--drop-gripper", type=float, nargs=2, default=(DropRule.holding_below, DropRule.open_at),
+                   metavar=("HELD_BELOW", "OPEN_AT"), help="plan drop counter: held below, then opened at (measured gripper)")
+    p.add_argument("--drop-pan", type=float, nargs=2, default=(DropRule.red_pan_below, DropRule.blue_pan_above),
+                   metavar=("RED_BELOW", "BLUE_ABOVE"), help="plan drop counter: shoulder pan of the red and blue holes")
     p.add_argument("--put-down-episode", help="REPO_ID:EPISODE replayed as PUT_DOWN")
     p.add_argument("--put-down-pose", type=float, nargs=5, help="joints (deg) to carry the ball to, then open")
     p.add_argument("--container-pose-red", type=float, nargs=5,

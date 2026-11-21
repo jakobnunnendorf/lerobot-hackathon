@@ -123,6 +123,11 @@ function describe(reply) {
   if (reply.ok) {
     const c = reply.command;
     if (c.dance) { say("▶ Starting: dance", "ok"); return; }
+    if (c.plan) {
+      const steps = c.plan.map((s) => `${s.count} ${s.target}`).join(", then ");
+      say(`▶ Starting plan: ${steps}${c.destination ? ` → ${c.destination === "hand" ? "your hand" : "the container"}` : ""}`, "ok");
+      return;
+    }
     say(`▶ Starting: ${c.target} ball → ${c.destination === "hand" ? "your hand" : "the container"}`, "ok");
     return;
   }

@@ -10,12 +10,14 @@ from enum import Enum
 from pathlib import Path
 
 import numpy as np
+from drops import DropCounter, DropRule, UntilDrops
 from grasp_check import GraspChecked, GraspCheckSettings, load_magnitude
 from skills import MoveTo, Skill
 
 
 class State(Enum):
     REST = "REST"
+    STEP = "STEP"
     LOOK = "LOOK"
     CLEAR_GRAY = "CLEAR_GRAY"
     PICK = "PICK"
@@ -78,6 +80,11 @@ class Settings:
     # alone counted an empty gripper at the policy's half-closed goal as a hold (VLA 5K take 2: reading 15, load 32;
     # board 7067314601). Empty reads 28-44, a squeezed ball 440-500. None: the band alone, as before.
     hold_min_load: float | None = 200.0
+    # A plan's red/blue step: one prompt of the colour's clear policy runs until the drop count or this budget; after a
+    # timeout with an empty gripper it is prompted again, at most max_step_reprompts times (decisions/multistep-step-state.md).
+    step_timeout_s: float = 30.0
+    max_step_reprompts: int = 3
+    drop_rule: DropRule = field(default_factory=DropRule)
 
 
 @dataclass
@@ -95,6 +102,8 @@ class Skills:
     present: Callable[[], Skill] | None = None
     # A replayed dance, the next one each call. None: no --dance-episode, a dance round is refused before the arm moves.
     dance: Callable[[], Skill] | None = None
+    # One clear policy per hole colour ("red", "blue") for a plan's steps; a plan naming a colour without one is refused.
+    clear_colour: dict[str, Callable[[], Skill]] = field(default_factory=dict)
 
 
 @dataclass
@@ -104,6 +113,8 @@ class Sensors:
     destination: Callable[[], str | None] = lambda: None
     # What was asked for this round: "striped", "red", "blue" or None (no preference: the default pick).
     target: Callable[[], str | None] = lambda: None
+    # A multi-step task this round: ((colour, count), ...), red/blue steps then optionally ("striped", 1). None: no plan.
+    plan: Callable[[], tuple[tuple[str, int], ...] | None] = lambda: None
     # HOOK for colour detection (not built here): the colour of the ball in the gripper, "red", "blue" or None
     # (striped or unknown). It picks the container. Default: the colour that was asked for. Replace it with a
     # detector on the wrist/top frame once scripts/vision/colour_detector.py exists.
@@ -173,6 +184,10 @@ class Round:
     target: str | None = None
     colour: str | None = None
     dance: Skill | None = None
+    plan: tuple[tuple[str, int], ...] | None = None
+    step: int = 0
+    prompts: int = 0
+    drops: DropCounter | None = None
     states: list[State] = field(default_factory=list)
 
 
@@ -188,7 +203,7 @@ class Supervisor:
         self.clock = clock or RealClock(settings.fps)
         self.frame_writer, self.ticks, self.on_tick = frame_writer, 0, on_tick
         self.hold_load: float | None = None
-        self.handlers = {State.REST: self._rest, State.LOOK: self._look, State.CLEAR_GRAY: self._clear_gray,
+        self.handlers = {State.REST: self._rest, State.STEP: self._step, State.LOOK: self._look, State.CLEAR_GRAY: self._clear_gray,
                          State.PICK: self._pick, State.VERIFY_HOLD: self._verify_hold, State.GIVE: self._give,
                          State.SHAKE: self._shake, State.PUT_DOWN: self._put_down, State.DANCE: self._dance}
 
@@ -205,8 +220,12 @@ class Supervisor:
             self.log.write(event="round_start", round=number, target=None, destination=None,
                            dance=self.round.dance.name if self.round.dance else "unavailable")
         else:
-            self.round = Round(number, self.clock.now(), after_rest=self._first_state(), target=self.sensors.target())
-            self.log.write(event="round_start", round=number, target=self.round.target, destination=self.sensors.destination())
+            plan = self.sensors.plan()
+            self.round = Round(number, self.clock.now(), target=self.sensors.target(), plan=plan,
+                               drops=DropCounter(self.s.drop_rule) if plan else None)
+            self.round.after_rest = self._plan_first_state() if plan else self._first_state()
+            self.log.write(event="round_start", round=number, target=self.round.target, destination=self.sensors.destination(),
+                           **({"plan": [list(step) for step in plan]} if plan else {}))
         state = State.REST
         refusal = self._refusal(dance)
         if refusal:
@@ -229,10 +248,14 @@ class Supervisor:
         self.log.write(event="round_end", round=number, outcome=self.round.outcome,
                        pick_attempts=self.round.pick_attempts, clear_attempts=self.round.clear_attempts,
                        wrong_balls=self.round.wrong_balls, duration_s=round(self.clock.now() - self.round.started, 2),
-                       states=[s.value for s in self.round.states])
+                       states=[s.value for s in self.round.states],
+                       **({"drops": dict(self.round.drops.counts)} if self.round.drops else {}))
         return self.round
 
     def _refusal(self, dance: bool) -> tuple[str, str] | None:
+        missing = [c for c, _ in self.round.plan or () if c != "striped" and c not in self.skills.clear_colour]
+        if not dance and missing:
+            return "unsupported_plan", f"no clear policy for {missing[0]!r} (--clear-{missing[0]}-policy): plan refused"
         if not dance and self.round.target in COLOURS and self.skills.pick_colour is None:
             return "unsupported_target", f"no pick skill for {self.round.target!r} yet"
         if dance and self.round.dance is None:
@@ -247,6 +270,55 @@ class Supervisor:
 
     def _first_state(self) -> State:
         return State.LOOK if self.s.look or self.s.clear_gray else State.PICK
+
+    def _plan_first_state(self) -> State:
+        if self.round.plan[0][0] == "striped":
+            self.round.target = "striped"
+            return self._first_state()
+        return State.STEP
+
+    # Counts add up per colour over the whole plan, so "2 red, 1 blue, 1 red" wants 3 red by the third step.
+    def _step_wanted(self) -> tuple[str, int]:
+        colour = self.round.plan[self.round.step][0]
+        return colour, sum(count for c, count in self.round.plan[: self.round.step + 1] if c == colour)
+
+    # One prompt of the step's clear policy. No REST between prompts or steps: the clear demonstrations start where the
+    # previous drop ended, at a hole. A wrong-colour drop counts for its own hole and is logged.
+    def _step(self):
+        colour, wanted = self._step_wanted()
+        details = {"colour": colour, "wanted": wanted, "dropped": dict(self.round.drops.counts)}
+        if self.round.drops.counts[colour] >= wanted:
+            return self._next_step(f"{colour}: {wanted} already dropped", details)
+        self.round.prompts += 1
+        skill = UntilDrops(self.skills.clear_colour[colour](), self.round.drops, colour, wanted,
+                           lambda hole, pan, obs: self._log_drop(colour, hole, pan, obs))
+        result = self.run_skill(skill, self.s.step_timeout_s)
+        details.update(skill=result, prompt=self.round.prompts, dropped=dict(self.round.drops.counts))
+        if result == "count_reached":
+            return self._next_step(f"{colour}: {wanted} dropped", details)
+        holding, reading = self.holding()
+        details["reading"] = round(reading, 2)
+        if holding:
+            return State.ABORT, f"{colour} step: still holding after {result}", details
+        if self.round.prompts <= self.s.max_step_reprompts:
+            return State.STEP, f"{colour} step {result}, gripper empty: re-prompt {self.round.prompts}", details
+        self.round.outcome, self.round.after_rest = "step_gave_up", State.DONE
+        return State.REST, f"{colour} step: {self.round.prompts} prompts without reaching {wanted}, giving up", details
+
+    def _next_step(self, reason: str, details: dict):
+        self.round.step, self.round.prompts = self.round.step + 1, 0
+        if self.round.step == len(self.round.plan):
+            self.round.outcome, self.round.after_rest = "cleared", State.DONE
+            return State.REST, f"{reason}; plan done", details
+        if self.round.plan[self.round.step][0] == "striped":
+            self.round.target, self.round.after_rest = "striped", self._first_state()
+            return State.REST, f"{reason}; now the striped ball", details
+        return State.STEP, reason, details
+
+    def _log_drop(self, step_colour: str, hole: str | None, pan: float, obs: dict) -> None:
+        self.log.write(event="drop" if hole else "release", round=self.round.number, step_colour=step_colour, hole=hole,
+                       wrong_colour=hole is not None and hole != step_colour, pan=round(pan, 1),
+                       gripper=round(float(obs["gripper.pos"]), 2), dropped=dict(self.round.drops.counts))
 
     def _transition(self, source: State, target: State, reason: str, **details) -> None:
         self.log.write(event="transition", round=self.round.number, source=source.value, target=target.value,

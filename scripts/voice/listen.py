@@ -202,7 +202,7 @@ def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: 
     started = time.perf_counter()
     transcript = transcribe(np.pad(audio, round(PAD_SECONDS * speech.SAMPLE_RATE)))
     seconds = time.perf_counter() - started
-    command = commands.parse(transcript)
+    command = commands.parse_plan(transcript) or commands.parse(transcript)
     show(f"HEARD    {transcript!r}  ({seconds:.1f} s)", command, transcript)
     if args.dry_run:
         show_scores(transcript)
@@ -210,9 +210,12 @@ def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: 
         deliver(command, args)
 
 
-def show(heading: str, command: commands.Command | None, transcript: str) -> None:
+def show(heading: str, command: commands.Command | commands.Plan | None, transcript: str) -> None:
     if command is None:
         result = f"NOT UNDERSTOOD: {commands.rejection_reason(transcript)}"
+    elif isinstance(command, commands.Plan):
+        steps = ", then ".join(f"{count} {target}" for target, count in command.steps)
+        result = f">>> PLAN {steps}  ({command.destination or 'hand if two palms'})"
     else:
         result = f">>> {command.destination.upper()}  ({command.target} ball)"
     print(f"\n{RULE}\n  {heading}\n\n  {result}\n{RULE}", flush=True)
@@ -228,8 +231,8 @@ def show_scores(transcript: str) -> None:
     print(f"    ball named: {', '.join(result.colours) or f'none, so {commands.DEFAULT_TARGET}'}")
 
 
-def deliver(command: commands.Command, args: argparse.Namespace) -> None:
-    message = asdict(command)
+def deliver(command: commands.Command | commands.Plan, args: argparse.Namespace) -> None:
+    message = command.message() if isinstance(command, commands.Plan) else asdict(command)
     if args.dry_run:
         print(f"dry run, not sent: {json.dumps(message)}")
         return
