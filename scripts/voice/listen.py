@@ -75,8 +75,9 @@ def load_backend(name: str) -> speech.Transcribe | None:
 
 
 class Microphone:
-    # Always open, keeping the last half second: a stream opened on Enter delivered its first audio 0.12-0.33 s later
-    # on Tian's laptop, long enough to cut the first word of a command spoken right away. See decisions/voice-commands.md.
+    # Always open, keeping the last half second: a stream opened on Enter delivered its first audio 0.12-0.33 s
+    # later on Tian's laptop, long enough to cut the first word of a command spoken right away.
+    # See decisions/voice-commands.md.
     def __init__(self, device: int | str | None) -> None:
         self.lock = threading.Lock()
         self.recent: deque[np.ndarray] = deque(maxlen=round(PRE_ROLL_SECONDS / BLOCK_SECONDS))
@@ -124,7 +125,10 @@ def run_interactive(transcribe: speech.Transcribe | None, args: argparse.Namespa
 
 
 def listen_once(
-    lines: queue.Queue[str], microphone: Microphone | None, transcribe: speech.Transcribe | None, args: argparse.Namespace
+    lines: queue.Queue[str],
+    microphone: Microphone | None,
+    transcribe: speech.Transcribe | None,
+    args: argparse.Namespace,
 ) -> None:
     if transcribe is None:
         print("No speech-to-text loaded. Use the number keys.")
