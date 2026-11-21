@@ -68,6 +68,25 @@ RECIPES = {
         ],
         "schedule_follows_steps": False,
     },
+    "smolvla_redblue": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        # Batch 64 at SmolVLA's default lr 1e-4, as in smolvla_combined. Default plan for an L40S:
+        # --steps 20000 --max-minutes 170 (~22 epochs, about 2.5-3 h, under 10 USD); confirm with bench.
+        "batch_size": 64,
+        "prefetch_models": ["lerobot/smolvla_base", "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"],
+        "args": [
+            "--policy.path=lerobot/smolvla_base",
+            f"--rename_map={SMOLVLA_RENAME_MAP}",
+            "--dataset.image_transforms.enable=true",
+            f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION}",
+            # Same split and seed as act_redblue, so eval losses compare.
+            "--dataset.eval_split=0.05",
+            "--seed=1000",
+            "--eval_steps=5000",
+        ],
+        "schedule_follows_steps": True,
+    },
 }
 
 CPU = 12.0
