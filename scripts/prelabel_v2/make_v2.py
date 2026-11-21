@@ -1,6 +1,8 @@
 # Written by Claude: build prelabel-v2 records = v1 steps patched by v2 rules (see v2.py), same record format as prelabels_v1.jsonl
 import sys, json, glob, datetime, pandas as pd
 import v2
+from drafts import draft_steps
+from clears import add_missing_clears
 NAME = {"r": "R", "b": "B", "s": "striped"}
 START = {"visible": "Striped visible", "partly": "Striped partly covered", "buried": "Striped buried"}
 def summarize(codes, start):
@@ -23,7 +25,9 @@ def main(dataset, root, feats_json, v1_path, lo, hi, out):
         for l in open(v1_path):
             r = json.loads(l)
             if r['dataset'] != 'ds/' + dataset or not lo <= r['episode'] <= hi or str(r['episode']) not in F or 'top' not in F[str(r['episode'])] or 'wrist' not in F[str(r['episode'])]: continue
-            steps, start, m = v2.build(r['steps'], F, state, r['episode'], r['start_state'], use)
+            base = r['steps']; d = draft_steps(dataset, r['episode'])
+            if d: base = [dict(code=c, t=t) for c, t in add_missing_clears([(x['code'], x['t']) for x in base], d)]
+            steps, start, m = v2.build(base, F, state, r['episode'], r['start_state'], use)
             att = [t for c, t in steps if c == '?_attempt']; steps = [(c, t) for c, t in steps if c != '?_attempt']
             codes = [c for c, _ in steps]
             summ = summarize(codes, start)

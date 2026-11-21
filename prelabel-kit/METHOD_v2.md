@@ -8,6 +8,7 @@ Written by Claude. = `METHOD.md` (unchanged: gripper events, zones, grab/hole/ho
 4. **Misses.** A `s_miss` followed within 2.5 s by a red or blue target or grab is a miss of that ball (and the target before it, within 3.5 s).
 5. **Grab timing.** A grab labelled while the gripper still reads above 20 moves to the next close plus 0.15 s.
 6. **Quick attempts.** Do not add events for unmatched closes (precision 6/15); list the times in `uncertain`.
-7. **Foil datasets** (blue_ball, buried_ball): only steps 1, 4 and 5; steps 2 and 3 have no calibration there (Jakob has not labelled them).
+7. **Clears v1 dropped.** Rule drafts of `prelabel_rules_v2.py` (branch `Space0code/prelabel-v2`) use pan alone for the holes (red <= -25, blue >= 20); v1 needed lift > -5 and lost blue-hole drops at lift -6 to -12. A draft clear (target, grab, hole) with no v1 hole within 1.5 s is added. Seven episodes got one.
+8. **Foil datasets** (blue_ball, buried_ball): only steps 1, 4, 5 and 7; steps 2 and 3 have no calibration there (Jakob has not labelled them).
 
 Calibration numbers (37 episodes, rb_mixed 13-49, scores against Jakob's final labels): in `scripts/prelabel_v2/evalv2.py`. Thresholds were fitted on these same episodes, so the numbers are optimistic; the held-out checks are stated in `FAILURES.md`.
