@@ -1,15 +1,16 @@
 import argparse
-import json
+import sys
 import time
 from pathlib import Path
 
 import mediapipe as mp
-import numpy as np
 
-from camera_geometry import pixel_to_base
-from frame_link import FrameReader
+from frame_link import SHAPE, FrameReader
 from hand_features import describe, is_offering
 from hand_link import HandLineSender
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calib"))
+from pixel_to_base import TopCamera  # noqa: E402
 
 vision = mp.tasks.vision
 
@@ -17,8 +18,7 @@ vision = mp.tasks.vision
 def load_geometry(intrinsics, extrinsics):
     if intrinsics is None or extrinsics is None:
         return None
-    intr, extr = json.loads(intrinsics.read_text()), json.loads(extrinsics.read_text())
-    return intr["K"], intr["dist"], extr["R_base_cam"], extr["t_base_cam"]
+    return TopCamera.load(intrinsics, extrinsics, image_size=(SHAPE[1], SHAPE[0]))
 
 
 def pixel_message(hand):
@@ -28,7 +28,9 @@ def pixel_message(hand):
 
 
 def hand_message(hand, geometry, hand_z):
-    xyz = pixel_to_base(hand["palm_centre_px"], *geometry, hand_z)
+    xyz = geometry.pixel_to_base(*hand["palm_centre_px"], hand_z)
+    if xyz is None:
+        return None
     x, y, z = (round(float(c), 4) for c in xyz)
     return {"x": x, "y": y, "z": z, **pixel_message(hand)}
 
@@ -39,7 +41,7 @@ def frame_message(hands, geometry, hand_z, captured_epoch):
     if geometry is None:
         return {"t": captured_epoch, "hands": [], "pixels": [pixel_message(h) for h in hands]}
     located = [hand_message(h, geometry, hand_z) for h in hands]
-    return {"t": captured_epoch, "hands": [h for h in located if all(np.isfinite([h["x"], h["y"], h["z"]]))]}
+    return {"t": captured_epoch, "hands": [h for h in located if h is not None]}
 
 
 def main():

@@ -2,7 +2,7 @@
 
 Researched 2026-11-21. Web sources were read through an automated page reader; docs.opencv.org refused the reader (403), so OpenCV facts come from the OpenCV source and docs in the `opencv/opencv` GitHub repository. Everything under "Checked on Tian's laptop" was run there (Windows 11, Ryzen 5 5500U, no GPU, Python 3.12.10) on public test photos; no webcam, microphone or robot was used. The laptop was running two other jobs at the same time, so the timings are pessimistic. Kinematics is covered in `research/so101-inverse-kinematics.md`, not here.
 
-**Where the code is.** Tracker, calibration and sender are in the repo under `scripts/handtrack/` (`hand_tracker.py`, `hand_features.py`, `camera_geometry.py`, `frame_link.py`, `hand_link.py`, `save_board_frames.py`). Test scripts, photos and outputs named below with `data/handtrack/` are on Tian's laptop in the git-ignored `data/` folder.
+**Where the code is.** Tracker and sender are in the repo under `scripts/handtrack/` (`hand_tracker.py`, `hand_features.py`, `frame_link.py`, `hand_link.py`); the camera calibration is in `scripts/calib/` (runbook: `docs/camera-calibration-runbook.md`). Test scripts, photos and outputs named below with `data/handtrack/` are on Tian's laptop in the git-ignored `data/` folder.
 
 ## Summary
 
@@ -10,7 +10,7 @@ Researched 2026-11-21. Web sources were read through an automated page reader; d
 2. Palm up or palm down can be read from the landmarks (index knuckle, pinky knuckle, wrist and the left/right label); it was right on all 7 photos where the answer was clear. The Gesture Recognizer's `Open_Palm` does not separate palm from back of the hand and missed half of the open hands.
 3. **Two cupped hands touching were not detected** in 3 of 3 photos at the default thresholds; two separate open hands were detected every time, in any rotation. Ask for two flat open palms side by side, not cupped hands. Lowering the thresholds to find cupped hands also produced the only false "hand" on photos of orange SO-100 arms.
 4. One camera gives no reliable depth. Use the pixel ray and intersect it with an assumed palm height. The error is `(true height - assumed height) x tan(angle of the ray from vertical)`: 1-2 cm for a hand 15-20 cm high and 20-30 cm beside the point under a camera 70 cm up, up to 5-7 cm at the edges of a 10-25 cm height band. MediaPipe's metric "world landmarks" are not a usable depth source: the same hand came out 20% nearer when seen from the back than from the palm.
-5. Calibration route: print OpenCV's 9x6 board (25 mm squares, A4), calibrate the top camera where it is mounted, lay the board flat on the table in the handover area and measure four corners with a ruler in the robot frame. About 30-40 minutes. Fallback without any geometry: teach 9-12 hover poses and interpolate joint angles from the palm's pixel position.
+5. Calibration route: print OpenCV's 9x6 board (25 mm squares, A4), calibrate the top camera where it is mounted, lay the board flat on the table in the handover area and measure four corners with a ruler in the robot frame. About 30-40 minutes. (The team's board is 8 x 6 squares, 7 x 5 inner corners, instead; `docs/camera-calibration-runbook.md`.) Fallback without any geometry: teach 9-12 hover poses and interpolate joint angles from the palm's pixel position.
 6. Frames should reach the tracker through shared memory written by the robot program: 0.2 ms per frame for the control loop, about 2 ms transport. Tracker and robot program both run inside WSL2. Sender and tracker are built and tested on photos (see the end).
 
 ## Recommended pipeline
@@ -23,49 +23,7 @@ Researched 2026-11-21. Web sources were read through an automated page reader; d
 
 ## What the people at the table do with the checkerboard
 
-What you need: the printed board, a tape measure or ruler, masking tape, a pen, and 30-40 minutes with the robot program stopped (the calibration script needs the top camera to itself). **Do not move or touch the top camera or its mount**: the PICK policies were trained with it where it is, and the calibration is only valid for that exact position. You move the board, never the camera.
-
-1. **Print the board.** Use OpenCV's own pattern: https://github.com/opencv/opencv/blob/4.x/doc/pattern.png (direct file: https://raw.githubusercontent.com/opencv/opencv/4.x/doc/pattern.png). It is A4 landscape, 10 x 7 squares, which is **9 x 6 inner corners** (the points where four squares meet), with 25 mm squares. Print at **100 % / "Actual size"**, not "Fit to page", on matte paper if you can.
-2. **Check the print.** Measure across 9 squares along the long side: it must be 225 mm (25.0 mm per square). If it is not, write down the real square size to 0.1 mm; that number is used instead of 25.
-   If you already printed a different board: count its inner corners and measure its squares. It works if one corner count is odd and the other even (9 x 6, 7 x 6, 7 x 4); with both even or both odd (8 x 6, 7 x 5) the corner numbering can flip by 180 degrees, so reprint the OpenCV one.
-3. **Make it flat and rigid.** Tape or glue it onto cardboard, a clipboard or a book cover, flat, with no bubbles. Do not trim or cover the white margin around the squares: the detector needs a light border about one square wide. Avoid glare from lamps on the paper.
-4. **Set the camera up exactly as in the demo.** Same camera, same USB port, 640 x 480, 30 fps. If the camera has autofocus, switch it off: in WSL/Linux run `v4l2-ctl -d /dev/videoN --list-ctrls`, then set the focus control it lists to manual (`focus_automatic_continuous=0` on newer kernels, `focus_auto=0` on older ones) with `v4l2-ctl -d /dev/videoN --set-ctrl=<name>=0`. If no focus control is listed, the camera has fixed focus and there is nothing to do. Write down which you found.
-5. **Save the script below as `save_board_frames.py`** on the robot laptop and run it in the LeRobot environment, with the camera index or path the robot config uses for the top camera (for example `/dev/video2`):
-   ```python
-   import os, sys, time, cv2
-   camera, folder, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
-   capture = cv2.VideoCapture(int(camera) if camera.isdigit() else camera)
-   capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640); capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480); capture.set(cv2.CAP_PROP_FPS, 30)
-   print("autofocus off accepted:", capture.set(cv2.CAP_PROP_AUTOFOCUS, 0))
-   os.makedirs(folder, exist_ok=True)
-   saved = 0
-   while saved < count:
-       deadline = time.time() + 1.5
-       while time.time() < deadline:
-           ok, frame = capture.read()
-           if not ok:
-               sys.exit("no frame from the camera")
-       found, _ = cv2.findChessboardCornersSB(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (9, 6))
-       if found:
-           cv2.imwrite(os.path.join(folder, f"board_{saved:02d}.png"), frame); saved += 1
-       print(f"{frame.shape[1]}x{frame.shape[0]}", f"saved {saved}/{count}" if found else "board not found, keep it fully in view", flush=True)
-   capture.release()
-   ```
-   It saves a frame about every 1.5 s, but only when the whole board is found, and prints the frame size: it must say `640x480`.
-6. **Intrinsic calibration, about 5 minutes:** `python save_board_frames.py /dev/videoN calib_intrinsics 20`. While it runs, one person holds the board under the mounted top camera and moves it between saves, holding it still at each pose:
-   - the whole board always inside the image;
-   - positions: centre, and each of the four image corners and four edges (the corners of the image matter most for lens distortion);
-   - tilts: flat, then tilted about 30-45 degrees towards each of the four sides;
-   - distances: some poses near the table, some held 30-40 cm below the lens; nothing so close that the board looks blurred.
-7. **Mark the robot frame on the table.** The origin is the point on the table straight below the shoulder_pan axis (centre of the rotating base plate). x points forward, where the arm points at shoulder_pan = 0; y points to the robot's left. Put one strip of tape along x from the origin and one along y. Ask whoever runs the motion side how shoulder_pan = 0 is defined if unsure; a few degrees off here becomes a centimetre or two at the hand.
-8. **Board on the table, about 3 minutes.** Lay the board flat in the area where hands will be held, fully visible to the top camera, with its long side parallel to the y tape and the printed text "This is a 9x6 OpenCV chessboard" at the robot's **right-hand** end. Tape it down. Run `python save_board_frames.py /dev/videoN calib_table 3` and do not touch the board while it saves.
-9. **Measure four corners with the ruler.** For the four outermost inner corners of the board (inner corners, where four squares meet, not the paper corners), measure x (along the x tape) and y (left is positive, right negative) from the origin, in millimetres, and write them down with their names: near-left, near-right, far-left, far-right ("near" = nearer the robot). If the board sits on something, also write down the height of its surface above the table.
-10. **Measure the camera roughly.** x, y and height of the top camera's lens in the same frame, to about 5 cm. This is only a sanity check, and it settles the corner numbering if anything is ambiguous.
-11. **Take a phone photo** of the table with the board and the tape lines, then remove the board.
-12. **Hand over** the folders `calib_intrinsics` and `calib_table`, the four corner measurements, the camera position, the square size and the autofocus finding (post them on the board or give them to Tian). The agent computes the calibration from that; nothing else needs the camera.
-13. **After that the camera must not move.** If it is bumped, redo steps 8-12 (the intrinsics from step 6 stay valid as long as resolution and focus do not change).
-
-Check after computing (agent side): reprojection error below 0.5 px is good, up to 1 px usable; the computed camera position must match step 10 within a few centimetres; the four measured corners must fit the board with residuals under about 5 mm.
+Superseded by `docs/camera-calibration-runbook.md`. The team's board is 8 x 6 squares, so **7 x 5 inner corners**, marked with red tape at one corner; where this file says 9 x 6 it means OpenCV's own board, which was not used.
 
 ## 1. MediaPipe Hand Landmarker
 
@@ -126,7 +84,7 @@ The direction of the error is away from the point below the camera if the hand i
 | 70 | 45 | 7.5 / -5.6 | 12.3 / -2.0 | 18.0 / +2.2 | 25.0 / +7.5 |
 | 80 | 30 | 4.3 / -3.2 | 6.9 / -1.2 | 10.0 / +1.2 | 13.6 / +4.1 |
 
-Intersecting with the table itself is useless for a hand in the air (8-12 cm off). With a plane at the expected hand height, hands held 15-20 cm high are within 1-2 cm up to X = 30 cm. A synthetic check of the code (`camera_geometry.py selftest`) reproduces these numbers. A plain table homography is the z0 = 0 column, so it is not enough; a homography at a second, raised board height would give the same ray without intrinsics (two-plane method), but intrinsic calibration is quicker.
+Intersecting with the table itself is useless for a hand in the air (8-12 cm off). With a plane at the expected hand height, hands held 15-20 cm high are within 1-2 cm up to X = 30 cm. A synthetic check of the first geometry code reproduced these numbers; `tests/calib_synthetic.py` now covers `scripts/calib/`. A plain table homography is the z0 = 0 column, so it is not enough; a homography at a second, raised board height would give the same ray without intrinsics (two-plane method), but intrinsic calibration is quicker.
 
 **(b) Depth from apparent hand size.** `distance = f x L / l`, with f the focal length in pixels, L a real length on the hand, l its length in pixels. Index-to-pinky knuckle distance (landmarks 5-17) is about 6-7 cm on adults **[estimate from the world landmarks of open hands]**. Hand breadth varies from 72 to 96 mm between the 5th percentile woman and the 95th percentile man (ANSUR II, https://madegooddesigns.com/tools/hand-size-chart/), so an unknown person gives about +-13 % in distance, +-8 cm at 60 cm. For a known demo person measured once, what is left is pixel noise (about 3 % on a 70 px span) and tilt (a palm tilted 20-25 degrees looks 6-10 % smaller). The resulting horizontal error is the depth error times the sine of the ray angle, so (b) beats (a) only when hand heights vary by more than about 5 cm. On two photos of the same hand from both sides, this size estimate gave the same distance to within 5 %.
 
@@ -150,7 +108,7 @@ Intersecting with the table itself is useless for a hand in the air (8-12 cm off
 
 **Views and error.** The OpenCV tutorial asks for "at least 10 test patterns" (https://github.com/opencv/opencv/blob/4.x/doc/py_tutorials/py_calib3d/py_calibration/py_calibration.markdown); use 15-20 and drop views whose error is far above the rest. MathWorks: whether an error is acceptable depends on the application, with an example at 0.18 px (https://www.mathworks.com/help/vision/ug/evaluating-the-accuracy-of-single-camera-calibration.html); a forum rule of thumb calls 0.1-0.5 px very good and up to 1 px acceptable (https://discuss.luxonis.com/d/5558-different-quality-of-depth-from-the-same-cameras, secondary). OpenCV's own 640x480 sample images (`left01..14.jpg`, a 9x6 board) gave 0.24 px here.
 
-**Code path.** `findChessboardCornersSB` (sub-pixel corners directly, "localized radon transformation", flags `CALIB_CB_EXHAUSTIVE | CALIB_CB_ACCURACY`; source: calib3d.hpp above), then `calibrateCamera`. No `cornerSubPix` is needed with SB. Implemented in `scripts/handtrack/camera_geometry.py intrinsics`; it ran on the sample images in both the MediaPipe environment and an environment with LeRobot's `opencv-python-headless 4.13`. SB took about 140 ms per 640x480 frame there.
+**Code path.** `findChessboardCornersSB` (sub-pixel corners directly, "localized radon transformation", flags `CALIB_CB_EXHAUSTIVE | CALIB_CB_ACCURACY`; source: calib3d.hpp above), then `calibrateCamera`. No `cornerSubPix` is needed with SB. Now in `scripts/calib/calibrate_intrinsics.py`; the first version ran on the sample images in both the MediaPipe environment and an environment with LeRobot's `opencv-python-headless 4.13`. SB took about 140 ms per 640x480 frame there.
 
 **ChArUco.** Corners are interpolated from ArUco markers, so partial views and occlusion are allowed, which makes it easier to cover the image corners (https://github.com/opencv/opencv/blob/4.x/doc/tutorials/objdetect/charuco_detection/charuco_detection.markdown). `cv2.aruco.CharucoDetector` exists in `opencv-python-headless 4.13`, so no contrib package is needed (checked). For 1-2 cm at the hand, the plain board is enough; not worth reprinting.
 
@@ -172,11 +130,11 @@ Frame (agreed on the board): metres, origin on the table straight below the shou
 | (c) Touch board corners with the gripper tip | forward kinematics of the tip, board from (a) | teleoperate the closed tip onto 4+ board corners, record joints | 20 min | 5-10 mm at the hands (synthetic test: 5 mm touch noise gives 4-7 mm) | FK tip point must be defined at the jaw tip; slight press moves the board |
 | (d) Teach hover poses, no geometry | the tracker's pixel output only | put a hand at 9-12 grid points under the gripper, record joints and palm pixel; interpolate joints from pixel | 20-30 min | 1-2 cm between taught points **[estimate]**, only at the taught hand height | extrapolation outside the grid; needs the robot program to replay joints directly instead of IK |
 
-The ruler measurement in (a) and the touches in (c) go through the same fit in `camera_geometry.py`: corner index to measured (x, y), fitted in the plane (x, y, yaw only, because the board lies flat). A full 3D fit let 5 mm of height noise move the camera by 32 mm in the synthetic test; the planar fit 9 mm. The 2D Kabsch fit is the standard least-squares rigid fit (https://en.wikipedia.org/wiki/Kabsch_algorithm).
+The ruler measurement in (a) is fitted in the plane (x, y, yaw only, because the board lies flat), now in `scripts/calib/calibrate_extrinsics.py` (four measured corners); (c) became `scripts/calib/calibrate_extrinsics_touch.py`, which fits the camera to touched points directly. A full 3D fit let 5 mm of height noise move the camera by 32 mm in the synthetic test; the planar fit 9 mm. The 2D Kabsch fit is the standard least-squares rigid fit (https://en.wikipedia.org/wiki/Kabsch_algorithm).
 
 **Recommendation.** Main route: (a), with four ruler-measured corners as in the table steps. As soon as the forward kinematics is confirmed on the arm, redo the four corners with (c): it measures in the robot's own kinematic frame, so an offset in shoulder_pan zero or a base that is not square to the table disappears. Fallback: (d), which needs neither intrinsics nor IK and uses the `u`, `v` fields the tracker already sends. Skip (b).
 
-Validation at the table: put a coin at a ruler-measured spot, read its pixel from a saved frame, run `camera_geometry.py pixel --z 0 u v`; it should land within about 1 cm. Then a palm at a known height.
+Validation at the table: put a coin at a ruler-measured spot and click it in `scripts/calib/validate.py`; it should land within about 1 cm. Then a palm at a known height.
 
 ## 5. Process layout
 
@@ -207,8 +165,7 @@ Constraints: LeRobot uses `opencv-python-headless`, MediaPipe pulls `opencv-cont
 - `hand_link.py`: `HandLineSender`, the TCP client for the agreed contract, never blocks for long and reconnects once a second; a test receiver.
 - `hand_tracker.py`: the tracker process (shared memory in, JSON lines out). `--only-open` sends only open, palm-up hands. Without calibration files `hands` stays empty and the detections go under an extra key `pixels` (`u`, `v`, flags): the receiver would turn null coordinates into NaN instead of rejecting them (`np.array([None], dtype=float)` is `nan`).
 - `receiver_check/`: the robot side's `hand_socket.py` and `fake_tracker.py` copied unchanged from `jakobnunnendorf/handover-loop` (`90bb1d3`), and `check_against_hand_socket.py`, which runs the tracker against that receiver.
-- `camera_geometry.py`: `intrinsics`, `extrinsics` (ruler origin and yaw, or measured/touched corners via `--touches`), `pixel`, `selftest`.
-- `save_board_frames.py`: the capture script from the table steps. `capture_board.py`: the same with a preview window where a GUI exists.
+- The first calibration code (intrinsics, extrinsics from a ruler or touched corners, pixel to robot frame, selftest) and its capture scripts were replaced by `scripts/calib/`.
 - `detect_images.py`, `probe_thresholds.py`, `bench.py`, `test_pipeline.py`: the checks below.
 
 ## Checked on Tian's laptop
@@ -246,8 +203,8 @@ In the end-to-end test the tracker ran at 23-26 frames per second with two hands
 - Headless env: same detections and labels as the main env.
 - Calibration on OpenCV's samples: 12 of 13 views used, RMS 0.235 px, fx = 532 px, k1 = -0.31 (headless env with SB flags: 11 of 13, 0.238 px). Six frames saved through the capture script from a video made of the samples: RMS 0.229 px.
 - Corner order of `findChessboardCornersSB` on the 9x6 pattern: same physical corner 0 under 0/90/180/270 degree rotation and four perspective warps; classic detector consistently the opposite corner.
-- `camera_geometry.py selftest` (synthetic camera 70 cm up, 0.3 px corner noise, C920-like distortion): camera position error 1.7 mm with exact ruler values; palm error 0.2-0.6 mm with the right height; 15-34 mm with a wrong plane height as the formula predicts; 4-7 mm with 5 mm noise on four touched corners (planar fit).
-- `save_board_frames.py` on a video file paced at 30 fps (headless env): saves only frames with the board, prints `640x480`.
+- The first geometry selftest (synthetic camera 70 cm up, 0.3 px corner noise, C920-like distortion): camera position error 1.7 mm with exact ruler values; palm error 0.2-0.6 mm with the right height; 15-34 mm with a wrong plane height as the formula predicts; 4-7 mm with 5 mm noise on four touched corners (planar fit).
+- The first capture script on a video file paced at 30 fps (headless env): saves only frames with the board, prints `640x480`.
 - End-to-end `test_pipeline.py`: photos into shared memory at 30 Hz, `hand_tracker.py` in its own process, JSON lines over TCP; 22-29 messages per second, 69-70 ms median capture-to-loop latency with hands, 35 ms without; positions consistent with the synthetic camera.
 - Against the robot side's own receiver (`hand_socket.py` from `jakobnunnendorf/handover-loop`, commit `90bb1d3`, copied unchanged), with a synthetic camera 70 cm above (0.30, 0) looking down:
   - tracker started 4 s before the receiver: hands arrived within the first second after the receiver came up (the sender retries once a second);
