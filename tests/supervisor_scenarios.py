@@ -16,7 +16,7 @@ sys.path[:] = [str(SUPERVISOR)] + [p for p in sys.path if Path(p or ".").resolve
 
 from commands import Commands
 from grasp_check import requery
-from fakes import SCENARIOS, FakeArm, Scenario, World, build, pick_effect, release_effect, scripted
+from fakes import SCENARIOS, FakeArm, FakeGraspPick, Scenario, World, build, pick_effect, release_effect, scripted
 from machine import RealClock, Sensors, Settings, Skills, Supervisor, TransitionLog
 from skills import KEYS, GiveSettings, LoadedPolicy, PolicySkill, Settled, capped, give_sequence, import_from, pose_of
 
@@ -351,13 +351,23 @@ def grasp_check_log(log_path: str) -> None:
     pick_end = next(e for e in events if e["event"] == "transition" and e["source"] == "PICK")
     check("grasp check lock (r1 pattern): held, policy re-opens to 30 for 1.3 s and closes -> one 'held', "
           "release_blocked 2 lines (once a second, fake clock), ball kept, PICK ends ok, no miss",
-          verdicts == ["held"] and len(blocked) == 2 and all(b["command"] == 30.0 and b["sent"] == 1.0 for b in blocked)
+          verdicts == ["held"] and len(blocked) == 2 and all(b["command"] == 30.0 and b["sent"] == 5.0 for b in blocked)
+          and checks[0]["lock_goal"] == 5.0
           and pick_end["target"] == "VERIFY_HOLD"
           and pick_end["skill"] == "ok" and not world.violations, f"{checks} {pick_end}")
+    from grasp_check import GraspChecked, GraspCheckSettings
+    pick = FakeGraspPick(World())
+    lock = GraspChecked(pick, GraspCheckSettings(), 30).lock_goal_for
+    check("grasp check lock goal = held reading - 4, at least close goal 1, at most hold low - 1 (5: an empty jaw "
+          "there still reads below 6, so the slip watch is unchanged)",
+          (lock(11.0), lock(8.33), lock(4.0), round(GraspChecked(pick, GraspCheckSettings(lock_margin=2.0), 30)
+                                                      .lock_goal_for(6.5), 2)) == (5.0, 4.33, 1.0, 4.5),
+          str((lock(11.0), lock(8.33), lock(4.0))))
     checks, _, events = run("grasp_check_unlocked_reopen_rearms")
     check("grasp check unlocked: re-open logged as release, re-armed, the empty close is a fresh check (miss), "
           "re-pick holds",
           [(c["phase"], c.get("verdict")) for c in checks][:3] == [("settle", "held"), ("release", None), ("settle", "miss")]
+          and checks[0]["lock_goal"] is None
           and checks[2]["pick_attempt"] == 1 and checks[-1]["verdict"] == "held" and checks[-1]["pick_attempt"] == 2,
           str([(c["phase"], c.get("verdict"), c["pick_attempt"]) for c in checks]))
     checks, _, _ = run("grasp_check_low_load_is_miss")
@@ -419,8 +429,10 @@ def robot_flags() -> None:
                                  grasp.lock_after_hold, grasp.max_tip_height)
           == (10.0, 0.4, 3.0, (6.0, 20.0), 200.0, True, None)
           and settings_from(parsed("--no-grasp-check")).grasp_check is None, str(grasp))
-    check("--no-grasp-lock-after-hold restores the unlocked flow",
-          settings_from(parsed("--no-grasp-lock-after-hold")).grasp_check.lock_after_hold is False)
+    check("--no-grasp-lock-after-hold restores the unlocked flow; --grasp-lock-margin (default 4)",
+          settings_from(parsed("--no-grasp-lock-after-hold")).grasp_check.lock_after_hold is False
+          and settings_from(parsed("--grasp-lock-margin", "3")).grasp_check.lock_margin == 3.0
+          and settings_from(parsed()).grasp_check.lock_margin == 4.0)
     check("robot defaults: striped judged only, red candidate 2000 kept, PR #30 region, both cameras MJPG",
           settings.held_check_colours == ("striped",) and settings.min_held_area_px == {"red": 2000}
           and settings.min_held_target_area_px is None and tuple(args.held_check_roi) == WRIST_HELD_ROI == (0.52, 0.72, 0.2, 0.25)

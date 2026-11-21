@@ -104,7 +104,7 @@ def settings_from(args) -> Settings:
                         trigger=args.grasp_trigger, armed_above=args.grasp_armed_above, close_goal=args.grasp_close_goal,
                         settle_s=args.grasp_settle, min_error=args.grasp_min_error, hold_range=tuple(args.hold_range),
                         min_load=args.grasp_min_load, backoff_s=args.grasp_backoff,
-                        lock_after_hold=args.grasp_lock_after_hold,
+                        lock_after_hold=args.grasp_lock_after_hold, lock_margin=args.grasp_lock_margin,
                         max_tip_height=args.grasp_max_tip_height))
 
 
@@ -496,8 +496,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--grasp-min-load", type=float, default=g.min_load,
                    help="grasp check: |Present_Load| of the gripper servo for a hold, as well as the reading rule "
                         "(2026-11-21: ball 440-500, empty 28-44); an unreadable load falls back to the reading rule")
+    p.add_argument("--grasp-lock-margin", type=float, default=g.lock_margin,
+                   help="grasp check: after 'held', lock the gripper goal this far below the held reading (at least "
+                        "--grasp-close-goal, at most hold low - 1 so the slip watch still sees an empty jaw); less "
+                        "stall current than squeezing at the close goal")
     p.add_argument("--grasp-lock-after-hold", action=argparse.BooleanOptionalAction, default=g.lock_after_hold,
-                   help="grasp check: after 'held', send min(policy, held goal) to the gripper for the rest of PICK, so "
+                   help="grasp check: after 'held', send min(policy, lock goal) to the gripper for the rest of PICK, so "
                         "the policy cannot open on the ball (logged as release_blocked); --no-grasp-lock-after-hold: "
                         "a re-open ends the hold, logged as release, and the next close is a fresh check")
     p.add_argument("--grasp-backoff", type=float, default=g.backoff_s,

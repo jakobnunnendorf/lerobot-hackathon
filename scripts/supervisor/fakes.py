@@ -81,7 +81,9 @@ class FakeArm:
                 self.world.holding, self.world.held_ball = True, self.world.held_balls[0]
                 self.world.slip_in = {"tips": 6, "late_slip": 25}.get(outcome)
                 self.world.light = outcome == "light"
-        if self.world.holding and gripper > self.world.hold_goal + 0.5:
+        # Grasp-check worlds: a goal below the ball's reading keeps squeezing it (the lock goal after a hold).
+        limit = HELD_READING - 1.0 if self.world.grasps else self.world.hold_goal + 0.5
+        if self.world.holding and gripper > limit:
             if self.world.release_ok or self.world.light or (self.world.grasps and gripper > 20):
                 self.world.holding, self.world.held_ball, self.world.light = False, None, False
             else:

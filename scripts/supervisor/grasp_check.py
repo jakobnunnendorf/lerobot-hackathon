@@ -43,8 +43,8 @@ def load_magnitude(value):
 # readings below hold_low while the policy still commands closed) is a miss too, opened in place.
 # Lock after a hold (calibration run 2026-11-21, molnrb/arm-logs 4e20743, r1 and r6): ACT later re-opened on the held
 # ball, as its demos end, and closed again on nothing, which the check judged a fresh miss. With lock_after_hold the
-# gripper sent is min(policy, held goal) for the rest of the pick, a policy command >= trigger is logged as
-# "release_blocked" (at most once a second) and the slip watch keeps running. Unlocked, a re-open is logged as
+# gripper sent is min(policy, lock goal) for the rest of the pick (lock goal: lock_goal_for), a policy command
+# >= trigger is logged as "release_blocked" (at most once a second) and the slip watch keeps running. Unlocked, a re-open is logged as
 # "release" and the trigger re-arms only after the command is >= armed_above again.
 @dataclass
 class GraspCheckSettings:
@@ -63,6 +63,7 @@ class GraspCheckSettings:
     watch_frames: int = 5
     requery_on_hold: bool = True
     lock_after_hold: bool = True
+    lock_margin: float = 4.0       # lock goal = held reading - this (see lock_goal_for)
     release_log_interval_s: float = 1.0
     # "Too high": a close commanded with the tip (FK of the commanded joints, #13's kinematics) above this is a miss
     # before the gripper is read. None = off: on the datasets the model's tip z at a holding close is 0.019-0.156 m
@@ -121,9 +122,9 @@ class GraspChecked:
                 if gripper >= self.s.trigger and (self.last_release_log is None
                                                   or now - self.last_release_log >= self.s.release_log_interval_s):
                     self.last_release_log = now
-                    self._record({"phase": "release_blocked", "command": round(gripper, 2), "sent": round(self.goal, 2),
+                    self._record({"phase": "release_blocked", "command": round(gripper, 2), "sent": round(self.lock_goal, 2),
                                   "reading": round(float(obs["gripper.pos"]), 2)})
-                gripper = min(gripper, self.goal)
+                gripper = min(gripper, self.lock_goal)
                 action = {**action, "gripper.pos": gripper}
             elif gripper >= self.s.trigger:
                 self.watching, self.armed = False, False  # re-armed once the command is >= armed_above again
@@ -150,6 +151,12 @@ class GraspChecked:
             return action_of(self.hold_pose)
         self.history.append(pose_of(action))
         return action
+
+    # Lock goal after a hold: lock_margin below the held reading (less stall current than squeezing at close_goal:
+    # at goal 1 the load sat at 500, the gripper's torque limit), at least close_goal, and at most hold_low - 1 so an
+    # empty jaw at the lock goal still reads below hold_low and the slip watch is unchanged.
+    def lock_goal_for(self, reading: float) -> float:
+        return min(max(self.s.close_goal, reading - self.s.lock_margin), self.s.hold_range[0] - 1.0)
 
     def _settle(self, obs, now):
         self.readings.append(float(obs["gripper.pos"]))
@@ -179,10 +186,16 @@ class GraspChecked:
         if getattr(self, "load_error", None):
             record["load_error"] = self.load_error
         if in_band and stalled and load_ok:
-            self._record({**record, "verdict": "held"})
+            if self.s.lock_after_hold:
+                self.lock_goal = self.lock_goal_for(reading)
+                self.hold_pose = np.concatenate([self.hold_pose[:5], [self.lock_goal]])
+            else:
+                self.lock_goal = None
+            lock = None if self.lock_goal is None else round(self.lock_goal, 2)
+            self._record({**record, "verdict": "held", "lock_goal": lock})
             self.phase, self.watching = "run", True
             self.watch.clear()
-            self.last_gripper = self.goal
+            self.last_gripper = self.goal if self.lock_goal is None else self.lock_goal
             if self.s.requery_on_hold:
                 requery(self.inner)
             return action_of(self.hold_pose)
