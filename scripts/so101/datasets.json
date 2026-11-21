@@ -1,0 +1,27 @@
+{
+  "so101_pick_rb_mixed": {
+    "task": "Pick up the striped ball from the bowl of red and blue balls, uncovering it first if it is buried, and return to the start position",
+    "label": "RED/BLUE BOWL - striped ball visible or buried",
+    "visibility": "public"
+  },
+  "so101_give_hand": {
+    "task": "Hold the ball above the open palm, and when a second hand joins to form a bowl drop the ball into it, then return to the start position",
+    "label": "GIVE - one palm, second hand joins = drop",
+    "visibility": "public"
+  },
+  "so101_pick_blue_ball": {
+    "task": "Pick up the blue ball from the bowl and return to the start position",
+    "label": "BLUE BALL - visible",
+    "visibility": "public"
+  },
+  "so101_pick_buried_ball": {
+    "task": "Find the buried blue ball in the bowl, uncover it, pick it up and return to the start position",
+    "label": "BURIED BALL",
+    "visibility": "public"
+  },
+  "so101_pick_ball": {
+    "task": "Pick up the ball and put it in the box",
+    "label": "BALL INTO BOX",
+    "visibility": "public"
+  }
+}

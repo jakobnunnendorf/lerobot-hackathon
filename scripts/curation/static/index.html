@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 curation</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <b>SO-101 curation</b>
+  <nav>
+    <a href="index.html" class="on">Curate</a>
+    <a href="mix.html">Mix</a>
+  </nav>
+  <label>your name <input id="by" size="10" placeholder="required"></label>
+  <span id="status"></span>
+  <span class="keys">j/k row · 1/2/3 keep/drop/look · 4-7 scene · space play · ←/→ 1 s (shift: 1 frame)</span>
+</header>
+
+<main id="curate">
+  <section id="browse">
+    <div id="tablewrap"><table id="eps"><thead></thead><tbody></tbody></table></div>
+    <div id="count"></div>
+  </section>
+  <section id="inspect">
+    <div id="title">select an episode</div>
+    <div id="videos"></div>
+    <div id="controls">
+      <button id="play">play</button>
+      <select id="speed"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>
+      <span id="time"></span>
+      <label><input type="checkbox" id="frames"> server frames</label>
+      <span id="mode"></span>
+    </div>
+    <canvas id="grip" height="150"></canvas>
+    <canvas id="joints" height="150"></canvas>
+    <div id="label">
+      <div class="row"><span class="k">verdict</span><span id="verdicts"></span><span id="src"></span></div>
+      <div class="row"><span class="k">scene</span><span id="scenes"></span></div>
+      <div class="row"><span class="k">task</span><input id="task"></div>
+      <div class="row"><span class="k">note</span><textarea id="note" rows="2"></textarea></div>
+      <div class="row"><span class="k"></span><span id="saved"></span></div>
+    </div>
+    <dl id="auto"></dl>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

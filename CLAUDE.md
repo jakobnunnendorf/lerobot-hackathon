@@ -37,7 +37,7 @@ Five people work here in parallel, each with their own agent. The only coordinat
   - A change that others depend on (dependencies, shared scripts, anything the demo runs) is also announced on the board before it is merged.
   - Never force-push `main`.
 - `docs/roadmap.md` defines the stop points and the human check-ins. At a check-in gate, stop and ask the human instead of continuing on your own.
-- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`.
+- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`. Exception: on molnrb's robot laptop the person at the table lets their agent open recording windows itself (`so101-collect` skill); do not copy this elsewhere without your own person's say-so.
 
 ## Commands
 
@@ -48,6 +48,8 @@ uv run python tests/lerobot_check.py     # builds an ACT policy, one train step 
 ```
 
 There is no pytest suite, linter or build step. The files in `tests/` are standalone smoke scripts; run the one you need with `uv run python tests/<file>.py`.
+
+**Hands-on robot work** (teleop, recording, checking or uploading a dataset, training, running a model on the arm, fixing the arm, cameras or USB): load the `so101-robot` skill (`.claude/skills/so101-robot/SKILL.md`) first and use `scripts/so101/`. It holds the working commands for our setup and the fixes for every failure seen so far.
 
 Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-port`, `lerobot-calibrate`, `lerobot-teleoperate`, `lerobot-record`, `lerobot-train`). `README.md` has the full SO-101 invocations. Its examples use macOS port names (`/dev/tty.usbmodem...`); on Windows the ports are `COMx`.
 
