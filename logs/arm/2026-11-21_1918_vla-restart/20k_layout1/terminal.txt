@@ -1,0 +1,32 @@
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights:   0%|          | 2/489 [00:00<00:26, 18.15it/s]Loading weights:   4%|▍         | 21/489 [00:00<00:04, 114.20it/s]Loading weights:   7%|▋         | 34/489 [00:00<00:04, 110.10it/s]Loading weights:  11%|█         | 55/489 [00:00<00:03, 140.73it/s]Loading weights:  15%|█▌        | 74/489 [00:00<00:02, 143.17it/s]Loading weights:  20%|█▉        | 97/489 [00:00<00:02, 165.96it/s]Loading weights:  23%|██▎       | 114/489 [00:00<00:02, 155.60it/s]Loading weights:  28%|██▊       | 137/489 [00:00<00:02, 169.52it/s]Loading weights:  33%|███▎      | 159/489 [00:01<00:01, 179.98it/s]Loading weights:  38%|███▊      | 186/489 [00:01<00:01, 203.88it/s]Loading weights:  42%|████▏     | 207/489 [00:01<00:01, 204.93it/s]Loading weights:  47%|████▋     | 228/489 [00:01<00:01, 181.26it/s]Loading weights:  51%|█████     | 247/489 [00:01<00:01, 183.57it/s]Loading weights:  54%|█████▍    | 266/489 [00:01<00:01, 184.62it/s]Loading weights:  64%|██████▎   | 311/489 [00:01<00:00, 259.11it/s]Loading weights:  70%|███████   | 344/489 [00:01<00:00, 279.37it/s]Loading weights:  81%|████████  | 397/489 [00:01<00:00, 342.98it/s]Loading weights:  96%|█████████▌| 467/489 [00:02<00:00, 423.15it/s]Loading weights: 100%|██████████| 489/489 [00:02<00:00, 242.34it/s]
+Reducing the number of VLM layers to 16 ...
+Loading weights from local directory
+gripper reads 14.6 (holding range) at start: empty the gripper first
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights:  25%|██▍       | 122/489 [00:00<00:00, 1180.20it/s]Loading weights:  51%|█████     | 248/489 [00:00<00:00, 1218.55it/s]Loading weights:  87%|████████▋ | 426/489 [00:00<00:00, 1471.43it/s]Loading weights: 100%|██████████| 489/489 [00:00<00:00, 1453.92it/s]
+Reducing the number of VLM layers to 16 ...
+Loading weights from local directory
+gripper reads 14.6 (holding range) at start: empty the gripper first
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/489 [00:00<?, ?it/s]Loading weights:  35%|███▍      | 171/489 [00:00<00:00, 1690.51it/s]Loading weights:  70%|███████   | 343/489 [00:00<00:00, 1705.43it/s]Loading weights: 100%|██████████| 489/489 [00:00<00:00, 1783.52it/s]
+Reducing the number of VLM layers to 16 ...
+Loading weights from local directory
+WARNING: --container-pose-red not taught: red balls go to the generic put-down pose
+WARNING: --container-pose-blue not taught: blue balls go to the generic put-down pose
+{"time": "2026-11-21T18:34:53.989+00:00", "event": "start", "tick_log": "logs/arm/2026-11-21_1918_vla-20k/ticks.jsonl", "rest": [-0.5, -99.7, 97.0, -78.1, -0.6, 86.0], "give": "follow", "look": false, "clear_gray": false, "pick_policy": "/home/molnrb/ckpt/smolvla_redblue/checkpoints/020000", "held_check": true, "min_held_target_area_px": 120, "held_check_roi": [0.52, 0.72, 0.2, 0.25], "held_check_colours": ["striped"], "min_held_area_px": {"red": 2000}, "camera_fourcc": "MJPG", "grasp_check": null, "n_action_steps": 20, "budgets_s": {"PICK": 40.0, "GIVE": 45.0, "PUT_DOWN": 20.0, "REST": 15.0, "CLEAR_GRAY": 30.0}, "put_down_pose": [-5.98, -34.24, 7.87, 81.8, -4.88]}
+Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.
+{"time": "2026-11-21T18:35:31.816+00:00", "event": "round_start", "round": 1, "target": null, "destination": null}
+{"time": "2026-11-21T18:35:32.353+00:00", "event": "transition", "round": 1, "source": "REST", "target": "PICK", "reason": "at rest", "gripper": 85.96}
+{"time": "2026-11-21T18:36:17.802+00:00", "event": "transition", "round": 1, "source": "PICK", "target": "VERIFY_HOLD", "reason": "pick attempt 1: timeout", "gripper": 12.32, "skill": "timeout"}
+{"time": "2026-11-21T18:36:22.728+00:00", "event": "transition", "round": 1, "source": "VERIFY_HOLD", "target": "PUT_DOWN", "reason": "holding, but not the striped ball; put it down", "gripper": 12.46, "reading": 12.32, "wrist_frame": "logs/arm/2026-11-21_1918_vla-20k/supervisor_verify_hold_r1_p1_193622_595.jpg", "held_areas_px": {"striped": 0, "red": 0, "blue": 14780}, "held_check": "wrong", "held_ball": "striped", "held_area_px": 0, "held_threshold_px": 120, "colour": null}
+{"time": "2026-11-21T18:36:29.532+00:00", "event": "transition", "round": 1, "source": "PUT_DOWN", "target": "REST", "reason": "wrong ball put down, retry", "gripper": 59.6, "skill": "arrived", "reading": 59.6, "container": "default"}
+{"time": "2026-11-21T18:36:35.368+00:00", "event": "transition", "round": 1, "source": "REST", "target": "PICK", "reason": "at rest", "gripper": 85.62}
+{"time": "2026-11-21T18:37:18.367+00:00", "event": "transition", "round": 1, "source": "PICK", "target": "VERIFY_HOLD", "reason": "pick attempt 2: timeout", "gripper": 11.22, "skill": "timeout"}
+{"time": "2026-11-21T18:37:33.097+00:00", "event": "transition", "round": 1, "source": "VERIFY_HOLD", "target": "PUT_DOWN", "reason": "holding, no two palms in 3.0 s", "gripper": 11.22, "reading": 11.22, "wrist_frame": "logs/arm/2026-11-21_1918_vla-20k/supervisor_verify_hold_r1_p2_193721_571.jpg", "held_areas_px": {"striped": 225, "red": 0, "blue": 0}, "held_check": "target", "held_ball": "striped", "held_area_px": 225, "held_threshold_px": 120, "destination": null, "colour": null, "present": "arrived"}
+{"time": "2026-11-21T18:37:35.230+00:00", "event": "transition", "round": 1, "source": "PUT_DOWN", "target": "REST", "reason": "ball put down", "gripper": 59.6, "skill": "arrived", "reading": 59.6, "container": "default"}
+{"time": "2026-11-21T18:37:41.066+00:00", "event": "transition", "round": 1, "source": "REST", "target": "DONE", "reason": "round over: put_down", "gripper": 85.62}
+{"time": "2026-11-21T18:37:41.067+00:00", "event": "round_end", "round": 1, "outcome": "put_down", "pick_attempts": 2, "clear_attempts": 0, "wrong_balls": 1, "duration_s": 118.06, "states": ["REST", "PICK", "VERIFY_HOLD", "PUT_DOWN", "REST", "PICK", "VERIFY_HOLD", "PUT_DOWN", "REST", "DONE"]}

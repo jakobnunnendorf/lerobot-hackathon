@@ -29,3 +29,14 @@ The logs for take 2 do not show a put-down or a blue hole. They show one pick th
 - **Take 1: "a success, it picked up the striped ball."** The log agrees that it ended holding something (gripper 11.4) and put it down, but the wrist check read all 0 and so could not confirm which ball.
 - **Take 2: "not successful, it tried but couldn't grab the ball and then stopped."** This matches the log: pick 1 timed out with no hold, then the program aborted on the top-camera timeout.
 - Not noted for either take: what the first approach went for, and whether grasps were deliberate or accidental. Both takes used layout 1, with 5K.
+
+## 20K, layout 1 (`20k_layout1/`), 18:35:31–18:37:41 UTC, 118 s, `put_down`, 1 wrong ball
+Same code as the 5K takes: `demo-chain` d5af78b plus the local dashboard patch, same flags, checkpoint `005000` replaced by `020000`. The video covers the whole round (1200 frames of PICK, 253 of VERIFY_HOLD, 135 of PUT_DOWN, 182 of REST). It is 52.5 MB, a little over 50 MB, and is pushed anyway.
+
+**Start pose differed from the 5K takes.** The supervisor took its rest pose from where the arm stood at start: gripper **86** and wrist flex **-78**. The 5K takes started at gripper about 23 and wrist flex about -99. Two starts were refused first ("gripper reads 14.6 (holding range) at start"), because the gripper was left half-closed after the aborted 5K take 2. Balazs chose to run from this pose rather than refold.
+
+- **Pick 1 (18:35:32–18:36:17):** ran to its 40 s timeout, ending with the gripper at 12.3. The wrist check read blue 14780 px, striped 0: a **blue ball**. The log says "holding, but not the striped ball; put it down", and the ball was put down at the generic pose and the round retried.
+- **Pick 2 (18:36:35–18:37:18):** ran to its 40 s timeout, gripper 11.2. The wrist check read striped 225 px (threshold 120), blue 0, red 0: the **striped ball**. No two palms in 3 s, so PUT_DOWN. Outcome `put_down`, with `present: arrived` (the arm moved to the present pose first, as the destination was unset).
+- Both picks ended by timeout, not by the policy settling at rest.
+- Balazs's notes: only "we finished". What the first approach went for, and whether the blue grasp in pick 1 was deliberate, are not noted.
+- The 5K takes used the same layout 1, so the 5K and 20K rounds can be compared, with the pose difference above.
