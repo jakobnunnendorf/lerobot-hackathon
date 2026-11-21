@@ -180,7 +180,7 @@ def make_robot() -> SO101Follower:
             port=env("SO101_FOLLOWER_PORT", "/dev/so101_follower"),
             id=env("SO101_FOLLOWER_ID", "mi_follower"),
             # Same cap as run_policy.sh: a bad prediction cannot slam the arm.
-            max_relative_target=15,
+            max_relative_target=15.0,
             cameras={
                 "top": camera(env("SO101_CAM_TOP", "/dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0")),
                 "wrist": camera(
