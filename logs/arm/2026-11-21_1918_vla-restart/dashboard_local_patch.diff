@@ -1,0 +1,13 @@
+diff --git a/scripts/dashboard/server.py b/scripts/dashboard/server.py
+index 3e3f6ff..71baa17 100644
+--- a/scripts/dashboard/server.py
++++ b/scripts/dashboard/server.py
+@@ -83,7 +83,7 @@ class LogTail:
+         named = self.status.latest.get("log_path") if self.status.fresh() else None
+         if named and Path(named).exists():
+             return Path(named)
+-        return newest_chain_log(self.log_dir)
++        return self.path if self.path is not None and self.path.exists() else newest_chain_log(self.log_dir)
+ 
+     def _follow(self) -> None:
+         handle, buffer = None, ""
