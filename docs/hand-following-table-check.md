@@ -20,9 +20,52 @@ On the robot laptop, in the repo (replace the port):
 uv run python scripts/handover/read_pose.py --port /dev/ttyACM0 --robot-id mi_follower
 ```
 
-It connects, **switches torque off** (hold the arm, it will sag), and prints the five joint angles, the gripper and the FK tip position twice a second. The FK is Tian's URDF kinematics (`scripts/handover/kinematics.py`). Stop with Ctrl-C.
+It connects, **switches torque off** (hold the arm, it will sag), and prints a line twice a second: the five joint angles, the gripper, then two positions from Tian's URDF kinematics (`scripts/handover/kinematics.py`). Stop with Ctrl-C.
 
-## 2. Three poses
+**Which point of the gripper is measured.** Touch marks with the **end of the fixed jaw** (the jaw that does not move when the gripper opens), on its **inner edge**: the edge on the side facing the moving jaw, in the middle of the jaw's width. Read the **`jaw tip`** numbers.
+- `frame` is the URDF's reference point (`gripper_frame_link`). It lies on the inner contact face of the fixed jaw, centred, 6.3 mm back from the jaw's end, so it can never touch the paper itself. This was worked out from the official meshes (SO-ARM100, commit `141aea7`) by Kamel's agent (board comment 7061703346) and independently here.
+- `jaw tip` is that point moved 6.3 mm forward along the gripper (`--tool-point 0 0 0.0063`, the default). That is the inner edge of the fixed jaw's end. The sign is checked in the model by `tests/handover_tool_point.py` (gripper 82° down: the jaw tip is 6.2 mm below the frame point) and by Kamel's agent (board comment 7061721093: 5.7-6.1 mm lower in jaw-down poses). `--tool-point 0 0 0` turns the shift off. A quick look at the table is welcome but not required.
+
+## 2. Arm check with torque off (no calibration needed)
+
+Do this while Tian's checkerboard is still taped down, right after its corners were measured with the ruler and before anyone moves it: the board is the ruler. The arm is never powered.
+
+**Corner names** (as in Tian's board comment 7061715390): look at the board from above with the **red sticker at the top left**. The four outermost inner corners (where four squares meet, one square in from the edge of the pattern) are numbered clockwise:
+- **1**: top left, next to the red sticker
+- **2**: top right, six squares (about 172 mm) along the long side from 1
+- **3**: bottom right, diagonally opposite 1
+- **4**: bottom left, four squares (about 116 mm) along the short side from 1
+
+Steps:
+1. Start the reader as in section 1. No ball in the gripper.
+2. For corners 1, 2, 3 and 4, one after another: put the **inner edge of the fixed jaw's end** on the corner, touching the paper. Point the gripper as steeply down as the arm allows. Hold it still for two printed lines. Then copy the **whole** printed line.
+3. Write a text file `corners.txt` with one line per corner: the corner number, its ruler position `x, y` in **millimetres** in the robot frame (section 0; the same values as in the calibration step), a `|`, then the copied line:
+   ```
+   1: 320, 86 | shoulder_pan= -15.04  shoulder_lift=  55.48  elbow_flex= -51.47  wrist_flex=  62.98  wrist_roll=   0.00  gripper= 12.00  frame (m) ...
+   2: 320, -86 | ...
+   3: 204, -86 | ...
+   4: 204, 86 | ...
+   ```
+4. Run (any laptop, needs only numpy):
+   ```bash
+   python scripts/handover/check_corners.py corners.txt
+   ```
+   Per corner it prints the ruler position, the kinematics position of the jaw end and the error in cm. Then come the board side lengths from the ruler and from the kinematics, the mean error, and a verdict.
+5. Post `corners.txt` and the output on the board (#1).
+
+Reading the result:
+- **Every error under 1 cm:** the kinematics matches the arm.
+- **About the same error at all four corners:** one joint has a zero offset, or the ruler origin (the point below the pan axis) is off.
+  - Kinematics side lengths close to 172 and 116 mm mean the origin is off.
+  - Side lengths clearly off mean a joint offset.
+  - The four joint readings are what is needed to fit the offsets.
+- **Errors pointing in different directions:** a joint has the wrong sign. A flipped shoulder_pan shows up as corners 1 and 2 swapped (y errors of opposite sign).
+- Tried on the Mac with made-up readings:
+  - exact readings: 0.0 cm;
+  - a 4° shoulder_lift offset: the same error of 1.5-2.3 cm at all four corners, and the long sides come out 165-167 mm;
+  - a flipped shoulder_pan: ±17 cm in y, side lengths correct.
+
+## 3. Three poses
 
 Hold each pose still for a few seconds and copy one printed line into the table below. Measure the real gripper tip (the point between the fingertips) with the ruler.
 
@@ -43,7 +86,7 @@ Record:
 | P3 on B | | | | | | | |
 | P4 | | | | | | | |
 
-## 3. Signs, before anything else
+## 4. Signs, before anything else
 
 From the recorded joint values alone (no FK needed), write down for each joint whether its reading goes up or down:
 
@@ -54,7 +97,7 @@ From the recorded joint values alone (no FK needed), write down for each joint w
 
 Post the four signs with the table.
 
-## 4. Reading the result
+## 5. Reading the result
 
 - **All poses within about 2 cm**: done. Post the filled table on the board.
 - **P3 on B or P4 gives FK y negative**: shoulder_pan has the wrong sign.
@@ -65,7 +108,7 @@ Post the four signs with the table.
 
 Post the filled table and the conclusions on the board (#1) for Tian's and Jakob's agents. They fix the signs and offsets in code; nobody edits the calibration file for this.
 
-## 5. The hand zone for the demo
+## 6. The hand zone for the demo
 
 The arm cannot hover over a hand held high: hands 30 cm above the table (an eyeball estimate) are out of reach (board comment 7061302163). The person handing over holds their hands **10-15 cm above the table and 15-35 cm in front of the pan axis**; the gripper then hovers at 22 cm, tilted 35-45° down. Mark that zone on the table.
 
@@ -73,7 +116,7 @@ The arm cannot hover over a hand held high: hands 30 cm above the table (an eyeb
 
 Once, with a ruler: have the person hold their hands as they will in the demo and measure the palm height above the table. Post it on the board; if it is above 15 cm, the hover height (`--hover-height`) and the zone need another look.
 
-## 6. Starting the hand following (only after sections 3-4 are settled)
+## 7. Starting the hand following (only after sections 2-5 are settled)
 
 The arm moves. Someone stands at the table with a hand on the power switch. Connecting switches torque off for a moment, so the ball is not in a closed gripper at start: hold it between the open jaws and pass `--gripper-hold` with a closing value a few below the 11-16 the gripper reads when holding (for example 5). The gripper closes at start and keeps that value every tick until the drop. Without `--gripper-hold`, the gripper keeps the goal it had at start.
 
