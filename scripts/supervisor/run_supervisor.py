@@ -34,6 +34,8 @@ from status import STATUS
 from ticks import TICKS
 
 DEFAULT_PICK = "molnrb/act_pick_ball_combined"
+CAMERA_STALL_LIMIT_S = 2.0
+CAMERA_STALL_POLL_S = 0.02
 
 
 class RobotArm:
@@ -43,19 +45,42 @@ class RobotArm:
         self.last_sent = {f"{motor}.pos": float(value) for motor, value in goal.items()}
         self.last_obs = None
         self.observes = 0
+        self.camera_stalls = 0
+        self.stall_limit_s = CAMERA_STALL_LIMIT_S
 
     # Every skill observes through here, GIVE's loop included, so the wrist frames and live values reach the
     # dashboard in every state.
     def observe(self) -> dict:
-        self.last_obs = self.robot.get_observation()
+        waited_s = self._read()
         self.observes += 1
+        if waited_s:
+            self.camera_stalls += 1
+            STATUS.update(camera_stalls=self.camera_stalls)
+            print(f"camera stall: waited {waited_s * 1000:.0f} ms for a fresh frame ({self.camera_stalls} so far)", flush=True)
         if self.wrist_writer is not None and self.observes % 2 == 0:
             self.wrist_writer.write(self.last_obs["wrist"], time.perf_counter_ns())
         STATUS.update(joints=[round(float(self.last_obs[key]), 1) for key in KEYS[:5]],
                       gripper=round(float(self.last_obs["gripper.pos"]), 1), observes=self.observes)
         if TICKS.on:
             TICKS.observed(joint_values(self.last_obs), self._load_or_none())
+            if waited_s:
+                TICKS.note(camera_wait_ms=round(waited_s * 1000))
         return self.last_obs
+
+    # LeRobot 0.7.0's read_latest raises TimeoutError once a camera's newest frame is over 500 ms old. On the robot
+    # laptop the top camera stalled for 519 ms and that ABORT froze the arm mid-round (VLA 5K run, board 7067314601).
+    # While waiting nothing is sent, so the servos hold their last goal; a camera silent for stall_limit_s still aborts.
+    def _read(self) -> float:
+        started, stalled = time.monotonic(), False
+        while True:
+            try:
+                self.last_obs = self.robot.get_observation()
+                return time.monotonic() - started if stalled else 0.0
+            except TimeoutError:
+                if time.monotonic() - started >= self.stall_limit_s:
+                    raise
+                stalled = True
+                time.sleep(CAMERA_STALL_POLL_S)
 
     # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
     # Feetech docs; LeRobot 0.7.0's bus reads any register through rustypot, unnormalised). On the arm 2026-11-21 it

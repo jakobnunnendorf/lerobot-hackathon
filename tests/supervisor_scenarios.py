@@ -731,6 +731,34 @@ def tick_log(work: str) -> None:
           f"{running} / {context()}")
 
 
+class _StallingRobot(_TickRobot):
+    def __init__(self, stalls: int):
+        self.stalls = stalls
+
+    def get_observation(self):
+        if self.stalls:
+            self.stalls -= 1
+            raise TimeoutError("OpenCVCamera(top) latest frame is too old: 519.0 ms (max allowed: 500 ms).")
+        return super().get_observation()
+
+
+def camera_stall() -> None:
+    import run_supervisor
+
+    arm = run_supervisor.RobotArm(_StallingRobot(stalls=3), 5.0)
+    obs = arm.observe()
+    check("camera stall: a stale-frame TimeoutError is read again, not an ABORT (VLA 5K freeze, 519 ms)",
+          obs["gripper.pos"] == 1.0 and arm.camera_stalls == 1, f"stalls counted {arm.camera_stalls}")
+    arm = run_supervisor.RobotArm(_StallingRobot(stalls=10**6), 5.0)
+    arm.stall_limit_s = 0.1
+    try:
+        arm.observe()
+        raised = False
+    except TimeoutError:
+        raised = True
+    check("camera stall: a camera silent past the limit still raises, so the round ends in ABORT", raised)
+
+
 def pick_end_rule() -> None:
     rest = np.array([-5.6, -102.8, 96.6, -100.1, -5.2, 30.0])
     never_left = np.array([*rest[:5], 17.8])
@@ -853,6 +881,7 @@ def main() -> None:
         else:
             print(f"SKIP  wrist frames in the shared block: no frame_link.py in {handtrack_dir}")
         tick_log(work)
+        camera_stall()
         goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
