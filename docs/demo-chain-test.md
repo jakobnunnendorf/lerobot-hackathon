@@ -13,13 +13,13 @@ For the people at the robot laptop. One round:
 
 The same program can also dance: see `docs/dance.md`.
 
-The program is the supervisor (#17) on branch `TianK003/demo-chain`; why it works this way is in `decisions/supervisor.md` and `decisions/dashboard.md`. Hand on the power switch for every round.
+The program is the supervisor (#17), on `main` since #47; why it works this way is in `decisions/supervisor.md` and `decisions/dashboard.md`. Hand on the power switch for every round.
 
 ## 0. Once: code and environments (WSL, about 10 min on good Wi-Fi)
 
 ```bash
 cd ~/lerobot-hackathon && git fetch origin
-git worktree add --detach ~/demo origin/TianK003/demo-chain
+git worktree add --detach ~/demo origin/main
 cp ~/track/hand_landmarker.task ~/demo/
 source ~/miniforge3/etc/profile.d/conda.sh
 conda create -y -n dashboard python=3.12
@@ -27,7 +27,7 @@ conda activate dashboard
 pip install -r ~/demo/scripts/dashboard/requirements.txt
 ```
 
-To update later: `cd ~/demo && git fetch origin && git checkout --detach origin/TianK003/demo-chain`.
+To update later: `cd ~/demo && git fetch origin && git checkout --detach origin/main`.
 
 - The `lerobot` and `handtrack` environments from the hand-tracking test are used as they are.
 - Nothing is installed on Windows: the dashboard takes the microphone through the browser.

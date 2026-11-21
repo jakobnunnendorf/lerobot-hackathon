@@ -5,7 +5,7 @@ Same recording as `scripts/so101/record.sh` (PR #6): `lerobot-record` with the s
 ## Once
 
 - The robot laptop already has what this needs: `~/.so101.env`, the patched LeRobot in conda env `lerobot`, and conda env `dashboard` with `scripts/dashboard/requirements.txt`.
-- Update the checkout: `git fetch origin && git checkout --detach origin/TianK003/demo-chain`.
+- Update the checkout: `git fetch origin && git checkout --detach origin/main`.
 
 ## Each session
 
