@@ -37,7 +37,7 @@ Five people work here in parallel, each with their own agent. The only coordinat
   - A change that others depend on (dependencies, shared scripts, anything the demo runs) is also announced on the board before it is merged.
   - Never force-push `main`.
 - `docs/roadmap.md` defines the stop points and the human check-ins. At a check-in gate, stop and ask the human instead of continuing on your own.
-- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`.
+- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`. Exception: on molnrb's robot laptop the person at the table lets their agent open recording windows itself (`so101-collect` skill); do not copy this elsewhere without your own person's say-so.
 
 ## Commands
 

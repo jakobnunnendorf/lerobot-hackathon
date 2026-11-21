@@ -32,6 +32,7 @@ Never put double quotes inside a `wsl -e bash -lc '...'` typed into PowerShell 5
 | Goal | Command (inside WSL, repo root) |
 | --- | --- |
 | Teleop + live cameras (Rerun) | `bash scripts/so101/teleop.sh` (`--no-cams` for arms only) |
+| Record, check and push in one go | `so101-collect` skill: `bash scripts/so101/collect.sh <name from datasets.json>` |
 | Record episodes | `bash scripts/so101/record.sh <dataset> <num> "<task sentence>" "<on-screen label>"` - same name again ADDS episodes |
 | Check a dataset | `python scripts/so101/check_dataset.py <user/dataset> [--from N] [--sheet /tmp/s.jpg]` then look at the sheet image |
 | Upload a dataset | `python scripts/so101/upload_dataset.py <user/dataset> [--private]` - ask the person public or private first; run in background |
