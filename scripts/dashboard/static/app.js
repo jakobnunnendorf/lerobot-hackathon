@@ -345,7 +345,11 @@ const COLLECT_PHASES = {
   discarded: ["info", "THROWN AWAY", "It is recorded again after the pause.", null],
   finishing: ["info", "FINISHING · saving everything", "Wait. Do not close the dashboard or the terminal.", null],
   done: ["done", "SESSION ENDED", "", null],
+  uploading: ["info", "UPLOADING to the Hub", "", null],
+  uploaded: ["done", "UPLOADED · on the Hub", "", null],
+  upload_failed: ["rec", "UPLOAD FAILED · the dataset is safe on this laptop", "", null],
 };
+const COLLECT_ENDED = ["done", "uploaded", "upload_failed"];
 
 function collectStatus() {
   const s = state.status;
@@ -354,7 +358,25 @@ function collectStatus() {
 
 function collectRunning() {
   const fresh = state.statusAge !== null && state.statusAge < 2;
-  return Boolean((state.collect && state.collect.running) || (fresh && collectStatus() && collectStatus().phase !== "done"));
+  const s = collectStatus();
+  return Boolean((state.collect && state.collect.running) || (fresh && s && !COLLECT_ENDED.includes(s.phase)));
+}
+
+function collectHint(s, phase, hint) {
+  if (!s) return hint;
+  const name = s.dataset;
+  if (phase === "done") {
+    const upload = s.upload && s.saved ? "Uploading next…" : s.saved ? "Not uploaded: use ⇪ Upload to the Hub." : "";
+    return `${s.saved} saved this session · ${name} now has ${s.dataset_total} episodes. ${upload}`;
+  }
+  if (phase === "uploading") {
+    return `${name}: ${s.upload_mb} MB folder; only new or changed files are sent. The next session can start when this is done.`;
+  }
+  if (phase === "uploaded") {
+    return `${name} has ${s.dataset_total} episodes on the Hub after ${s.upload_s} s. A training run started now sees them.`;
+  }
+  if (phase === "upload_failed") return `${s.upload_error || "unknown error"} · use Retry upload.`;
+  return hint;
 }
 
 async function collectControl(control) {
@@ -407,13 +429,20 @@ $("collect-stop").onclick = () => collectControl("stop");
 $("collect-force").onclick = async () => {
   if (confirm("Stop the recording like Ctrl+C? The episodes saved so far are kept.")) await post("/api/collect/force_stop", {});
 };
+$("collect-upload-now").onclick = async () => {
+  const s = collectStatus();
+  if (!s || !s.dataset) return;
+  const reply = await post("/api/collect/upload", { name: s.dataset.split("/").pop() });
+  $("collect-start-note").textContent = reply.ok ? "Uploading…" : `✗ ${reply.reason}`;
+};
 $("collect-form").onsubmit = async (event) => {
   event.preventDefault();
   const name = $("collect-dataset").value || $("collect-name").value.trim();
   const form = { name, task: $("collect-task").value.trim(), episodes: Number($("collect-episodes").value),
-    episode_s: Number($("collect-limit").value) };
+    episode_s: Number($("collect-limit").value), upload: $("collect-upload").checked };
   const fake = state.datasets && state.datasets.fake ? " (FAKE recorder: no arm, no dataset)" : "";
-  if (!confirm(`Start recording ${form.episodes} episodes into ${name}${fake}?\n\nThe follower arm will mirror the leader arm. Keep hands clear of the follower.`)) return;
+  const upload = form.upload ? "\nWhen it ends, the dataset is uploaded to the Hugging Face Hub." : "";
+  if (!confirm(`Start recording ${form.episodes} episodes into ${name}${fake}?${upload}\n\nThe follower arm will mirror the leader arm. Keep hands clear of the follower.`)) return;
   const reply = await post("/api/collect/start", form);
   $("collect-start-note").textContent = reply.ok ? "Starting…" : `✗ ${reply.reason}`;
 };
@@ -427,10 +456,7 @@ function renderCollect() {
   const episode = s && s.episode !== null && s.episode !== undefined ? s.episode : "";
   $("collect-banner").className = `collect-banner collect-only ${kind}`;
   $("collect-title").textContent = title.replace("%n", episode);
-  $("collect-hint").textContent = phase === "done" && s
-    ? `${s.saved} saved this session · ${s.dataset} now has ${s.dataset_total} episodes. ` +
-      `Upload (PR #6): python scripts/so101/upload_dataset.py ${s.dataset}`
-    : hint;
+  $("collect-hint").textContent = collectHint(s, phase, hint);
   setFeeds(busy || $("toggle-cameras").checked);
 
   const age = state.statusAge || 0;
@@ -449,8 +475,11 @@ function renderCollect() {
   $("collect-next").disabled = !busy || !nextLabel;
   $("collect-discard").disabled = !busy || !["recording", "reset"].includes(phase);
   $("collect-discard").textContent = phase === "reset" ? "✗ Throw away last" : "✗ Throw away";
-  $("collect-stop").disabled = !busy || ["finishing", "done"].includes(phase);
+  $("collect-stop").disabled = !busy || ["finishing", "uploading", ...COLLECT_ENDED].includes(phase);
   $("collect-force").hidden = !(state.collect && state.collect.force_stop);
+  const offerUpload = !busy && s && s.dataset && (phase === "upload_failed" || (phase === "done" && s.saved > 0));
+  $("collect-upload-now").hidden = !offerUpload;
+  $("collect-upload-now").textContent = phase === "upload_failed" ? "⇪ Retry upload" : "⇪ Upload to the Hub";
   for (const field of $("collect-form").elements) field.disabled = busy;
   const output = state.collect ? state.collect.output.join("\n") : "";
   if ($("collect-output").textContent !== output) {

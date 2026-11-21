@@ -146,6 +146,7 @@ def stand_in_session(work: Path) -> None:
     phase()
     top, _ = FrameReader("collect_test_top").latest()
     wrist, _ = FrameReader("collect_test_wrist").latest()
+    session.end()
     session.close()
     for writer in session.writers.values():
         writer.close()
@@ -164,11 +165,52 @@ def stand_in_session(work: Path) -> None:
           and "episode_discarded" in log and log[-1] == "session_end" and log.count("control") == 4, str(log))
 
 
+def uploads(work: Path) -> None:
+    import lerobot.datasets.lerobot_dataset as dataset_module
+
+    pushes = []
+
+    class HubDataset:
+        fail = False
+
+        def __init__(self, repo_id, root=None):
+            self.repo_id, self.root = repo_id, root
+
+        def push_to_hub(self, **kwargs):
+            if HubDataset.fail:
+                raise OSError("network unreachable")
+            pushes.append((self.repo_id, self.root, kwargs))
+
+    root = work / "home" / "molnrb" / "so101_test"
+    (root / "videos").mkdir(parents=True, exist_ok=True)
+    (root / "videos" / "file-000.mp4").write_bytes(b"\0" * 3_000_000)
+    original, dataset_module.LeRobotDataset = dataset_module.LeRobotDataset, HubDataset
+    try:
+        session = record_session.Session(work / "upload_test.jsonl", "molnrb/so101_test", "Pick", 2, 7, upload=True)
+        ok = record_session.upload(session, "molnrb/so101_test", root)
+        after_ok = STATUS.snapshot()
+        HubDataset.fail = True
+        failed = record_session.upload(session, "molnrb/so101_test", root)
+        after_fail = STATUS.snapshot()
+        session.close()
+    finally:
+        dataset_module.LeRobotDataset = original
+    log = [json.loads(line)["event"] for line in (work / "upload_test.jsonl").read_text().splitlines()]
+    check("upload: push_to_hub of the local dataset with PR #6's tags; phase uploaded with the episode count",
+          ok and pushes == [("molnrb/so101_test", root, {"tags": record_session.HUB_TAGS})]
+          and after_ok["phase"] == "uploaded" and after_ok["dataset_total"] == 7 and after_ok["upload_mb"] == 3,
+          str((pushes, after_ok.get("phase"), after_ok.get("upload_mb"))))
+    check("upload: a failure is reported to the page and logged, nothing raised",
+          not failed and after_fail["phase"] == "upload_failed" and "network unreachable" in after_fail["upload_error"]
+          and log == ["session_start", "upload_start", "upload_done", "upload_start", "upload_failed"], str(log))
+
+
 def main() -> None:
     hooks_exist()
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         arguments(Path(work) / "home")
         stand_in_session(Path(work))
+        uploads(Path(work))
     print("FAIL" if failures else "PASS")
     sys.exit(1 if failures else 0)
 

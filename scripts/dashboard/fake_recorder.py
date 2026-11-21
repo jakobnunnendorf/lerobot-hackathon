@@ -22,6 +22,20 @@ from record_session import CONTROL_PORT, Session, frame_writers  # noqa: E402
 from status import STATUS  # noqa: E402
 
 SAVE_S = 0.6
+UPLOAD_S = 2.0
+FAIL_MARKER = "fail_next_upload"  # a file of this name in --log-dir makes the next fake upload fail once
+
+
+def fake_upload(session: Session, log_dir: Path, total: int) -> bool:
+    session.uploading(400)
+    time.sleep(UPLOAD_S)
+    marker = log_dir / FAIL_MARKER
+    if marker.exists():
+        marker.unlink()
+        session.upload_failed("HfHubHTTPError: fake network failure")
+        return False
+    session.uploaded(UPLOAD_S, total)
+    return True
 
 
 class FakeRecording:
@@ -69,7 +83,7 @@ class FakeRecording:
             time.sleep(0.02)
         self.events["exit_early"] = False
 
-    def run(self, target: int, episode_s: float, total: int) -> None:
+    def run(self, target: int, episode_s: float, total: int) -> int:
         time.sleep(1.0)
         self.say("Press space to start")
         self.loop(3600)
@@ -93,14 +107,17 @@ class FakeRecording:
         self.say("Stop recording")
         time.sleep(SAVE_S)
         self.say("Exiting")
+        return total
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description="Fake data collection session for trying the dashboard without the arm.")
     p.add_argument("--name", required=True)
-    p.add_argument("--task", required=True)
-    p.add_argument("--episodes", type=int, required=True)
+    p.add_argument("--task", default="")
+    p.add_argument("--episodes", type=int, default=0)
     p.add_argument("--episode-s", type=int, default=120)
+    p.add_argument("--upload", action="store_true")
+    p.add_argument("--upload-only", action="store_true")
     p.add_argument("--log-dir", default="~/so101/collect")
     p.add_argument("--control-port", type=int, default=CONTROL_PORT)
     p.add_argument("--status-port", type=int, default=8767)
@@ -111,8 +128,18 @@ def main() -> None:
     args = p.parse_args()
     log_dir = Path(args.log_dir).expanduser()
     log_dir.mkdir(parents=True, exist_ok=True)
-    session = Session(log_dir / f"collect_{args.name}_{datetime.now():%Y%m%d_%H%M%S}.jsonl", f"fake/{args.name}",
-                      args.task, args.episodes, args.dataset_before)
+    started = f"{args.name}_{datetime.now():%Y%m%d_%H%M%S}"
+    if args.upload_only:
+        session = Session(log_dir / f"upload_{started}.jsonl", f"fake/{args.name}", "", 0, args.dataset_before,
+                          upload=True, start_event="upload_retry")
+        STATUS.update(fake=True)
+        STATUS.start(port=args.status_port)
+        ok = fake_upload(session, log_dir, args.dataset_before)
+        session.close()
+        time.sleep(0.5)
+        sys.exit(0 if ok else 1)
+    session = Session(log_dir / f"collect_{started}.jsonl", f"fake/{args.name}", args.task, args.episodes,
+                      args.dataset_before, upload=args.upload)
     STATUS.update(episode_limit_s=args.episode_s, fake=True)
     STATUS.start(port=args.status_port)
     session.writers = frame_writers({"top": args.top_shm, "wrist": args.wrist_shm})
@@ -120,15 +147,20 @@ def main() -> None:
     threading.Thread(target=recording.listen, args=(args.control_port,), daemon=True).start()
     observing = threading.Thread(target=recording.observe, daemon=True)
     observing.start()
+    total = args.dataset_before
     try:
-        recording.run(args.episodes, args.episode_s, args.dataset_before)
+        total = recording.run(args.episodes, args.episode_s, args.dataset_before)
     finally:
         recording.stopped.set()
         observing.join(timeout=2)
-        session.close()
+        session.end()
         for writer in session.writers.values():
             writer.close()
         time.sleep(0.5)
+    if args.upload and session.saved:
+        fake_upload(session, log_dir, total)
+        time.sleep(0.5)
+    session.close()
 
 
 if __name__ == "__main__":

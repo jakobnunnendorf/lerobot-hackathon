@@ -221,6 +221,9 @@ body.mode-collect main { grid-template-columns: 380px 1fr; }
 .ctl.next { grid-column: 1 / -1; background: #1d3b2a; border-color: #2f6b47; padding: 22px 10px; font-size: 21px; }
 .ctl.discard { background: #3b2a1d; border-color: #6b4a2f; }
 .ctl.force { grid-column: 1 / -1; background: var(--bad); border: none; color: white; }
+.ctl.upload { grid-column: 1 / -1; background: #1d2f3b; border-color: #2f566b; }
+.collect-form label.check { display: flex; align-items: center; gap: 8px; color: inherit; font-size: 14px; }
+.collect-form label.check input { width: auto; }
 .collect-output {
   background: var(--bg); border-radius: 8px; padding: 8px; height: 220px; overflow: auto; margin: 0;
   font: 11px/1.35 ui-monospace, monospace; color: var(--muted); white-space: pre-wrap;

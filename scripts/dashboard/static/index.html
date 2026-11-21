@@ -47,9 +47,10 @@
         </label>
         <div id="collect-task-note" class="note"></div>
         <div class="collect-numbers">
-          <label>Episodes <input id="collect-episodes" type="number" min="1" max="200" value="10"></label>
+          <label>Episodes <input id="collect-episodes" type="number" min="1" max="200" value="20"></label>
           <label>Episode limit (s) <input id="collect-limit" type="number" min="10" max="600" value="120"></label>
         </div>
+        <label class="check"><input id="collect-upload" type="checkbox" checked> Upload to the Hugging Face Hub when the session ends</label>
         <button id="collect-start" class="collect-start" type="submit">● Start session</button>
         <div id="collect-start-note" class="note">The follower mirrors the leader arm once the session starts.</div>
       </form>
@@ -59,6 +60,7 @@
         <button id="collect-discard" class="ctl discard" title="Left arrow">✗ Throw away</button>
         <button id="collect-stop" class="ctl stop" title="Esc">End session</button>
         <button id="collect-force" class="ctl force" hidden>Force stop (Ctrl+C)</button>
+        <button id="collect-upload-now" class="ctl upload" hidden>⇪ Upload to the Hub</button>
       </div>
       <div class="note">Keys: <b>Space</b> start / finish · <b>←</b> throw away · <b>Esc</b> end. End keeps the episode that is running or waiting; throw it away first if it was bad.</div>
       <h2>Recorder output</h2>

@@ -88,7 +88,7 @@ def main() -> None:
             robot.terminate()
             robot.wait(timeout=10)
             time.sleep(4.5)  # status stale (2 s), and the page lets go of the frame blocks (3 s): Windows keeps them while open
-            collect_session()
+            collect_session(Path(logs) / "collect")
         finally:
             for process in (server, robot):
                 process.terminate()
@@ -132,8 +132,10 @@ def wait_phase(phase: str, seconds: float = 15):
                     seconds)
 
 
-def collect_session() -> None:
-    form = {"name": "smoke_set", "task": "Pick up the striped ball", "episodes": 2, "episode_s": 30}
+def collect_session(collect_dir: Path) -> None:
+    form = {"name": "smoke_set", "task": "Pick up the striped ball", "episodes": 2, "episode_s": 30, "upload": True}
+    collect_dir.mkdir(parents=True, exist_ok=True)
+    (collect_dir / "fail_next_upload").write_text("")  # fake_recorder.py fails this session's upload once
     started = call("/api/collect/start", form)
     again = call("/api/collect/start", form)
     waiting = wait_phase("waiting")
@@ -144,21 +146,30 @@ def collect_session() -> None:
           and "collection" in busy["reason"], busy["reason"])
     steps = []
     for control, phase in (("next", "recording"), ("next", "reset"), ("discard", "recording"), ("next", "reset"),
-                           ("next", "recording"), ("next", "done")):
+                           ("next", "recording"), ("next", "upload_failed")):
         call("/api/collect/control", {"control": control})
         reached = wait_phase(phase)
         steps.append((control, phase, bool(reached)))
     final = reached or {}
     event = _try(first_event) or {}
-    check("collect: next/discard walk lerobot-record's phases; the discarded episode is recorded again",
+    check("collect: next/discard walk lerobot-record's phases, then the upload; the discarded episode is recorded again",
           all(ok for _, _, ok in steps), str(steps))
-    check("collect: counts at the end (2 saved, 1 thrown away, dataset 40 -> 42)",
-          final.get("saved") == 2 and final.get("discarded") == 1 and final.get("dataset_total") == 42, str(final))
+    check("collect: counts at the end (2 saved, 1 thrown away, dataset 40 -> 42), the upload's error reaches the page",
+          final.get("saved") == 2 and final.get("discarded") == 1 and final.get("dataset_total") == 42
+          and "fake network failure" in (final.get("upload_error") or ""), str(final))
     ended = wait_for(lambda: not call("/api/collect/datasets") is None and not (_try(first_event) or {}).get(
         "collect", {}).get("running"), 10)
     check("collect: the session process ends by itself; its output reaches the page",
           bool(ended) and any("Recording episode" in line for line in event.get("collect", {}).get("output", [])),
           str(event.get("collect", {}).get("output", [])[-3:]))
+    time.sleep(2.5)  # status stale: the ended session no longer counts as running
+    retried = call("/api/collect/upload", {"name": "smoke_set"})
+    uploading = wait_phase("uploading", 10)
+    refused = call("/api/collect/start", form)
+    uploaded = wait_phase("uploaded", 15)
+    check("collect: Retry upload from the page; a new session is refused while it uploads",
+          retried["ok"] and bool(uploading) and not refused["ok"] and "upload" in refused["reason"] and bool(uploaded),
+          f"{retried} {refused} {uploaded}")
 
 
 def stale_status_keeps_log(logs: Path) -> None:

@@ -25,6 +25,7 @@ REQUIRED_ENV = ("SO101_HF_USER", "SO101_FOLLOWER_PORT", "SO101_FOLLOWER_ID", "SO
 # lerobot-record speaks these lines (the last four only with molnrb's patch_record.py); they mark the phases.
 PHASES = (("Press space to start", "waiting"), ("Recording episode", "recording"), ("Reset the environment", "reset"),
           ("Re-record episode", "discarded"), ("Stop recording", "finishing"), ("Exiting", "done"))
+HUB_TAGS = ["so101", "lerobot", "hackathon"]  # as PR #6's scripts/so101/upload_dataset.py
 
 
 def stamp() -> str:
@@ -59,16 +60,21 @@ def record_args(name: str, task: str, episodes: int, episode_s: int, env) -> lis
             f"--resume={'true' if (root / 'meta' / 'info.json').exists() else 'false'}"]
 
 
+def folder_mb(root: Path) -> int:
+    return round(sum(f.stat().st_size for f in root.rglob("*") if f.is_file() and "images" not in f.parts) / 1e6)
+
+
 class Session:
-    def __init__(self, log_path: Path, repo: str, task: str, target: int, before: int):
+    def __init__(self, log_path: Path, repo: str, task: str, target: int, before: int, upload: bool = False,
+                 start_event: str = "session_start"):
         self.log = open(log_path, "a", encoding="utf-8")
         self.lock = threading.Lock()
         self.saved, self.discarded, self.episode, self.observes = 0, 0, None, 0
         self.writers: dict[str, FrameWriter] = {}
         STATUS.update(mode="collect", dataset=repo, task=task, target=target, dataset_total=before, saved=0,
-                      discarded=0, episode=None, log_path=str(log_path.resolve()))
+                      discarded=0, episode=None, upload=upload, log_path=str(log_path.resolve()))
         self.phase("starting")
-        self.write(event="session_start", dataset=repo, task=task, target=target, dataset_before=before)
+        self.write(event=start_event, dataset=repo, task=task, target=target, dataset_before=before, upload=upload)
 
     def write(self, **event) -> None:
         with self.lock:
@@ -108,9 +114,23 @@ class Session:
                 if name in obs:
                     writer.write(obs[name], time.perf_counter_ns())
 
-    def close(self) -> None:
+    def end(self) -> None:
         self.phase("done")
         self.write(event="session_end", saved=self.saved, discarded=self.discarded)
+
+    def uploading(self, size_mb: int) -> None:
+        self.phase("uploading", upload_mb=size_mb, upload_error=None)
+        self.write(event="upload_start", folder_mb=size_mb)
+
+    def uploaded(self, seconds: float, total: int) -> None:
+        self.phase("uploaded", upload_s=round(seconds), dataset_total=total)
+        self.write(event="upload_done", seconds=round(seconds, 1), dataset_total=total)
+
+    def upload_failed(self, error: str) -> None:
+        self.phase("upload_failed", upload_error=error)
+        self.write(event="upload_failed", error=error)
+
+    def close(self) -> None:
         self.log.close()
 
 
@@ -181,33 +201,72 @@ def frame_writers(names: dict[str, str]) -> dict[str, FrameWriter]:
     return writers
 
 
+# Same push as PR #6's upload_dataset.py. It also moves the dataset's v3.0 tag, which is what the next lerobot-train
+# start resolves, so the next training continuation sees these episodes (decisions/continual-training.md).
+def upload(session: Session, repo: str, root: Path) -> bool:
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    session.uploading(folder_mb(root))
+    print(f"uploading {repo} to the Hub", flush=True)
+    started = time.monotonic()
+    try:
+        LeRobotDataset(repo, root=root).push_to_hub(tags=HUB_TAGS)
+    except Exception as error:  # noqa: BLE001 - the dataset stays on disk whatever failed; the page offers a retry
+        session.upload_failed(f"{type(error).__name__}: {error}"[:400])
+        print(f"upload failed: {error}", flush=True)
+        return False
+    session.uploaded(time.monotonic() - started, episodes_in(root))
+    print(f"on the Hub: https://huggingface.co/datasets/{repo}", flush=True)
+    return True
+
+
+def linger() -> None:
+    time.sleep(0.5)  # the last status datagram goes out before the process ends
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="lerobot-record as record.sh runs it, driven and watched by the dashboard. "
                                             "Needs the variables of ~/.so101.env exported.")
     p.add_argument("--name", required=True, help="dataset name under $SO101_HF_USER; an existing one gets more episodes")
-    p.add_argument("--task", required=True, help="task sentence; keep the dataset's own when adding episodes")
-    p.add_argument("--episodes", type=int, required=True, help="episodes to record in this session")
+    p.add_argument("--task", help="task sentence; keep the dataset's own when adding episodes")
+    p.add_argument("--episodes", type=int, help="episodes to record in this session")
     p.add_argument("--episode-s", type=int, default=120, help="an episode ends by itself after this long")
+    p.add_argument("--upload", action="store_true", help="push the dataset to the Hub when the session saved episodes")
+    p.add_argument("--upload-only", action="store_true", help="only push the dataset (a retry); no arm, no recording")
     p.add_argument("--log-dir", default="~/so101/collect")
     p.add_argument("--control-port", type=int, default=CONTROL_PORT)
     p.add_argument("--status-port", type=int, default=8767)
     p.add_argument("--top-shm", default="top_camera_frames")
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
-    return p.parse_args()
+    args = p.parse_args()
+    if not args.upload_only and (not args.task or not args.episodes):
+        p.error("--task and --episodes are needed to record")
+    return args
 
 
 def main() -> None:
     args = parse_args()
-    missing = [key for key in REQUIRED_ENV if not os.environ.get(key)]
+    missing = [key for key in (("SO101_HF_USER",) if args.upload_only else REQUIRED_ENV) if not os.environ.get(key)]
     if missing:
         sys.exit(f"missing {', '.join(missing)}: export the variables of ~/.so101.env first (set -a; source ~/.so101.env)")
     os.environ.setdefault("SO101_WAIT_START", "1")
     os.environ.setdefault("SO101_BANNERS", "1")
     repo = f"{os.environ['SO101_HF_USER']}/{args.name}"
+    root = lerobot_home() / repo
     log_dir = Path(args.log_dir).expanduser()
     log_dir.mkdir(parents=True, exist_ok=True)
-    session = Session(log_dir / f"collect_{args.name}_{datetime.now():%Y%m%d_%H%M%S}.jsonl", repo, args.task,
-                      args.episodes, episodes_in(lerobot_home() / repo))
+    started = f"{args.name}_{datetime.now():%Y%m%d_%H%M%S}"
+    if args.upload_only:
+        session = Session(log_dir / f"upload_{started}.jsonl", repo, "", 0, episodes_in(root), upload=True,
+                          start_event="upload_retry")
+        STATUS.start(port=args.status_port)
+        ok = upload(session, repo, root)
+        session.close()
+        linger()
+        sys.exit(0 if ok else 1)
+
+    session = Session(log_dir / f"collect_{started}.jsonl", repo, args.task, args.episodes, episodes_in(root),
+                      upload=args.upload)
     STATUS.update(episode_limit_s=args.episode_s)
     STATUS.start(port=args.status_port)
 
@@ -221,10 +280,14 @@ def main() -> None:
     try:
         record_module.main()
     finally:
-        session.close()
+        session.end()
         for writer in session.writers.values():
             writer.close()
-        time.sleep(0.5)  # the last status datagram (phase done) goes out before the process ends
+        linger()
+    if args.upload and session.saved:
+        upload(session, repo, root)
+        linger()
+    session.close()
 
 
 if __name__ == "__main__":

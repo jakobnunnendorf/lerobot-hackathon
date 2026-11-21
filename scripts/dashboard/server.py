@@ -426,34 +426,44 @@ class Collector:
                 continue
         return {"user": user, "datasets": found, "tasks": self.tasks(), "fake": self.args.fake_collect}
 
-    def command(self, form: dict) -> list[str]:
-        flags = ["--name", form["name"], "--task", form["task"], "--episodes", str(form["episodes"]),
-                 "--episode-s", str(form["episode_s"]), "--log-dir", str(self.log_dir),
-                 "--control-port", str(self.args.collect_port), "--status-port", str(self.args.status_port),
-                 "--top-shm", self.args.top_shm, "--wrist-shm", self.args.wrist_shm]
+    def command(self, flags: list[str]) -> list[str]:
+        flags = [*flags, "--log-dir", str(self.log_dir), "--control-port", str(self.args.collect_port),
+                 "--status-port", str(self.args.status_port), "--top-shm", self.args.top_shm,
+                 "--wrist-shm", self.args.wrist_shm]
         if self.args.fake_collect:
             return [sys.executable, "-u", str(Path(__file__).resolve().parent / "fake_recorder.py"), *flags]
         return ["bash", "-c", self.args.collect_command, "record_session", *flags]
 
     def start(self, form: dict) -> str | None:
+        flags = ["--name", form["name"], "--task", form["task"], "--episodes", str(form["episodes"]),
+                 "--episode-s", str(form["episode_s"]), *(["--upload"] if form["upload"] else [])]
         with self._lock:
-            if self.running():
-                return "a collection session is running"
             self.log_dir.mkdir(parents=True, exist_ok=True)
             self._tasks_path().write_text(json.dumps({**self.tasks(), form["name"]: form["task"]}, indent=1),
                                           encoding="utf-8")
-            self.output.clear()
-            self.stop_sent_at = None
-            raw = self.log_dir / f"collect_{form['name']}_{datetime.now():%Y%m%d_%H%M%S}.out"
-            try:
-                self.process = subprocess.Popen(
-                    self.command(form), cwd=SCRIPTS.parent, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, encoding="utf-8", errors="replace", env={**os.environ, "PYTHONUNBUFFERED": "1"},
-                    start_new_session=os.name == "posix")
-            except OSError as error:
-                return f"could not start the recording: {error}"
-            threading.Thread(target=self._read, args=(self.process, raw), daemon=True).start()
-            return None
+            return self._spawn(flags, f"collect_{form['name']}")
+
+    # Uploads only: a session pushes its dataset itself when it ends (record_session.py --upload).
+    def upload(self, name: str) -> str | None:
+        with self._lock:
+            return self._spawn(["--name", name, "--upload-only"], f"upload_{name}")
+
+    def _spawn(self, flags: list[str], stem: str) -> str | None:
+        if self.running():
+            return "a collection session or upload is running"
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.output.clear()
+        self.stop_sent_at = None
+        raw = self.log_dir / f"{stem}_{datetime.now():%Y%m%d_%H%M%S}.out"
+        try:
+            self.process = subprocess.Popen(
+                self.command(flags), cwd=SCRIPTS.parent, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace", env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                start_new_session=os.name == "posix")
+        except OSError as error:
+            return f"could not start the recorder: {error}"
+        threading.Thread(target=self._read, args=(self.process, raw), daemon=True).start()
+        return None
 
     def _read(self, process: subprocess.Popen, raw: Path) -> None:
         with open(raw, "a", encoding="utf-8") as handle:
@@ -618,14 +628,25 @@ def build_app(args) -> FastAPI:
         body = await request.json()
         try:
             form = {"name": str(body.get("name", "")).strip(), "task": str(body.get("task", "")).strip(),
-                    "episodes": int(body.get("episodes", 0)), "episode_s": int(body.get("episode_s", 0))}
+                    "episodes": int(body.get("episodes", 0)), "episode_s": int(body.get("episode_s", 0)),
+                    "upload": bool(body.get("upload", True))}
         except (TypeError, ValueError):
             return {"ok": False, "reason": "episodes and the episode limit must be numbers"}
-        reason = form_problem(form) or (
-            "a collection session is running" if collecting() else
-            "the robot program is running and owns the arm: stop it first" if status.fresh() else None)
+        reason = form_problem(form) or busy_reason()
         if reason is None:
             reason = collector.start(form)
+        return {"ok": reason is None, "reason": reason}
+
+    def busy_reason() -> str | None:
+        return ("a collection session or upload is running" if collecting() else
+                "the robot program is running and owns the arm: stop it first" if status.fresh() else None)
+
+    @app.post("/api/collect/upload")
+    async def collect_upload(request: Request):
+        name = str((await request.json()).get("name", "")).strip()
+        reason = ("dataset name: letters, digits, _ . - only" if not DATASET_NAME.match(name) else None) or busy_reason()
+        if reason is None:
+            reason = collector.upload(name)
         return {"ok": reason is None, "reason": reason}
 
     @app.post("/api/collect/control")
