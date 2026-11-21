@@ -20,7 +20,7 @@ On the robot laptop, in the repo (replace the port):
 uv run python scripts/handover/read_pose.py --port /dev/ttyACM0 --robot-id mi_follower
 ```
 
-It connects, **switches torque off** (hold the arm, it will sag), and prints the five joint angles, the gripper and the FK tip position twice a second. If it prints the placeholder warning, the tip column is not the real FK yet: still write the joint values down, they are useful once Tian's FK is in. Stop with Ctrl-C.
+It connects, **switches torque off** (hold the arm, it will sag), and prints the five joint angles, the gripper and the FK tip position twice a second. The FK is Tian's URDF kinematics (`scripts/handover/kinematics.py`). Stop with Ctrl-C.
 
 ## 2. Three poses
 
@@ -69,4 +69,18 @@ Post the filled table and the conclusions on the board (#1) for Tian's and Jakob
 
 The arm cannot hover over a hand held high: hands 30 cm above the table (an eyeball estimate) are out of reach (board comment 7061302163). The person handing over holds their hands **10-15 cm above the table and 15-35 cm in front of the pan axis**; the gripper then hovers at 22 cm, tilted 35-45° down. Mark that zone on the table.
 
+**The drop gesture is two flat open palms side by side, palms up, not cupped hands.** MediaPipe found no hand in 3 of 3 photos of cupped hands (board comment 7061460387), and the tracker runs with `--only-open`, so a fist or the back of a hand is not followed.
+
 Once, with a ruler: have the person hold their hands as they will in the demo and measure the palm height above the table. Post it on the board; if it is above 15 cm, the hover height (`--hover-height`) and the zone need another look.
+
+## 6. Starting the hand following (only after sections 3-4 are settled)
+
+The arm moves. Someone stands at the table with a hand on the power switch. Connecting switches torque off for a moment, so the ball is not in a closed gripper at start: hold it between the open jaws and pass `--gripper-hold` with a closing value a few below the 11-16 the gripper reads when holding (for example 5). The gripper closes at start and keeps that value every tick until the drop. Without `--gripper-hold`, the gripper keeps the goal it had at start.
+
+1. Robot program first; it owns the top camera and shares its frames with the tracker:
+   ```bash
+   uv run python scripts/handover/handover_loop.py --robot --port /dev/ttyACM0 --top-camera 0 --robot-id mi_follower --gripper-hold 5
+   ```
+2. Then the tracker in its own environment (`scripts/handtrack/requirements.txt`), with `--only-open` and the calibration files from the checkerboard step; see `research/hand-tracking-and-camera-calibration.md`.
+
+Ctrl-C stops the loop with torque left on, so a held ball stays held.

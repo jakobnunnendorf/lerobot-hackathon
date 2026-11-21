@@ -3,7 +3,6 @@ import time
 
 import numpy as np
 
-import kinematics
 from kinematics import ARM_JOINTS, forward_kinematics
 
 
@@ -19,8 +18,6 @@ def main() -> None:
     # calibrate=False: a calibration mismatch must not start the interactive calibration at the table.
     robot.connect(calibrate=False)
     robot.bus.disable_torque()
-    if kinematics.PLACEHOLDER:
-        print("WARNING: placeholder kinematics, the tip column is not the real FK yet.")
     print("Torque is OFF. Pose the arm by hand; Ctrl-C to stop.")
     try:
         while True:
