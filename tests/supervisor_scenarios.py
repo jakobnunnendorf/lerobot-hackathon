@@ -113,6 +113,63 @@ def voice_container() -> None:
     commands.voice.close()
 
 
+def round_hygiene(log_path: str) -> None:
+    from multiprocessing import shared_memory
+
+    from run_supervisor import unlink_stale_block
+
+    # The destination is for one round: round 2 must not reuse round 1's "container".
+    commands = Commands()
+    commands.set_target("striped")
+    commands.set_destination("container")
+    log = TransitionLog(log_path, echo=False)
+    scenario = Scenario("hygiene", [], "")
+    results = []
+    for number in (1, 2):
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        sensors.destination, sensors.target, sensors.finish_round = commands.destination, commands.target, commands.clear
+        results.append(Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(number))
+        if number == 1:
+            check("destination and target are cleared after a round", commands.destination() is None and commands.target() is None)
+    states = [[s.value for s in r.states] for r in results]
+    check("round 1 'container' -> PUT_DOWN, round 2 without a command (hand present) -> GIVE",
+          states[0][3] == "PUT_DOWN" and states[1][3] == "GIVE", str(states))
+    # a refused or aborted round clears it as well
+    commands.set_destination("hand")
+    arm, skills, sensors, settings, abort, clock, world = build(Scenario("refused", [], "", target="red"))
+    sensors.destination, sensors.finish_round = commands.destination, commands.clear
+    Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(3)
+    check("a refused round clears the destination too", commands.destination() is None)
+    # colours: the container of the ball's colour, the generic pose for striped
+    for name in ("red_target_container", "striped_container_uses_generic_pose"):
+        scenario = next(s for s in SCENARIOS if s.name == name)
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(9)
+    with open(log_path) as lines:
+        puts = [e for e in map(json.loads, lines) if e.get("source") == "PUT_DOWN" and e["event"] == "transition"]
+    check("PUT_DOWN uses the red container for a red ball and the default pose for the striped ball",
+          [e["container"] for e in puts][-2:] == ["red", "default"], str([e["container"] for e in puts]))
+    # keys and voice commands accept the three targets
+    commands.poll_voice()
+    for target in ("striped", "red", "blue"):
+        commands.set_target(target)
+        check(f"target {target} accepted", commands.target() == target)
+    commands.set_target("green")
+    check("unknown target rejected", commands.target() == "blue")
+    # a block left by a crashed run is removed, a missing one is fine
+    name = f"stale_frames_{int(time.time())}"
+    stale = shared_memory.SharedMemory(name=name, create=True, size=64)
+    stale.close()
+    unlink_stale_block(name)
+    unlink_stale_block(name)
+    try:
+        shared_memory.SharedMemory(name=name)
+        gone = False
+    except FileNotFoundError:
+        gone = True
+    check("a stale shared-memory block is unlinked on start", gone)
+
+
 def speed_cap() -> None:
     last = {key: 0.0 for key in KEYS}
     wanted = {**last, "shoulder_pan.pos": 10.0, "elbow_flex.pos": -5.0, "gripper.pos": 40.0}
@@ -181,6 +238,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as work:
         fake_scenarios(f"{work}/fake.jsonl")
         voice_container()
+        round_hygiene(f"{work}/hygiene.jsonl")
         speed_cap()
         if not args.skip_policy:
             policy_runner()

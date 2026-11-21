@@ -50,6 +50,11 @@ class Settings:
 class Skills:
     pick: Callable[[], Skill]
     put_down: Callable[[], Skill]
+    # One container per ball colour ("red", "blue"); a colour without an entry uses put_down.
+    put_down_container: dict[str, Callable[[], Skill]] = field(default_factory=dict)
+    # Picks one named target ("red", "blue"). None: only the default pick (striped ball) exists, so a round
+    # asking for a colour is refused before the arm moves. The colour-pick work plugs in here.
+    pick_colour: Callable[[str], Skill] | None = None
     give: Callable[[], Skill] | None = None
     clear_gray: Callable[[], Skill] | None = None
     shake: Callable[[], Skill] | None = None
@@ -61,6 +66,17 @@ class Sensors:
     visible_area: Callable[[np.ndarray], int] | None = None
     palms_seen: Callable[[], bool] = lambda: False
     destination: Callable[[], str | None] = lambda: None
+    # What was asked for this round: "striped", "red", "blue" or None (no preference: the default pick).
+    target: Callable[[], str | None] = lambda: None
+    # HOOK for colour detection (not built here): the colour of the ball in the gripper, "red", "blue" or None
+    # (striped or unknown). It picks the container. Default: the colour that was asked for. Replace it with a
+    # detector on the wrist/top frame once scripts/vision/colour_detector.py exists.
+    ball_colour: Callable[[], str | None] | None = None
+    # Called when a round ends, whatever the outcome: clears the one-round command (destination, target).
+    finish_round: Callable[[], None] = lambda: None
+
+
+COLOURS = ("red", "blue")
 
 
 class Aborted(Exception):
@@ -103,6 +119,8 @@ class Round:
     clear_attempts: int = 0
     outcome: str | None = None
     after_rest: State = State.LOOK
+    target: str | None = None
+    colour: str | None = None
     states: list[State] = field(default_factory=list)
 
 
@@ -122,9 +140,20 @@ class Supervisor:
                          State.SHAKE: self._shake, State.PUT_DOWN: self._put_down}
 
     def run_round(self, number: int) -> Round:
-        self.round = Round(number, self.clock.now(), after_rest=self._first_state())
+        try:
+            return self._run_round(number)
+        finally:
+            self.sensors.finish_round()
+
+    def _run_round(self, number: int) -> Round:
+        self.round = Round(number, self.clock.now(), after_rest=self._first_state(), target=self.sensors.target())
         state = State.REST
-        self.log.write(event="round_start", round=number)
+        self.log.write(event="round_start", round=number, target=self.round.target, destination=self.sensors.destination())
+        if self.round.target in COLOURS and self.skills.pick_colour is None:
+            self.round.outcome = "unsupported_target"
+            self.log.write(event="round_end", round=number, outcome=self.round.outcome, pick_attempts=0, clear_attempts=0,
+                           duration_s=0.0, states=[], reason=f"no pick skill for {self.round.target!r} yet")
+            return self.round
         while state not in (State.DONE, State.ABORT):
             self.round.states.append(state)
             try:
@@ -244,7 +273,8 @@ class Supervisor:
 
     def _pick(self):
         self.round.pick_attempts += 1
-        result = self.run_skill(self.skills.pick(), self.s.pick_timeout_s)
+        skill = self.skills.pick_colour(self.round.target) if self.round.target in COLOURS else self.skills.pick()
+        result = self.run_skill(skill, self.s.pick_timeout_s)
         return State.VERIFY_HOLD, f"pick attempt {self.round.pick_attempts}: {result}", {"skill": result}
 
     def _verify_hold(self):
@@ -261,9 +291,14 @@ class Supervisor:
         return State.REST, f"not holding after {self.round.pick_attempts} picks, giving up", details
 
     # The hand decision is made in the present pose, where the tracker sees the hands that GIVE will serve.
+    def _ball_colour(self) -> str | None:
+        colour = self.sensors.ball_colour() if self.sensors.ball_colour else self.round.target
+        return colour if colour in COLOURS else None
+
     def _destination(self, details: dict):
         wanted = self.sensors.destination()
-        details["destination"] = wanted
+        self.round.colour = self._ball_colour()
+        details["destination"], details["colour"] = wanted, self.round.colour
         if wanted == "container" or self.skills.give is None:
             return State.PUT_DOWN, "holding; put down" if wanted else "holding; no GIVE skill", details
         if self.skills.present is not None:
@@ -296,9 +331,11 @@ class Supervisor:
         return State.REST, f"shake: {result}", {"skill": result}
 
     def _put_down(self):
-        result = self.run_skill(self.skills.put_down(), self.s.put_down_timeout_s)
+        # The container of the ball's colour; the generic put-down pose for the striped ball or an unknown colour.
+        container = self.skills.put_down_container.get(self.round.colour)
+        result = self.run_skill((container or self.skills.put_down)(), self.s.put_down_timeout_s)
         holding, reading = self.holding()
-        details = {"skill": result, "reading": round(reading, 2)}
+        details = {"skill": result, "reading": round(reading, 2), "container": self.round.colour if container else "default"}
         if holding:
             return State.ABORT, "still holding after PUT_DOWN", details
         self.round.outcome, self.round.after_rest = "put_down", State.DONE

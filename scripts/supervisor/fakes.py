@@ -150,10 +150,13 @@ class Scenario:
     hand: bool = True
     buried: int = 0
     destination: str | None = None
+    target: str | None = None
     abort_at_tick: int | None = None
     shake: bool = False
     give_mode: str = "scripted"
     block_after_pick: bool = False
+    containers: bool = False
+    colour_pick: bool = False
     settings: dict = field(default_factory=dict)
 
 
@@ -162,6 +165,7 @@ def build(scenario: Scenario):
     world = World(buried=scenario.buried, hand=scenario.hand, destination=scenario.destination,
                   block_after_pick=scenario.block_after_pick)
     arm = FakeArm(world, abort)
+    containers = {c: scripted("put_down_" + c, world, ["ok"], release_effect(world, "ok")) for c in ("red", "blue")}
     skills = Skills(
         pick=scripted("pick", world, scenario.picks, pick_effect(world), ticks=60),
         put_down=scripted("put_down", world, scenario.put_downs, release_effect(world, "ok")),
@@ -169,9 +173,12 @@ def build(scenario: Scenario):
         else scripted("give", world, scenario.gives, release_effect(world, "dropped")),
         present=lambda: holding_move("to_present", arm, PRESENT_POSE),
         clear_gray=scripted("clear_gray", world, ["ok"], clear_effect(world)),
+        put_down_container=containers if scenario.containers else {},
+        pick_colour=(lambda target: scripted("pick_" + target, world, scenario.picks, pick_effect(world), ticks=60)())
+        if scenario.colour_pick else None,
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
     )
-    sensors = Sensors(visible_area=lambda frame: 0 if world.buried else 800,
+    sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination)
     settings = Settings(**scenario.settings)
     clock = FakeClock(settings.fps, abort, scenario.abort_at_tick)
@@ -201,5 +208,10 @@ SCENARIOS = [
     Scenario("present_mode_voice_hand_but_no_palms", [R, P, V, G, U, R, D], "put_down", give_mode="present",
              hand=False, destination="hand"),
     Scenario("arm_blocked_on_way_to_present_pose", [R, P, V, A], "aborted", block_after_pick=True),
+    Scenario("red_target_without_pick_skill_is_refused", [], "unsupported_target", target="red"),
+    Scenario("red_target_container", [R, P, V, U, R, D], "put_down", target="red", destination="container",
+             containers=True, colour_pick=True),
+    Scenario("striped_container_uses_generic_pose", [R, P, V, U, R, D], "put_down", target="striped",
+             destination="container", containers=True),
     Scenario("shake_hook", [R, P, V, G, S, R, D], "given", shake=True),
 ]

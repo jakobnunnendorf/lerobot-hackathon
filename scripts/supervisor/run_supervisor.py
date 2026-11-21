@@ -1,5 +1,6 @@
 import argparse
 import sys
+from multiprocessing import shared_memory
 from pathlib import Path
 
 import numpy as np
@@ -69,6 +70,18 @@ def settings_from(args) -> Settings:
                     min_visible_area_px=args.min_visible_area)
 
 
+def container_skills(args, arm) -> dict:
+    # One taught pose per sorting container. Not taught yet (placeholder): the colour falls back to --put-down-pose.
+    # Teach both at the table with read_pose.py, like the present pose.
+    poses = {"red": args.container_pose_red, "blue": args.container_pose_blue}
+    for colour, pose in poses.items():
+        if pose is None:
+            print(f"WARNING: --container-pose-{colour} not taught: {colour} balls go to the generic put-down pose", flush=True)
+    return {colour: (lambda pose=np.array(pose): put_down_at(np.concatenate([pose, [arm.last_sent["gripper.pos"]]]),
+                                                              args.gripper_open))
+            for colour, pose in poses.items() if pose is not None}
+
+
 def put_down_skill(args, arm):
     if args.put_down_episode:
         repo_id, episode = args.put_down_episode.rsplit(":", 1)
@@ -102,9 +115,33 @@ def run_robot(args) -> None:
     clear_policy = LoadedPolicy(args.clear_gray_policy, args.device, None, rename) if args.clear_gray_policy else None
     receiver = import_from(handover_dir, "hand_socket").HandReceiver(*split_address(args.hand_listen)) if has_receiver else None
     frame_link_dir = SCRIPTS / "handtrack"
-    frame_writer = (import_from(frame_link_dir, "frame_link").FrameWriter(args.frames_shm)
-                    if (frame_link_dir / "frame_link.py").exists() else None)
+    frame_writer = None
+    if (frame_link_dir / "frame_link.py").exists():
+        unlink_stale_block(args.frames_shm)
+        frame_writer = import_from(frame_link_dir, "frame_link").FrameWriter(args.frames_shm)
+    try:
+        run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands)
+    finally:
+        # A crash or Ctrl-C must not leave the shared-memory block: the next start would fail with FileExistsError.
+        if frame_writer is not None:
+            try:
+                frame_writer.close()
+            except Exception as error:  # noqa: BLE001 - closing must never hide the original error
+                print(f"frame writer close failed: {error}", file=sys.stderr, flush=True)
 
+
+def unlink_stale_block(name: str) -> None:
+    """Remove a shared-memory block left behind by a crashed run, so creating it again cannot fail."""
+    try:
+        stale = shared_memory.SharedMemory(name=name)
+    except FileNotFoundError:
+        return
+    stale.close()
+    stale.unlink()
+    print(f"removed stale shared-memory block {name!r}", flush=True)
+
+
+def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands) -> None:
     robot.connect()
     log = TransitionLog(args.log)
     try:
@@ -117,7 +154,7 @@ def run_robot(args) -> None:
         if follow:
             kinematics = import_from(handover_dir, "kinematics")
             kinematics.JOINT_LIMITS_DEG.update(kinematics.joint_limits_from_calibration(robot.calibration_fpath))
-        palms_seen = (lambda: len(receiver.newest_hands()) >= 2) if receiver else (lambda: False)
+        palms_seen = (lambda: palm_count(receiver) >= 2) if receiver else (lambda: False)
         pick_finished = lambda: Settled(rest, settings.hold_range, args.settle_tol_deg, 1.0, 3.0)
         if follow:
             def give_skill():
@@ -135,14 +172,18 @@ def run_robot(args) -> None:
             give=give_skill,
             present=lambda: holding_move("to_present", arm, args.present_pose),
             put_down=put_down_skill(args, arm),
+            put_down_container=container_skills(args, arm),
+            # pick_colour: HOOK for the colour pick (branch jakobnunnendorf/colour-pick). Until it is plugged in, a
+            # round that asks for "red" or "blue" is refused before the arm moves.
         )
         sensors = Sensors(palms_seen=palms_seen, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
-                          destination=commands.destination)
+                          destination=commands.destination,
+                          target=commands.target, finish_round=commands.clear)
         supervisor = Supervisor(arm, skills, sensors, settings, rest, log, commands.abort, frame_writer=frame_writer,
                                 on_tick=commands.poll_voice)
         log.write(event="start", rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy)
-        print("Enter starts a round. h/c + Enter: destination hand/container, x: no preference, a: ABORT.", flush=True)
+        print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
                 commands.go.clear()
@@ -155,6 +196,12 @@ def run_robot(args) -> None:
                 break
     finally:
         robot.disconnect()
+
+
+def palm_count(receiver) -> int:
+    # #13's receiver counts open palms, from pixels too when the tracker has no calibration; older ones only the 3D hands.
+    counter = getattr(receiver, "newest_palm_count", None)
+    return counter() if counter else len(receiver.newest_hands())
 
 
 def split_address(address: str) -> tuple[str, int]:
@@ -193,9 +240,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--camera-rename", nargs="*", default=[], metavar="OURS=THEIRS",
                    help="camera names the checkpoint expects, e.g. top=camera1 wrist=camera2 for SmolVLA")
     p.add_argument("--pick-task", default="", help="task sentence; ACT ignores it, SmolVLA needs it")
-    p.add_argument("--clear-gray-policy", help="enables LOOK + CLEAR_GRAY; off by default")
+    p.add_argument("--clear-gray-policy", help="OLD FOIL-BALL TABLE ONLY (gray foil balls, gone since board 7062034477): enables LOOK + CLEAR_GRAY; off by default")
     p.add_argument("--put-down-episode", help="REPO_ID:EPISODE replayed as PUT_DOWN")
     p.add_argument("--put-down-pose", type=float, nargs=5, help="joints (deg) to carry the ball to, then open")
+    p.add_argument("--container-pose-red", type=float, nargs=5,
+                   help="joints (deg) over the red sorting container, taught at the table; default: --put-down-pose")
+    p.add_argument("--container-pose-blue", type=float, nargs=5,
+                   help="joints (deg) over the blue sorting container, taught at the table; default: --put-down-pose")
     p.add_argument("--rest", type=float, nargs=6, help="rest pose incl. gripper; default: the pose at start")
     p.add_argument("--handover-dir", default=str(SCRIPTS / "handover"), help="where #13's handover_loop.py lives")
     p.add_argument("--present-pose", type=float, nargs=5, default=PRESENT_POSE,

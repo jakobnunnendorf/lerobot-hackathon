@@ -4,6 +4,8 @@ import threading
 from skills import SCRIPTS, import_from
 
 DESTINATION_KEYS = {"h": "hand", "c": "container"}
+TARGETS = ("striped", "red", "blue")
+TARGET_KEYS = {"r": "red", "b": "blue", "s": "striped"}
 
 
 class Commands:
@@ -12,6 +14,7 @@ class Commands:
         self.go = threading.Event()
         self._lock = threading.Lock()
         self._destination: str | None = None
+        self._target: str | None = None
         self.voice = None
 
     def set_destination(self, destination: str | None) -> None:
@@ -23,6 +26,21 @@ class Commands:
         with self._lock:
             return self._destination
 
+    def set_target(self, target: str | None) -> None:
+        if target in (None, *TARGETS):
+            with self._lock:
+                self._target = target
+
+    def target(self) -> str | None:
+        with self._lock:
+            return self._target
+
+    # A command is for one round: the supervisor calls this when the round ends, so the next round does not reuse a
+    # stale "hand" or "container" (or a colour).
+    def clear(self) -> None:
+        with self._lock:
+            self._destination = self._target = None
+
     # Line-based (key + Enter) so it works the same in a Windows console, WSL and macOS.
     def listen_keyboard(self) -> None:
         def read():
@@ -32,8 +50,10 @@ class Commands:
                     self.abort.set()
                 elif key in DESTINATION_KEYS:
                     self.set_destination(DESTINATION_KEYS[key])
+                elif key in TARGET_KEYS:
+                    self.set_target(TARGET_KEYS[key])
                 elif key == "x":
-                    self.set_destination(None)
+                    self.clear()
                 self.go.set()
         threading.Thread(target=read, daemon=True).start()
 
@@ -42,6 +62,7 @@ class Commands:
 
     def poll_voice(self) -> None:
         command = self.voice.poll() if self.voice is not None else None
-        if command is not None and command.get("target") == "striped":
+        if command is not None and command.get("target") in TARGETS:
+            self.set_target(command["target"])
             self.set_destination(command.get("destination"))
             self.go.set()
