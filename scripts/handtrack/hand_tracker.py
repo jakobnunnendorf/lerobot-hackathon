@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calib"))
 from pixel_to_base import TopCamera  # noqa: E402
 
 vision = mp.tasks.vision
+FRAME_TIMEOUT_S = 2.0
 
 
 def load_geometry(intrinsics, extrinsics):
@@ -44,6 +45,19 @@ def frame_message(hands, geometry, hand_z, captured_epoch):
     return {"t": captured_epoch, "hands": [h for h in located if h is not None]}
 
 
+def open_frames(name):
+    # The robot program creates the block, so the tracker may start first; wait instead of failing.
+    announced = False
+    while True:
+        try:
+            return FrameReader(name)
+        except FileNotFoundError:
+            if not announced:
+                print(f"waiting for frames from the robot program ({name}) ...", flush=True)
+                announced = True
+            time.sleep(0.5)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=Path, required=True)
@@ -58,7 +72,7 @@ def main():
 
     geometry = load_geometry(args.intrinsics, args.extrinsics)
     sender = HandLineSender(port=args.port)
-    reader = FrameReader(args.shm_name)
+    reader, last_frame = open_frames(args.shm_name), time.monotonic()
     # VIDEO mode, not LIVE_STREAM: the loop always takes the newest frame itself, so nothing queues up.
     landmarker = vision.HandLandmarker.create_from_options(vision.HandLandmarkerOptions(
         base_options=mp.tasks.BaseOptions(model_asset_path=str(args.model)),
@@ -67,8 +81,13 @@ def main():
     while time.perf_counter() < end:
         got = reader.latest()
         if got is None:
+            # a restarted robot program writes into a new block; the one held here never gets another frame
+            if time.monotonic() - last_frame > FRAME_TIMEOUT_S:
+                reader.close()
+                reader, last_frame = open_frames(args.shm_name), time.monotonic()
             time.sleep(0.002)
             continue
+        last_frame = time.monotonic()
         rgb, captured_ns = got
         last_ms = max(captured_ns // 1_000_000, last_ms + 1)
         result = landmarker.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), last_ms)
