@@ -23,7 +23,8 @@ class Decision:
 # handover_loop.py builds this positionally from its first four fields; new fields go at the end.
 @dataclass
 class FollowSettings:
-    hover_height: float = 0.22
+    # 0.28 m: confirmed on the arm by Balazs (board 7064755928, "works fine"), raised from 0.25 after T2.
+    hover_height: float = 0.28
     lost_to_home_s: float = 3.0
     drop_radius: float = 0.03
     drop_dwell_s: float = 1.0

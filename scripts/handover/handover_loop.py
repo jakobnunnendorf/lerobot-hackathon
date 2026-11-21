@@ -25,7 +25,8 @@ class Limits:
     max_step_deg: float = 1.5
     gripper_step: float = 4.0
     max_step_m: float = 0.008
-    min_height: float = 0.08
+    # Every target at least 20 cm above the table, as in the command run on the arm (docs/hand-tracking-test.md, 2b).
+    min_height: float = 0.20
     max_height: float = 0.30
     min_radius: float = 0.12
     max_radius: float = 0.38
@@ -218,6 +219,20 @@ def plot(rows: list, path: str) -> None:
     fig.savefig(path, dpi=100)
 
 
+def sync_goal_to_present(bus) -> None:
+    """Set every servo's Goal_Position to its Present_Position, raw steps, without touching the torque.
+
+    LeRobot 0.7.0's connect() switches the torque on in configure() without writing a goal first, so each servo drives
+    to whatever goal it last stored. After the arm was moved by hand with the torque off that goal is stale and the arm
+    jumps. Run this on a bus of its own before robot.connect(). Idea and fix from Tian (TianK003/hand-tracking-test).
+    """
+    bus.connect()
+    try:
+        bus.sync_write("Goal_Position", bus.sync_read("Present_Position", normalize=False), normalize=False)
+    finally:
+        bus.disconnect(disable_torque=False)
+
+
 def connect_robot(port: str, robot_id: str, top_camera: str):
     from lerobot.cameras.opencv import OpenCVCameraConfig
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
@@ -228,11 +243,7 @@ def connect_robot(port: str, robot_id: str, top_camera: str):
     cameras = {"top": OpenCVCameraConfig(index_or_path=camera, width=640, height=480, fps=30, fourcc="MJPG")}
     # Torque stays on at exit: the default disconnect switches it off and would drop a held ball.
     robot = SO101Follower(SO101FollowerConfig(port=port, id=robot_id, cameras=cameras, disable_torque_on_disconnect=False))
-    # The servos drive to their stored goal the moment connect() switches torque on (LeRobot 0.7.0 does not sync it).
-    # After the arm was moved by hand with torque off that goal is stale, so it becomes the present position first.
-    robot.bus.connect()
-    robot.bus.sync_write("Goal_Position", robot.bus.sync_read("Present_Position", normalize=False), normalize=False)
-    robot.bus.disconnect(disable_torque=False)
+    sync_goal_to_present(robot.bus)
     robot.connect()
     kinematics.JOINT_LIMITS_DEG.update(kinematics.joint_limits_from_calibration(robot.calibration_fpath))
     return robot
@@ -254,7 +265,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--home", type=float, nargs=5, help="HOME joints in degrees; default: the pose at start")
     p.add_argument("--gripper-hold", type=float, help="default: the gripper goal at start (robot) or 13 (dry run)")
     p.add_argument("--gripper-open", type=float, default=60.0)
-    p.add_argument("--rest", type=float, nargs=5, help="after the drop, go to these joints (degrees); default: stay at home")
+    p.add_argument("--rest", type=float, nargs=5,
+                   help="after the drop, go to these joints (degrees), e.g. the folded rest pose -3.69 -103.43 97.01 -100.26 1.45 "
+                        "(Balazs's reading, board 7064702491); default: stay at home")
     p.add_argument("--celebrate", type=int, default=0, help="fast close-open cycles of the gripper right after the drop")
     p.add_argument("--hover-height", type=float, default=FollowSettings.hover_height)
     p.add_argument("--lost-to-home", type=float, default=FollowSettings.lost_to_home_s)

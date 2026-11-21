@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "handov
 import kinematics  # noqa: E402
 
 WAYPOINT_M = 0.008
-HOVER_HEIGHTS_M = (0.18, 0.22, 0.25)
+HOVER_HEIGHTS_M = (0.18, 0.22, 0.25, 0.28)
 RADIUS_M = (0.14, 0.36)
 MAX_ROUND_TRIP_M = 1e-5
 MAX_JOINT_STEP_DEG = 10.0
