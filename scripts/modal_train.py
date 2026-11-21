@@ -63,6 +63,18 @@ REDBLUE_ACT_ARGS = [
 
 FOIL_CHECKPOINT = "molnrb/act_pick_ball_combined"
 
+# Cleanest rb_mixed episodes, chosen with the so101-data skill §5 (ACT rules) from Jakob's labels (0-57) and the
+# v2 pre-labels (58-200). Dropped: any miss, slip or put-back (56); wrist blind 1.7 s or more, or never clear
+# (28); contradicting start (11); automatic-check DROP (3). 103 kept: 58 visible, 18 partly, 27 buried (26%).
+# Every 10th kept episode is held out for both clean runs (§6: never the last N); see decisions/act-clean.md.
+CLEAN_RB_HOLDOUT = [6, 23, 65, 88, 99, 110, 126, 157, 177, 191]
+CLEAN_RB_TRAIN = [0, 1, 2, 3, 5, 7, 10, 11, 13, 14, 15, 17, 19, 20, 24, 25, 27, 29, 33, 42, 53, 55, 59, 66, 72, 80, 81, 83, 84, 85, 86, 87, 89, 90, 91, 92, 94, 95, 96, 97, 98, 100, 101, 102, 103, 104, 105, 106, 107, 108, 111, 112, 113, 115, 116, 117, 119, 120, 124, 128, 130, 133, 135, 140, 143, 150, 153, 155, 162, 165, 166, 167, 168, 169, 171, 172, 176, 178, 179, 180, 182, 183, 184, 186, 187, 188, 192, 193, 196, 197, 198, 199, 200]
+CLEAN_RB_ARGS = [f"--dataset.episodes={json.dumps(CLEAN_RB_TRAIN)}", *REDBLUE_ACT_ARGS]
+
+# Kamel's ACT pretrained on all 314 striped-ball episodes; its checkpoints sit in step folders on the Hub.
+ALL_DATA_CHECKPOINT = ("brouthen/act_so101_pick_striped_all_pretrain_50k", "050000")
+ALL_DATA_INIT_DIR = "/vol/init/act_striped_all_pretrain_50k"
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -106,6 +118,24 @@ RECIPES = {
         "batch_size": 32,
         "prefetch_models": [FOIL_CHECKPOINT],
         "args": [f"--policy.path={FOIL_CHECKPOINT}", *REDBLUE_ACT_ARGS],
+        "schedule_follows_steps": False,
+    },
+    # Same clean episodes for both, so only the start differs: Kamel's all-data ACT vs fresh weights.
+    "act_clean_from_all": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 32,
+        "prefetch_models": [],
+        "prefetch_subfolders": [ALL_DATA_CHECKPOINT],
+        "args": [f"--policy.path={ALL_DATA_INIT_DIR}/{ALL_DATA_CHECKPOINT[1]}", *CLEAN_RB_ARGS],
+        "schedule_follows_steps": False,
+    },
+    "act_clean_scratch": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 32,
+        "prefetch_models": [],
+        "args": ["--policy.type=act", *CLEAN_RB_ARGS],
         "schedule_follows_steps": False,
     },
 }
@@ -286,6 +316,8 @@ def prepare(recipe: str = "act_redblue") -> None:
 
     for repo in RECIPES[recipe]["prefetch_models"]:
         snapshot_download(repo)
+    for repo, sub in RECIPES[recipe].get("prefetch_subfolders", []):
+        snapshot_download(repo, allow_patterns=[f"{sub}/*"], local_dir=ALL_DATA_INIT_DIR)
     ds = LeRobotDataset(RECIPES[recipe]["dataset"])
     print(f"dataset ready: {ds.num_episodes} episodes, {ds.num_frames} frames", flush=True)
     volume.commit()
