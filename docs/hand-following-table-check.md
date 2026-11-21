@@ -30,11 +30,11 @@ It connects, **switches torque off** (hold the arm, it will sag), and prints a l
 
 Do this while Tian's checkerboard is still taped down, right after its corners were measured with the ruler and before anyone moves it: the board is the ruler. The arm is never powered.
 
-**Corner names** (as in Tian's board comment 7061715390): look at the board from above with the **red sticker at the top left**. The four outermost inner corners (where four squares meet, one square in from the edge of the pattern) are numbered clockwise:
-- **1**: top left, next to the red sticker
-- **2**: top right, six squares (about 172 mm) along the long side from 1
-- **3**: bottom right, diagonally opposite 1
-- **4**: bottom left, four squares (about 116 mm) along the short side from 1
+**Corner names** (Tian's board comment 7061830090, which replaces 7061715390): one corner of the cardboard has a square of **red tape**. The four points are the outermost inner corners of the pattern (where four squares meet, one square in from the edge):
+- **1**: the one nearest the red tape
+- **2**: from 1 along the **long** side, six squares (about 172 mm)
+- **3**: diagonally opposite 1
+- **4**: from 1 along the **short** side, four squares (about 116 mm)
 
 Steps:
 1. Start the reader as in section 1. No ball in the gripper.
@@ -59,7 +59,7 @@ Reading the result:
   - Kinematics side lengths close to 172 and 116 mm mean the origin is off.
   - Side lengths clearly off mean a joint offset.
   - The four joint readings are what is needed to fit the offsets.
-- **Errors pointing in different directions:** a joint has the wrong sign. A flipped shoulder_pan shows up as corners 1 and 2 swapped (y errors of opposite sign).
+- **Errors pointing in different directions:** a joint has the wrong sign. A flipped shoulder_pan shows up as left and right swapped: y errors of opposite sign on the two sides of the board.
 - Tried on the Mac with made-up readings:
   - exact readings: 0.0 cm;
   - a 4° shoulder_lift offset: the same error of 1.5-2.3 cm at all four corners, and the long sides come out 165-167 mm;
