@@ -135,7 +135,10 @@ def _run(cmd: list, max_minutes: float, log_path: str) -> tuple[int, float, list
         def pump() -> None:
             for line in proc.stdout:
                 log.write(line)
-                if "Training:" not in line:  # drop tqdm redraws from the Modal log
+                # tqdm redraws share a line with LeRobot's INFO metrics; keep only the INFO part
+                if "Training:" in line:
+                    line = line[line.find("INFO") :] if "INFO" in line else ""
+                if line:
                     sys.stdout.write(line)
                     sys.stdout.flush()
 
