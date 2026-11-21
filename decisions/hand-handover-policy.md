@@ -16,7 +16,7 @@ ACT is the default. SmolVLA is trained in parallel in the cloud and compared on 
 
 - **SmolVLA as the main policy** - not tried. Cloud training only, and with about 20 episodes the docs' own guidance (25 episodes "was not enough") and a hackathon report both point to it doing worse than ACT.
 - **pi0.5** - tried on Kamel's laptop, out of memory (`decisions/skill-policies.md`).
-- **ACT with temporal ensembling** - not tried; fallback if a small `n_action_steps` makes the motion jerky.
+- **ACT with temporal ensembling** - timed, not tried on the arm: about 20 Hz on the robot laptop's RTX 4050, too slow for 30 fps; fits on Kamel's 4070. Only an option if the demo runs on the 4070 laptop.
 
 ## Revisit if
 
