@@ -616,10 +616,10 @@ class _WristRobot:
                 "wrist": np.full((480, 640, 3), self.count, np.uint8)}
 
 
-def wrist_frames_shared() -> None:
+def wrist_frames_shared(handtrack_dir: Path) -> None:
     import run_supervisor
 
-    frame_link = import_from(SUPERVISOR.parent / "handtrack", "frame_link")
+    frame_link = import_from(handtrack_dir, "frame_link")
     name = f"wrist_test_{int(time.time())}"
     writer = frame_link.FrameWriter(name)
     reader = frame_link.FrameReader(name)
@@ -733,6 +733,8 @@ def main() -> None:
     p.add_argument("--skip-policy", action="store_true")
     p.add_argument("--vision-dir", default=str(SUPERVISOR.parent / "vision"),
                    help="directory with #24's colour_detector.py and supervisor_adapter.py; that test is skipped if missing")
+    p.add_argument("--handtrack-dir", default=str(SUPERVISOR.parent / "handtrack"),
+                   help="directory with frame_link.py (on main, not on this branch); the wrist-block test is skipped if missing")
     args = p.parse_args()
     # ignore_cleanup_errors: on Windows the transition logs are still open when the folder is removed.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
@@ -747,7 +749,11 @@ def main() -> None:
         speed_cap()
         pick_end_rule()
         status_datagram()
-        wrist_frames_shared()
+        handtrack_dir = Path(args.handtrack_dir)
+        if (handtrack_dir / "frame_link.py").exists():
+            wrist_frames_shared(handtrack_dir)
+        else:
+            print(f"SKIP  wrist frames in the shared block: no frame_link.py in {handtrack_dir}")
         goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
