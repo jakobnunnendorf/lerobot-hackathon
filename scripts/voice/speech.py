@@ -7,6 +7,7 @@ import numpy as np
 from commands import DESTINATIONS
 
 SAMPLE_RATE = 16_000
+# kept with the dropped wake phrase: the Whisper results in decisions/voice-commands.md were measured with it
 WHISPER_PROMPT = " ".join(f"Hey bot, {phrases[0]}." for phrases in DESTINATIONS.values())
 
 Transcribe = Callable[[np.ndarray], str]

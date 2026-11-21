@@ -4,6 +4,7 @@ import queue
 import sys
 import threading
 import time
+from collections import deque
 from dataclasses import asdict
 from pathlib import Path
 
@@ -19,6 +20,11 @@ MAX_SECONDS = 8
 MIN_SECONDS = 0.3
 SILENCE_PEAK = 0.01
 POLL_SECONDS = 0.2
+BLOCK_SECONDS = 0.05
+PRE_ROLL_SECONDS = 0.5
+TAIL_SECONDS = 0.3
+# the benchmark clips had this much silence at each end (benchmark.PAD_SECONDS); live recordings get the same
+PAD_SECONDS = 0.5
 RULE = "=" * 72
 ACTIONS = {"hand": "pick it, give it to a hand", "container": "pick it, put it in container"}
 
@@ -68,29 +74,69 @@ def load_backend(name: str) -> speech.Transcribe | None:
     return transcribe
 
 
+class Microphone:
+    # Always open, keeping the last half second: a stream opened on Enter delivered its first audio 0.12-0.33 s
+    # later on Tian's laptop, long enough to cut the first word of a command spoken right away.
+    # See decisions/voice-commands.md.
+    def __init__(self, device: int | str | None) -> None:
+        self.lock = threading.Lock()
+        self.recent: deque[np.ndarray] = deque(maxlen=round(PRE_ROLL_SECONDS / BLOCK_SECONDS))
+        self.taken: list[np.ndarray] | None = None
+        self.stream = sd.InputStream(
+            samplerate=speech.SAMPLE_RATE,
+            channels=1,
+            dtype="float32",
+            device=device,
+            blocksize=round(BLOCK_SECONDS * speech.SAMPLE_RATE),
+            callback=self.receive,
+        )
+        self.stream.start()
+
+    def receive(self, data: np.ndarray, *_) -> None:
+        with self.lock:
+            self.recent.append(data[:, 0].copy())
+            if self.taken is not None:
+                self.taken.append(self.recent[-1])
+
+    def start(self) -> None:
+        with self.lock:
+            self.taken = list(self.recent)
+
+    def stop(self) -> np.ndarray:
+        with self.lock:
+            taken, self.taken = self.taken or [], None
+        return np.concatenate(taken) if taken else np.zeros(0, np.float32)
+
+
 def run_interactive(transcribe: speech.Transcribe | None, args: argparse.Namespace) -> None:
     lines = start_line_reader()
-    show_microphone(args.device)
+    microphone = open_microphone(args.device)
     while True:
         print_menu()
         line = next_line(lines)
         if line == "q":
             return
         if line == "":
-            listen_once(lines, transcribe, args)
+            listen_once(lines, microphone, transcribe, args)
         elif (command := commands.from_key(line)) is not None:
             show(f"KEY {line}", command, "")
             deliver(command, args)
         discard_pending(lines)
 
 
-def listen_once(lines: queue.Queue[str], transcribe: speech.Transcribe | None, args: argparse.Namespace) -> None:
+def listen_once(
+    lines: queue.Queue[str],
+    microphone: Microphone | None,
+    transcribe: speech.Transcribe | None,
+    args: argparse.Namespace,
+) -> None:
     if transcribe is None:
         print("No speech-to-text loaded. Use the number keys.")
         return
-    audio = record(lines, args.device)
-    if audio is not None:
-        handle_audio(audio, transcribe, args)
+    if microphone is None:
+        print("No microphone. Use the number keys, or pick a microphone with --list-devices and --device.")
+        return
+    handle_audio(record(lines, microphone), transcribe, args)
 
 
 def start_line_reader() -> queue.Queue[str]:
@@ -125,25 +171,25 @@ def discard_pending(lines: queue.Queue[str]) -> None:
             return
 
 
-def record(lines: queue.Queue[str], device: int | str | None) -> np.ndarray | None:
-    chunks: list[np.ndarray] = []
+def open_microphone(device: int | str | None) -> Microphone | None:
     try:
-        stream = sd.InputStream(
-            samplerate=speech.SAMPLE_RATE,
-            channels=1,
-            dtype="float32",
-            device=device,
-            callback=lambda data, *_: chunks.append(data.copy()),
-        )
-        with stream:
-            print(f"RECORDING ... press Enter to stop (stops by itself after {MAX_SECONDS} s)", flush=True)
-            if next_line(lines, MAX_SECONDS) is None:
-                print(f"stopped after {MAX_SECONDS} s")
+        microphone = Microphone(device)
+        print(f"microphone: {sd.query_devices(device, 'input')['name']}")
+        return microphone
     except (sd.PortAudioError, ValueError) as error:
         print(f"MICROPHONE FAILED: {error}\nUse the number keys, or pick a microphone with --list-devices and --device.")
         return None
-    audio = np.concatenate(chunks)[:, 0] if chunks else np.zeros(0, np.float32)
-    return audio[: MAX_SECONDS * speech.SAMPLE_RATE]
+
+
+def record(lines: queue.Queue[str], microphone: Microphone) -> np.ndarray:
+    microphone.start()
+    print(f"RECORDING ... press Enter to stop (stops by itself after {MAX_SECONDS} s)", flush=True)
+    if next_line(lines, MAX_SECONDS) is None:
+        print(f"stopped after {MAX_SECONDS} s")
+    # Enter is often pressed on the last syllable
+    time.sleep(TAIL_SECONDS)
+    audio = microphone.stop()
+    return audio[: round((PRE_ROLL_SECONDS + MAX_SECONDS + TAIL_SECONDS) * speech.SAMPLE_RATE)]
 
 
 def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: argparse.Namespace) -> None:
@@ -154,7 +200,7 @@ def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: 
         print("ONLY SILENCE RECORDED. Wrong microphone? See --list-devices and --device.")
         return
     started = time.perf_counter()
-    transcript = transcribe(audio)
+    transcript = transcribe(np.pad(audio, round(PAD_SECONDS * speech.SAMPLE_RATE)))
     seconds = time.perf_counter() - started
     command = commands.parse(transcript)
     show(f"HEARD    {transcript!r}  ({seconds:.1f} s)", command, transcript)
@@ -175,9 +221,8 @@ def show(heading: str, command: commands.Command | None, transcript: str) -> Non
 def show_scores(transcript: str) -> None:
     result = commands.scores(transcript)
     cutoff, margin = commands.MATCH_CUTOFF / 100, commands.MIN_MARGIN / 100
-    print(f"  match scores, 0-1: text similarity, not probabilities. A command needs {cutoff:.2f} for the wake phrase")
-    print(f"  and for one action, and a lead of {margin:.2f} over the other action.")
-    print(f'    {"wake phrase " + repr(commands.WAKE_PHRASE):<41}{result.wake:.2f}')
+    print(f"  match scores, 0-1: text similarity, not probabilities. A command needs {cutoff:.2f} for one action")
+    print(f"  and a lead of {margin:.2f} over the other action.")
     for destination, score in sorted(result.destinations.items(), key=lambda item: -item[1]):
         print(f"    {destination:<10} {ACTIONS.get(destination, ''):<30} {score:.2f}")
     print(f"    ball named: {', '.join(result.colours) or f'none, so {commands.DEFAULT_TARGET}'}")
@@ -195,13 +240,6 @@ def deliver(command: commands.Command, args: argparse.Namespace) -> None:
             f"NOT SENT: nothing is listening on {args.host}:{args.port}. "
             "Start the robot program, or python scripts/voice/link.py to test."
         )
-
-
-def show_microphone(device: int | str | None) -> None:
-    try:
-        print(f"microphone: {sd.query_devices(device, 'input')['name']}")
-    except (sd.PortAudioError, ValueError) as error:
-        print(f"NO MICROPHONE: {error}. The number keys still work.")
 
 
 def print_menu() -> None:

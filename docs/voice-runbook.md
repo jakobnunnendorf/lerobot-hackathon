@@ -41,13 +41,13 @@ scripts/voice/.venv/Scripts/python scripts/voice/listen.py
 ## What a good run looks like
 
 1. The listener prints `ready in ... s` and `microphone: <the headset you plugged in>`.
-2. Press Enter, say "Hey bot, give it to me", press Enter.
-3. A box shows `HEARD 'Hey bot, give it to me.'` and `>>> HAND  (striped ball)`, then `sent {...}`.
+2. Press Enter, say "Give it to me", press Enter.
+3. A box shows `HEARD 'Give it to me.'` and `>>> HAND  (striped ball)`, then `sent {...}`.
 4. Terminal 1 prints the same JSON line.
-5. Same with "Hey bot, put it in the container": `>>> CONTAINER`.
-6. "Hey bot, hand me the red ball" shows `>>> HAND  (red ball)`. Naming no colour means the striped ball; naming two colours is refused.
+5. Same with "Put it in the container": `>>> CONTAINER`.
+6. "Hand me the red ball" shows `>>> HAND  (red ball)`. Naming no colour means the striped ball; naming two colours is refused.
 
-Say "hey bot" first, then the command, in one breath. A recording stops by itself after 8 s.
+No wake phrase: pressing Enter is the wake-up call, so everything said until the second Enter counts. You can start speaking as you press Enter (the half second before it is kept) and press Enter again as you say the last word. A recording stops by itself after 8 s.
 
 ## Try it without the robot: what it hears and how it scores
 
@@ -55,14 +55,14 @@ Say "hey bot" first, then the command, in one breath. A recording stops by itsel
 scripts/voice/.venv/Scripts/python scripts/voice/listen.py --dry-run
 ```
 
-Press Enter, speak, press Enter. Under the transcript it prints a score from 0 to 1 for the wake phrase and for each action (`hand`: pick the ball and give it to a hand; `container`: pick it and put it in the container), and which ball colour was named. Nothing is sent, so no robot program is needed. The scores are text similarity between the transcript and the phrase table in `scripts/voice/commands.py`, not probabilities: a command needs 0.80 for the wake phrase and for one action, and a lead of 0.10 over the other action. `--dry-run` also works with `--wav` and with the keys 1 and 2.
+Press Enter, speak, press Enter. Under the transcript it prints a score from 0 to 1 for each action (`hand`: pick the ball and give it to a hand; `container`: pick it and put it in the container), and which ball colour was named. Nothing is sent, so no robot program is needed. The scores are text similarity between the transcript and the phrase table in `scripts/voice/commands.py`, not probabilities: a command needs 0.80 for one action and a lead of 0.10 over the other action. `--dry-run` also works with `--wav` and with the keys 1 and 2.
 
 ## When something goes wrong
 
 | You see | Do |
 | --- | --- |
-| `NOT UNDERSTOOD: no "hey bot" at the start` | Say it again, "hey bot" first and clearly. |
-| `NOT UNDERSTOOD: no single command recognised` | Say one of the two commands, not both. |
+| `NOT UNDERSTOOD: no single command recognised` | Say one of the two commands, not both. If the transcript is right but not matched, add the phrasing (below). |
+| `NOT UNDERSTOOD: more than one ball colour named` | Name one colour, or none for the striped ball. |
 | `ONLY SILENCE RECORDED` | Wrong or muted microphone. See below. |
 | `MICROPHONE FAILED` or `SPEECH-TO-TEXT FAILED TO LOAD` | Type `1` + Enter (give it to me) or `2` + Enter (put it in the container). Same commands, `"source": "keyboard"`. |
 | `NOT SENT: nothing is listening` | Start the robot program or terminal 1. The listener keeps running; just say the command again. |
@@ -89,9 +89,8 @@ The file must be 16 kHz mono 16-bit WAV.
 ## Add a phrase
 
 1. Add it to the destination's list in `DESTINATIONS` in `scripts/voice/commands.py`. A new destination also needs a key in `KEYS`, and the robot program must know its name.
-2. If the screen shows the wake phrase written wrongly (for example `Hay but`) and it was rejected with `no "hey bot" at the start`, add that spelling, lower case without punctuation, to `WAKE_VARIANTS`. Not ordinary words such as `People`: then almost any sentence would pass.
-3. Add the sentence to `tests/voice_parse.py` and run it until it prints `PASS`.
-4. Optional: `scripts/voice/.venv/Scripts/python scripts/voice/benchmark.py --rescore` re-checks the saved transcripts against the changed parser in seconds. Without `--rescore` it re-measures all recognisers on synthetic speech, about 1.5 to 2 hours (Whisper small alone about an hour); `--latency` times a fixed subset only, about 15 minutes on mains power with nothing else running. The saved transcripts live in `scripts/voice/.venv/tmp/benchmark/` on Tian's laptop only.
+2. Add the sentence to `tests/voice_parse.py` and run it until it prints `PASS`.
+3. Optional: `scripts/voice/.venv/Scripts/python scripts/voice/benchmark.py --rescore` re-checks the saved transcripts against the changed parser in seconds. Without `--rescore` it re-measures all recognisers on synthetic speech, about 1.5 to 2 hours (Whisper small alone about an hour); `--latency` times a fixed subset only, about 15 minutes on mains power with nothing else running. The saved transcripts live in `scripts/voice/.venv/tmp/benchmark/` on Tian's laptop only.
 
 ## Robot program in WSL2
 
