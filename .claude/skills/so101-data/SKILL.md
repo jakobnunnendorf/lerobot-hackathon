@@ -17,6 +17,9 @@ description: Use for ANY work that touches the so101_pick_* striped-ball data - 
 | choosing a hold-out split, eval or trial protocol | §6 Evaluation |
 | planning what to record next | §7 Recording |
 | combining datasets | §8 Merging |
+| a trial failed and you want the closest training demos | §9 Nearest-demo lookup |
+| data from different days or sessions, or a policy worse on new days | §10 Scene drift |
+| choosing chunk size, time budget or smoothing, or spotting bad demos by motion | §11 Motion statistics |
 
 Don't load the whole guide for a narrow task. The full numbers and tables are in `research/DATASET_GUIDE.md`.
 
@@ -114,7 +117,7 @@ Don't load the whole guide for a narrow task. The full numbers and tables are in
 3. **Count the pattern** in the labels or `episodes.csv` before you blame it.
 4. **Test offline before any paid run.** Replay training episodes open-loop and check the first target and the hole. Tian's check: right first target 7 of 7, right hole 7 of 7.
 5. **Fix it in the data or the setup**, not with more training steps: filter, add a task sentence, let the supervisor decide, or record what is missing (§7).
-- **Nearest-demo lookup (open idea):** for a failed trial, find the training episodes whose start frames look most like the trial scene, and check what the operator did there.
+- For the closest training demos to a failed trial, see §9.
 
 ## 5. Curation per architecture
 Answer each item in your run note and post the kept and dropped counts on board #1.
@@ -165,8 +168,55 @@ Answer each item in your run note and post the kept and dropped counts on board 
 - Keep the hold-out episodes fixed across merges.
 - Keep the source dataset and episode id on every segment, so labels and failures can be traced back.
 
+## 9. Nearest-demo lookup for a failed trial
+Use it to find out whether the policy failed on a scene the data covers badly, or covers inconsistently.
+1. **Save the trial's start frames:** the top camera, plus the wrist camera if it is useful. Every trial should log the top frame (§6).
+2. **Embed** the trial frame and the first top frame of every training episode with one fixed image encoder. Use the policy's own vision backbone if you can, otherwise a small CLIP or DINO model.
+   - Add cheap scene features: the stripe pixel count, the number of red and blue (or foil) pixels in the bowl, and the striped ball's position.
+3. **Take the k = 5–10 nearest episodes.** List each one's labelled path from §3: start state, clears, the visibility at the grab, `wrist_blind`, misses.
+4. **Read the result:**
+   - few near neighbours, or large distances: the scene isn't covered, so record it (§7);
+   - neighbours disagree on the decision, e.g. clear vs direct: the data is inconsistent, so curate (§5.4) or let the supervisor decide;
+   - neighbours agree but the policy did otherwise: suspect the model or its inputs, such as the token size or the chunk length, not the data.
+5. **Post the trial frame, the neighbour ids and their paths on board #1.**
+- Cost: offline, a CPU or small GPU, minutes. Cache the embeddings per dataset.
+
+## 10. Scene drift checks across days and sessions
+Use it before merging data from different sessions, and when a policy is worse on a new day.
+1. **Group episodes by recording time.** Use the episode timestamps or the dataset/session, and the scenario blocks (§6).
+2. **Per group, compute from the first top and wrist frames:**
+   - mean brightness and contrast (exposure);
+   - colour balance (mean R, G, B in the bowl region);
+   - the bowl's position: centroid of the bowl mask, or of the ball pixels;
+   - the hole positions: shoulder pan at the `r_hole` and `b_hole` drops (expected −35 to −29° and +22 to +28°).
+3. **Also per group:** the start-state mix (buried, partly, visible) and the number of balls in the bowl.
+4. **Flag a group** when exposure or colour is more than about 2 standard deviations from the rest, the bowl centroid has moved more than a few cm, or the hole pans have shifted.
+   - A shifted hole means the table setup moved: drop-position demos from that group don't transfer.
+5. **What to do about it:**
+   - mild exposure or colour drift: colour-jitter augmentation in training;
+   - a moved bowl or holes: keep that group separate, or re-record;
+   - a different scene mix: re-balance (§5.7).
+6. **On the arm:** compare the trial's start frame with these group statistics before blaming the policy. A trial under different lighting is a drift problem.
+
+## 11. Motion statistics per scene
+Use them to choose the ACT chunk size, the skill time budgets and any action smoothing, and to find bad demos by their motion.
+1. **From `action` and `observation.state` per episode and per segment** (`segments.csv`), compute:
+   - duration;
+   - idle time, i.e. joint speed below a small threshold, plus the longest idle stretch;
+   - jerk (third difference of joint positions), mean and 95th percentile;
+   - the number of direction reversals per joint;
+   - gripper opening before each close (target 40 or more);
+   - lag between action and state (tracking error).
+2. **Per scene class and segment type** (`clear_r`, `clear_b`, `pick_s`), report the median and the spread.
+3. **Use the numbers:**
+   - **ACT chunk size:**
+     - keep `n_action_steps` × (1/30 s) shorter than the typical sub-motion, e.g. approach, close, lift;
+     - longer than the typical blind window (§5.2);
+     - 100 steps = 3.3 s; 50 = 1.7 s.
+   - **Skill time budgets:** the segment-duration p95 plus a margin. The supervisor checks the result after the budget (CLAUDE.md: "a policy never reports that it is done").
+   - **Outlier demos:** high jerk, long idle or many reversals usually mean a hesitating or correcting operator. Drop them or cut around them.
+   - **Smoothing:** if the demos themselves are jerky, filter the actions before training, rather than teaching the jitter.
+4. **Post the per-scene table** with your run note, so the chunk and budget choices can be traced.
+
 ## Open ideas (not done yet; add results here when someone does them)
-- **Operator consistency score:** per decision (clear or pick, stop clearing), how often the demos disagree in similar scenes.
-- **Scene drift checks** across recording days: lighting, camera exposure, bowl and hole positions.
-- **Motion statistics** per scene: jerkiness, idle time and episode length, to choose ACT chunk sizes and time budgets.
-- **Nearest-demo lookup** for failed trials (§4).
+- **Operator consistency score:** per decision (clear or pick, stop clearing), how often the demos disagree in similar scenes. §9's neighbour search gives the "similar scenes".
