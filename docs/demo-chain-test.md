@@ -11,6 +11,8 @@ For the people at the robot laptop. One round:
 
 "Put in container" picks the same way and puts the ball down at the put-down pose. Red and blue are greyed out: there is no red or blue pick skill.
 
+The same program can also dance: see `docs/dance.md`.
+
 The program is the supervisor (#17) on branch `TianK003/demo-chain`; why it works this way is in `decisions/supervisor.md` and `decisions/dashboard.md`. Hand on the power switch for every round.
 
 ## 0. Once: code and environments (WSL, about 10 min on good Wi-Fi)

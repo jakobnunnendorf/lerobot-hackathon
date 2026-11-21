@@ -19,7 +19,9 @@ from frame_link import FrameWriter  # noqa: E402
 from status import Status  # noqa: E402
 
 REST = [-5.6, -102.8, 96.6, -100.1, -5.2]
-BUDGETS = {"PICK": 90.0, "GIVE": 45.0, "PUT_DOWN": 20.0, "REST": 15.0}
+BUDGETS = {"PICK": 90.0, "GIVE": 45.0, "PUT_DOWN": 20.0, "REST": 15.0, "DANCE": 120.0}
+DANCE = "dance FAKE/so101_gestures_dance:1"
+DANCE_POSES = ([10, -60, 0, 80, 0], [-10, -55, 5, 90, 20], [0, -58, -8, 84, 0])
 
 
 class Log:
@@ -124,6 +126,32 @@ class FakeRobot:
         self.state = "REST"
 
 
+    def run_dance(self) -> None:
+        self.round += 1
+        self.abort.clear()
+        started, states, outcome = time.monotonic(), ["REST"], "aborted"
+        self.state = "REST"
+        self.log.write(event="round_start", round=self.round, target=None, destination=None, dance=DANCE)
+        try:
+            self.wait(1.0, gripper=30.0, joints=REST)
+            self.go("DANCE", "at rest")
+            states.append("DANCE")
+            for joints in DANCE_POSES:
+                self.wait(1.0, joints=joints)
+            self.go("REST", "dance: replayed", skill="replayed", dance=DANCE)
+            states.append("REST")
+            outcome = "danced"
+            self.wait(1.0, joints=REST)
+            self.go("DONE", "round over: danced")
+            states.append("DONE")
+        except Aborted:
+            self.go("ABORT", "abort requested")
+            states.append("ABORT")
+        self.log.write(event="round_end", round=self.round, outcome=outcome, pick_attempts=0, clear_attempts=0,
+                       wrong_balls=0, duration_s=round(time.monotonic() - started, 2), states=states)
+        self.state = "REST"
+
+
 def pattern(label: str, t: float) -> np.ndarray:
     image = np.zeros((480, 640, 3), np.uint8)
     image[..., 0] = np.linspace(40, 120, 640, dtype=np.uint8)[None, :]
@@ -156,13 +184,14 @@ def main() -> None:
     p.add_argument("--top-shm", default="top_camera_frames")
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
     p.add_argument("--quiet-pick", type=float, default=0.0, help="seconds without a status in each PICK")
+    p.add_argument("--no-dance", action="store_true", help="as a robot program started without --dance-episode")
     args = p.parse_args()
     log_dir = Path(args.log_dir).expanduser()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"chain_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
     log = Log(log_path)
     status = FakeStatus()
-    status.update(available={"targets": ["striped"], "destinations": ["hand", "container"]},
+    status.update(available={"targets": ["striped"], "destinations": ["hand", "container"], "dance": not args.no_dance},
                   pick_policy="FAKE Space0code/act_redblue_from_foil@015000", log_path=str(log_path.resolve()),
                   budgets_s=BUDGETS, hold_range=[6.0, 20.0], min_held_target_area_px=120, gripper=30.0, joints=REST,
                   observes=0, fake=True)
@@ -193,7 +222,10 @@ def main() -> None:
             if pending:
                 command = pending.pop(0)
                 print(f"round: {command}", flush=True)
-                robot.run_round(command.get("target"), command.get("destination"))
+                if command.get("dance"):
+                    robot.run_dance()
+                else:
+                    robot.run_round(command.get("target"), command.get("destination"))
             time.sleep(0.1)
     except KeyboardInterrupt:
         pass

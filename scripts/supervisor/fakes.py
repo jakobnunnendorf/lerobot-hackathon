@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from machine import Sensors, Settings, Skills
 from grasp_check import GraspCheckSettings
-from skills import PRESENT_POSE, PresentAndDrop, action_of, holding_move, pose_of, step_towards
+from skills import PRESENT_POSE, PresentAndDrop, Replay, action_of, dance_actions, holding_move, pose_of, step_towards
 
 DRY_RUN_REST = np.array([0.0, 20.0, 60.0, 90.0, 0.0, 30.0])
 HELD_READING, EMPTY_CLOSED_READING, CLOSED_GOAL = 13.0, 0.5, 2.0
@@ -260,6 +260,27 @@ class Scenario:
     stuck_after_miss_ticks: int = 0
     # Gripper servo load: "physics" (480 holding, 120 for a "light" hold, 30 empty), "raises" (read fails).
     load: str = "physics"
+    # A dance round (run_round(dance=True)) with the synthetic dance below, or none (no --dance-episode).
+    dance: bool = False
+    dance_available: bool = True
+    dance_max_step_deg: float | None = 3.0
+    holding_at_start: bool = False
+
+
+DANCE_SPEED = 0.5
+
+
+# Two recorded seconds at 30 fps: pan swings faster than the 3 deg/tick cap at half speed, wrist flex goes up to 110,
+# past our envelope (102.1).
+def synthetic_dance_recording() -> np.ndarray:
+    t = np.arange(60)
+    return np.column_stack([30 * np.sin(2 * np.pi * t / 30), 20 + 10 * np.sin(2 * np.pi * t / 60), np.full(60, 60.0),
+                            95 + 15 * np.sin(2 * np.pi * t / 20), np.zeros(60), np.zeros(60)])
+
+
+def synthetic_dance(cap: float | None):
+    frames, _ = dance_actions(synthetic_dance_recording(), DANCE_SPEED, DRY_RUN_REST[5])
+    return lambda: Replay("dance synthetic:0", frames, play_max_step_deg=cap)
 
 
 FAKE_HELD_AREA_PX, FAKE_HELD_THRESHOLD_PX = 900, 300
@@ -290,6 +311,8 @@ def build(scenario: Scenario):
                   block_after_pick=scenario.block_after_pick, held_balls=list(scenario.held_balls),
                   grasps=list(scenario.grasps), lag_deg=scenario.lag_deg, lift_floor=scenario.lift_floor,
                   stuck_after_miss_ticks=scenario.stuck_after_miss_ticks)
+    if scenario.holding_at_start:
+        world.holding, world.held_ball = True, "striped"
     arm = FakeArm(world, abort)
     containers = {c: scripted("put_down_" + c, world, ["ok"], release_effect(world, "ok")) for c in ("red", "blue")}
     skills = Skills(
@@ -304,6 +327,7 @@ def build(scenario: Scenario):
         pick_colour=(lambda target: scripted("pick_" + target, world, scenario.picks, pick_effect(world), ticks=60)())
         if scenario.colour_pick else None,
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
+        dance=synthetic_dance(scenario.dance_max_step_deg) if scenario.dance_available else None,
     )
     sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
@@ -320,7 +344,7 @@ def build(scenario: Scenario):
 
 
 R, P, V, G, U, D, A = "REST", "PICK", "VERIFY_HOLD", "GIVE", "PUT_DOWN", "DONE", "ABORT"
-L, C, S = "LOOK", "CLEAR_GRAY", "SHAKE"
+L, C, S, DA = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE"
 
 SCENARIOS = [
     Scenario("pick_then_give", [R, P, V, G, R, D], "given"),
@@ -404,4 +428,8 @@ SCENARIOS = [
              settings={"grasp_check": None}),
     Scenario("held_check_detector_unavailable_accepts", [R, P, V, G, R, D], "given", held_balls=["red"],
              held_check="unavailable"),
+    Scenario("dance_from_rest", [R, DA, R, D], "danced", dance=True),
+    Scenario("dance_refused_while_holding", [R, D], "refused_holding", dance=True, holding_at_start=True),
+    Scenario("dance_unavailable_refused", [], "unsupported_dance", dance=True, dance_available=False),
+    Scenario("abort_key_during_dance", [R, DA, A], "aborted", dance=True, abort_at_tick=80),
 ]

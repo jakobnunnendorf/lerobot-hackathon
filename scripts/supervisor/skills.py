@@ -105,8 +105,9 @@ def put_down_at(pose_holding: np.ndarray, gripper_open: float) -> Sequence:
 
 
 class Replay:
-    def __init__(self, name: str, actions: np.ndarray, max_step_deg: float = 1.5):
+    def __init__(self, name: str, actions: np.ndarray, max_step_deg: float = 1.5, play_max_step_deg: float | None = None):
         self.name, self.actions, self.max_step_deg = name, np.asarray(actions, dtype=float), max_step_deg
+        self.play_max_step_deg = play_max_step_deg
 
     def start(self, obs, last_sent, now):
         self.commanded, self.frame = pose_of(last_sent), -1
@@ -120,7 +121,9 @@ class Replay:
             if np.allclose(arm, first[:5]):
                 self.frame = 0
             return action_of(self.commanded)
-        self.commanded = self.actions[self.frame]
+        goal = self.actions[self.frame]
+        arm = goal[:5] if self.play_max_step_deg is None else step_towards(self.commanded[:5], goal[:5], self.play_max_step_deg)
+        self.commanded = np.concatenate([arm, goal[5:]])
         self.frame += 1
         return action_of(self.commanded)
 
@@ -129,6 +132,30 @@ class Replay:
 
     def result(self):
         return "replayed"
+
+
+# Action min/max of the five arm joints over molnrb/so101_pick_rb_mixed (meta/stats.json, read 2026-11-21): the range
+# teleoperation drove our own arm through. A borrowed dance is clamped to it (decisions/dance.md).
+ARM_ENVELOPE = (np.array([-63.2, -104.6, -96.9, -101.7, -127.3]), np.array([38.0, 56.6, 97.8, 102.1, 132.4]))
+
+
+def dance_actions(recorded: np.ndarray, speed: float, gripper: float) -> tuple[np.ndarray, np.ndarray]:
+    """The recording stretched to 1/speed of its pace, arm joints clamped to ARM_ENVELOPE, gripper held at `gripper`.
+
+    Returns the frames and, per arm joint, the most any frame was clamped (deg).
+    """
+    recorded = np.asarray(recorded, dtype=float)[:, :5]
+    count = round((len(recorded) - 1) / speed) + 1
+    times = np.linspace(0, len(recorded) - 1, count)
+    stretched = np.column_stack([np.interp(times, np.arange(len(recorded)), joint) for joint in recorded.T])
+    clamped = np.clip(stretched, *ARM_ENVELOPE)
+    return np.column_stack([clamped, np.full(count, gripper)]), np.abs(stretched - clamped).max(axis=0)
+
+
+def lowest_tip(frames: np.ndarray, start: np.ndarray, tip_height) -> float:
+    """Lowest tip height over the straight joint-space approach from `start` (as Replay moves) and the frames."""
+    approach = np.linspace(np.asarray(start, dtype=float)[:5], frames[0, :5], 30)
+    return min(tip_height(joints) for joints in np.vstack([approach, frames[:, :5]]))
 
 
 def load_episode_actions(repo_id: str, episode: int, root: str | None = None) -> np.ndarray:

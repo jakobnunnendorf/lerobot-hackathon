@@ -18,6 +18,9 @@ DESTINATIONS = {
     ),
     "container": ("put it in the container", "container"),
 }
+# Whole words, like the colours: "dance" has no near-miss among the ball commands, and "dancing"/"boogie" cover
+# "let's go dancing" and "boogie time".
+DANCE_WORDS = {"dance", "dancing", "boogie"}
 KEYS = {"1": "hand", "2": "container"}
 MATCH_CUTOFF = 80
 MIN_MARGIN = 10
@@ -35,6 +38,8 @@ class Command:
 # when tried live. See decisions/voice-commands.md.
 def parse(transcript: str) -> Command | None:
     words = normalise(transcript).split()
+    if DANCE_WORDS & set(words):
+        return None
     destination = best_match(" ".join(words), DESTINATIONS)
     if destination is None:
         return None
@@ -65,8 +70,18 @@ def from_key(key: str) -> Command | None:
     return Command(DEFAULT_TARGET, destination, "", "keyboard")
 
 
+# A sentence with a dance word and a ball command is refused: which one was meant is a guess.
+def wants_dance(transcript: str) -> bool:
+    words = normalise(transcript).split()
+    return bool(DANCE_WORDS & set(words)) and best_match(" ".join(words), DESTINATIONS) is None
+
+
 def rejection_reason(transcript: str) -> str:
     words = normalise(transcript).split()
+    if wants_dance(transcript):
+        return "a dance: the dashboard starts it, not listen.py"
+    if DANCE_WORDS & set(words):
+        return "a dance and a ball command in one sentence"
     if best_match(" ".join(words), DESTINATIONS) is not None and named_target(words) is None:
         return "more than one ball colour named"
     return "no single command recognised"

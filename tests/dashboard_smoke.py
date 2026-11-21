@@ -79,6 +79,7 @@ def main() -> None:
             call("/api/abort", {})
             aborted = wait_for(lambda: "| 2 | striped -> container | aborted" in call("/api/summary"), 15)
             check("ABORT ends round 2 'aborted'", bool(aborted), call("/api/summary").splitlines()[-3:])
+            dance_round(Path(logs))
             sys.path.insert(0, str(ROOT / "scripts/dashboard"))
             no_overwrite(Path(logs))
             stale_status_keeps_log(Path(logs))
@@ -95,6 +96,24 @@ def main() -> None:
                 process.wait(timeout=10)
     print("FAIL" if failures else "PASS")
     sys.exit(1 if failures else 0)
+
+
+def dance_round(logs: Path) -> None:
+    mixed = call("/api/text", {"text": "dance and give me the ball"})
+    check("chat: a dance and a ball command in one sentence is refused", not mixed["ok"] and "dance" in mixed["reason"],
+          mixed["reason"])
+    danced = wait_for(lambda: (lambda reply: reply if reply["ok"] else None)(call("/api/text", {"text": "let's dance"})), 10)
+    check("chat 'let's dance' -> {\"dance\": true} sent", bool(danced) and danced["command"]["dance"] is True, str(danced))
+    busy = call("/api/dance", {})
+    check("Dance button right after: refused while the dance round runs", not busy["ok"] and "running" in busy["reason"],
+          busy["reason"])
+    ended = wait_for(lambda: "| 3 | dance FAKE/so101_gestures_dance:1 | danced" in call("/api/summary"), 20)
+    video = wait_for(lambda: next(logs.glob("chain_*_round03.mp4"), None), 10)
+    check("round 3 dances (REST -> DANCE -> REST), shows in the summary and is filmed", bool(ended) and bool(video),
+          str(call("/api/summary").splitlines()[-4:]))
+    again = wait_for(lambda: (lambda reply: reply if reply["ok"] else None)(call("/api/dance", {})), 10)
+    check("Dance button once the round is over -> sent", bool(again) and again["command"]["source"] == "dashboard", str(again))
+    wait_for(lambda: "| 4 | dance" in call("/api/summary"), 20)
 
 
 def round_video(logs: Path) -> None:

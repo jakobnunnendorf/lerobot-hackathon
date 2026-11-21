@@ -10,7 +10,8 @@ const DESTINATIONS = [
   { id: "container", label: "Put in container", icon: "📦" },
 ];
 const FLOW = ["REST", "PICK", "VERIFY_HOLD", "GIVE", "PUT_DOWN", "DONE"];
-const STATE_NAMES = { REST: "Rest", PICK: "Pick", VERIFY_HOLD: "Check ball", GIVE: "Hand over", PUT_DOWN: "Put down", DONE: "Done", ABORT: "Aborted" };
+const DANCE_FLOW = ["REST", "DANCE", "DONE"];
+const STATE_NAMES = { REST: "Rest", PICK: "Pick", VERIFY_HOLD: "Check ball", GIVE: "Hand over", PUT_DOWN: "Put down", DANCE: "Dance", DONE: "Done", ABORT: "Aborted" };
 const RESULT_BUTTONS = [
   ["success", "✓ success"], ["wrong_ball", "wrong ball"], ["empty", "empty"], ["dropped", "dropped"],
   ["still_digging", "digging"], ["other", "other"],
@@ -59,6 +60,22 @@ function reasonFor(target, destination) {
   return null;
 }
 
+function chainOf(start) {
+  return start.dance ? `💃 ${start.dance}` : `${start.target || "striped"} → ${start.destination || "-"}`;
+}
+
+// The robot program refuses a dance with a ball in the gripper as well; greyed out here so nobody has to try.
+function danceReason() {
+  const allowed = available();
+  if (!allowed) return "robot program not running";
+  if (!allowed.dance) return "no dance: start the robot program with --dance-episode";
+  if (running()) return "a round is running";
+  const band = state.status.hold_range || [6, 20];
+  const gripper = state.status.gripper;
+  if (typeof gripper === "number" && gripper >= band[0] && gripper <= band[1]) return "the gripper holds a ball";
+  return null;
+}
+
 function renderTiles() {
   const tiles = $("tiles");
   tiles.innerHTML = "";
@@ -75,6 +92,14 @@ function renderTiles() {
       tiles.appendChild(button);
     }
   }
+  const reason = danceReason();
+  const dance = document.createElement("button");
+  dance.className = "tile" + (reason ? "" : " ready");
+  dance.disabled = Boolean(reason);
+  dance.title = reason || "Replay a recorded dance from rest, then back to rest";
+  dance.innerHTML = `<span class="what">💃 Dance</span><span class="why">${reason || "from rest, gripper empty"}</span>`;
+  dance.onclick = startDance;
+  tiles.appendChild(dance);
 }
 
 async function post(url, body, raw = false) {
@@ -97,6 +122,7 @@ function say(text, kind) {
 function describe(reply) {
   if (reply.ok) {
     const c = reply.command;
+    if (c.dance) { say("▶ Starting: dance", "ok"); return; }
     say(`▶ Starting: ${c.target} ball → ${c.destination === "hand" ? "your hand" : "the container"}`, "ok");
     return;
   }
@@ -111,6 +137,11 @@ function describe(reply) {
 async function startChain(target, destination) {
   say(`${target} → ${destination}`, "me");
   describe(await post("/api/command", { target, destination }));
+}
+
+async function startDance() {
+  say("dance", "me");
+  describe(await post("/api/dance", {}));
 }
 
 $("chat-form").onsubmit = async (event) => {
@@ -202,7 +233,7 @@ function renderRound() {
     setBudget(0, "");
     return;
   }
-  const chain = `${shown.start.target || "striped"} ball → ${shown.start.destination || "no destination"}`;
+  const chain = shown.start.dance ? chainOf(shown.start) : `${shown.start.target || "striped"} ball → ${shown.start.destination || "no destination"}`;
   const last = shown.transitions[shown.transitions.length - 1];
   const now = current ? (last ? last.target : "REST") : (shown.end.outcome === "aborted" ? "ABORT" : "DONE");
   const visited = ["REST", ...shown.transitions.map((t) => t.target)];
@@ -218,13 +249,14 @@ function renderRound() {
     $("round-title").textContent = `Round ${shown.number}: ${shown.end.outcome.replace("_", " ")} in ${shown.end.duration_s} s`;
     setBudget(0, "");
   }
-  renderStates(now, visited);
+  renderStates(now, visited, Boolean(shown.start.dance));
 }
 
-function renderStates(now, visited) {
+function renderStates(now, visited, dance = false) {
   const div = $("states");
   div.innerHTML = "";
-  const flow = visited.includes("PUT_DOWN") || !visited.includes("GIVE") ? FLOW : FLOW.filter((s) => s !== "PUT_DOWN");
+  const flow = dance ? DANCE_FLOW
+    : visited.includes("PUT_DOWN") || !visited.includes("GIVE") ? FLOW : FLOW.filter((s) => s !== "PUT_DOWN");
   for (const s of now === "ABORT" ? [...flow, "ABORT"] : flow) {
     const chip = document.createElement("div");
     chip.className = "state" + (s === now ? (s === "ABORT" ? " abort" : " now") : visited.includes(s) ? " done" : "");
@@ -290,7 +322,7 @@ function renderHistory() {
   for (const r of finished) {
     const tr = document.createElement("tr");
     const marked = state.results[String(r.number)] || {};
-    tr.innerHTML = `<td>${r.number}</td><td>${r.start.target || "striped"} → ${r.start.destination || "-"}</td>` +
+    tr.innerHTML = `<td>${r.number}</td><td>${chainOf(r.start)}</td>` +
       `<td class="outcome-${r.end.outcome}">${r.end.outcome}</td><td>${r.end.duration_s}</td>` +
       `<td>${r.end.pick_attempts ?? "-"}</td><td>${r.end.wrong_balls ?? "-"}</td><td></td><td></td>`;
     const buttons = document.createElement("div");
@@ -326,7 +358,7 @@ function renderEvents() {
     const t = e.time ? e.time.slice(11, 19) : "";
     if (e.event === "transition") return `${t}  ${e.source} → ${e.target}: ${e.reason}`;
     if (e.event === "grasp_check") return `${t}  grasp check: ${e.verdict} (reading ${e.reading ?? "-"})`;
-    if (e.event === "round_start") return `${t}  round ${e.round} started: ${e.target || "striped"} → ${e.destination || "-"}`;
+    if (e.event === "round_start") return `${t}  round ${e.round} started: ${chainOf(e)}`;
     if (e.event === "round_end") return `${t}  round ${e.round} ended: ${e.outcome} in ${e.duration_s} s`;
     return `${t}  ${e.event}`;
   });
@@ -542,7 +574,7 @@ $("summary").onclick = async () => {
   $("summary-dialog").showModal();
 };
 
-say("Pick a tile, type a command, or click 🎤 and say “give me the ball”.", "info");
+say("Pick a tile, type a command, or click 🎤 and say “give me the ball” (or “let's dance”).", "info");
 let savedMode = "chain";
 try { savedMode = localStorage.getItem("mode") || "chain"; } catch (error) { /* per-viewer convenience only */ }
 setMode(savedMode === "collect" ? "collect" : "chain");

@@ -33,7 +33,8 @@ def fake_scenarios(log_path: str) -> None:
     log = TransitionLog(log_path, echo=False)
     for number, scenario in enumerate(SCENARIOS, 1):
         arm, skills, sensors, settings, abort, clock, world = build(scenario)
-        result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(number)
+        result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(
+            number, scenario.dance)
         states = [s.value for s in result.states]
         problems = []
         if states != scenario.expected:
@@ -505,6 +506,106 @@ def speed_cap() -> None:
           and capped(wanted, last, None) == wanted, str(sent))
 
 
+def dance(log_path: str) -> None:
+    import run_supervisor
+    from fakes import DANCE_SPEED, DRY_RUN_REST, synthetic_dance_recording
+    from skills import ARM_ENVELOPE, dance_actions, lowest_tip
+
+    def run(name: str, **changes):
+        scenario = next(s for s in SCENARIOS if s.name == name)
+        scenario = Scenario(**{**vars(scenario), **changes})
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        sent, original = [], arm.send
+        arm.send = lambda action: (sent.append(pose_of(action)), original(action))
+        log = TransitionLog(log_path, echo=False)
+        result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1, dance=True)
+        log.file.close()
+        events = [json.loads(line) for line in open(log_path)]
+        open(log_path, "w").close()
+        return result, np.array(sent), events, arm
+
+    result, sent, events, arm = run("dance_from_rest")
+    steps = np.abs(np.diff(np.vstack([DRY_RUN_REST, sent])[:, :5], axis=0)).max(axis=1)
+    start = next(e for e in events if e["event"] == "round_start")
+    check("dance: from REST it replays the episode (approach, frames) and comes back to REST, logged as a round",
+          result.outcome == "danced" and np.allclose(sent[-1], DRY_RUN_REST) and start["dance"] == "dance synthetic:0"
+          and len(sent) > 119, f"{len(sent)} sends, round_start {start}")
+    check("dance: speed cap 3 deg/tick honoured on every send (the recording asks for 3.1 at half speed), gripper held at 30",
+          steps.max() <= 3.0 + 1e-9 and steps.max() > 2.9 and np.all(sent[:, 5] == DRY_RUN_REST[5]), f"largest step {steps.max():.3f}")
+    low, high = ARM_ENVELOPE
+    check("dance: joints clamped to our envelope (wrist flex recorded up to 110, sent at most 102.1)",
+          np.all(sent[:, :5] <= high + 1e-9) and np.all(sent[:, :5] >= low - 1e-9) and np.isclose(sent[:, 3].max(), high[3]),
+          f"wrist flex max sent {sent[:, 3].max():.2f}")
+    result, sent, events, arm = run("dance_refused_while_holding")
+    check("dance: refused while holding a ball, nothing sent", result.outcome == "refused_holding" and len(sent) == 0,
+          f"{result.outcome}, {len(sent)} sends")
+    result, sent, events, arm = run("dance_unavailable_refused")
+    end = next(e for e in events if e["event"] == "round_end")
+    check("dance: no --dance-episode -> refused before the arm moves", result.outcome == "unsupported_dance"
+          and len(sent) == 0 and "--dance-episode" in end["reason"], str(end))
+    result, sent, events, arm = run("abort_key_during_dance")
+    check("dance: ABORT mid-dance holds the arm where it is (nothing sent after, not back at rest)",
+          result.outcome == "aborted" and arm.sends_after_abort == 0 and not np.allclose(sent[-1], DRY_RUN_REST),
+          f"last sent {np.round(sent[-1], 1).tolist()}")
+
+    frames, clamped = dance_actions(synthetic_dance_recording(), DANCE_SPEED, 30.0)
+    check("dance: half speed doubles the frames (interpolated), clamped degrees reported per joint",
+          len(frames) == 119 and np.allclose(frames[::2, 0], synthetic_dance_recording()[:, 0])
+          and np.isclose(clamped[3], 110 - high[3], atol=0.05) and clamped[0] == 0, f"{len(frames)} frames, clamped {clamped}")
+    tip = lambda joints: 0.30 - joints[1] / 1000  # noqa: E731
+    check("dance: lowest tip covers the approach from rest and the frames",
+          np.isclose(lowest_tip(np.array([[0, 50, 0, 0, 0, 30]] * 3, float), np.array([0, 100, 0, 0, 0, 30.0]), tip), 0.20))
+
+    commands = Commands()
+    commands.listen_voice("127.0.0.1", 18772)
+    link = import_from(SUPERVISOR.parent / "voice", "link")
+    sent_ok = link.send({"dance": True, "transcript": "let's dance", "source": "chat"}, port=18772)
+    deadline = time.monotonic() + 3
+    while not commands.go.is_set() and time.monotonic() < deadline:
+        time.sleep(1 / 30)
+    check("dance: {\"dance\": true} over the command port starts the next round as a dance, once",
+          sent_ok and commands.go.is_set() and commands.take_dance() and not commands.take_dance())
+    commands.request_dance()
+    scenario = Scenario("pick_then_give", [], "")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    sensors.finish_round = commands.clear
+    Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), TransitionLog(None, echo=False), abort, clock).run_round(1)
+    check("dance: a dance asked for during a round is dropped when the round ends", not commands.take_dance())
+    commands.voice.close()
+
+    def parsed(*flags):
+        saved = sys.argv
+        sys.argv = ["run_supervisor.py", "--fake", "all", *flags]
+        try:
+            return run_supervisor.parse_args()
+        finally:
+            sys.argv = saved
+
+    caps = [run_supervisor.dance_cap(parsed(*flags)) for flags in
+            ((), ("--max-step-deg", "15"), ("--max-step-deg", "15", "--dance-max-step-deg", "4"),
+             ("--max-step-deg", "2", "--dance-max-step-deg", "4"))]
+    check("dance: effective cap = the smaller of --dance-max-step-deg and --max-step-deg", caps == [None, 15.0, 4.0, 2.0], str(caps))
+    rejected = []
+    for speed in ("0", "1.5"):
+        try:
+            parsed("--dance-speed", speed)
+        except SystemExit:
+            rejected.append(speed)
+    check("dance: --dance-speed only in (0, 1]", rejected == ["0", "1.5"] and parsed("--dance-speed", "0.5").dance_speed == 0.5)
+    args = parsed("--dance-speed", "0.5", "--dance-max-step-deg", "4")
+    recording = synthetic_dance_recording()
+    factory = run_supervisor.dance_skill(args, [("a:1", recording), ("b:2", recording)], DRY_RUN_REST, lambda joints: 0.3)
+    names = [factory().name for _ in range(3)]
+    try:
+        run_supervisor.dance_skill(args, [("low:3", recording)], DRY_RUN_REST, lambda joints: 0.1)
+        refused = False
+    except SystemExit:
+        refused = True
+    check("dance: several episodes play in turn; one whose model tip goes below --dance-min-tip-height is refused at start",
+          names == ["dance a:1", "dance b:2", "dance a:1"] and refused and run_supervisor.dance_skill(args, [], DRY_RUN_REST, None) is None,
+          str(names))
+
+
 TWO_PALMS = [{"x": 0.20, "y": 0.03, "z": 0.13, "palm_up": True}, {"x": 0.20, "y": 0.09, "z": 0.13, "palm_up": True}]
 
 
@@ -926,6 +1027,7 @@ def main() -> None:
         free_names()
         robot_flags()
         speed_cap()
+        dance(f"{work}/dance.jsonl")
         pick_end_rule()
         status_datagram()
         handtrack_dir = Path(args.handtrack_dir)

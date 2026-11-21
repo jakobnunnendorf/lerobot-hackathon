@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import os
 import sys
 import time
@@ -23,11 +24,13 @@ from skills import (
     Settled,
     TopCameraVisibility,
     capped,
+    dance_actions,
     dataset_features,
     give_sequence,
     holding_move,
     import_from,
     load_episode_actions,
+    lowest_tip,
     pose_of,
     put_down_at,
 )
@@ -146,6 +149,7 @@ def settings_from(args) -> Settings:
                     max_clear_attempts=args.max_clear_attempts, max_pick_attempts=args.max_pick_attempts,
                     pick_timeout_s=args.pick_timeout, clear_timeout_s=args.clear_timeout,
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
+                    dance_timeout_s=args.dance_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     hold_min_load=args.hold_min_load,
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
@@ -254,6 +258,46 @@ def put_down_skill(args, arm):
     return lambda: put_down_at(np.concatenate([held_pose, [arm.last_sent["gripper.pos"]]]), args.gripper_open)
 
 
+def load_dances(args) -> list[tuple[str, np.ndarray]]:
+    dances = []
+    for spec in args.dance_episode:
+        repo_id, episode = spec.rsplit(":", 1)
+        dances.append((spec, load_episode_actions(repo_id, int(episode))))
+    return dances
+
+
+# The dance's own cap and the --max-step-deg cap in RobotArm.send both apply, so the smaller one holds.
+def dance_cap(args) -> float | None:
+    return min((cap for cap in (args.dance_max_step_deg, args.max_step_deg) if cap is not None), default=None)
+
+
+def dance_skill(args, dances: list[tuple[str, np.ndarray]], rest: np.ndarray, tip_height):
+    if not dances:
+        return None
+    cap = dance_cap(args)
+    if tip_height is None:
+        print("WARNING: no kinematics.py: the dance's tip height is not checked", flush=True)
+    prepared = []
+    for name, recorded in dances:
+        frames, clamped = dance_actions(recorded, args.dance_speed, rest[5])
+        if clamped.max() >= 1.0:
+            print(f"WARNING: dance {name} clamped to our arm's envelope by up to {np.round(clamped, 1).tolist()} deg "
+                  "(pan, lift, elbow, wrist flex, roll)", flush=True)
+        if tip_height is not None and (low := lowest_tip(frames, rest, tip_height)) < args.dance_min_tip_height:
+            sys.exit(f"dance {name}: the model puts the tip at {low:.3f} m, below --dance-min-tip-height "
+                     f"{args.dance_min_tip_height}; choose a calmer episode")
+        shown_cap = "none (as recorded)" if cap is None else cap
+        print(f"dance {name}: {len(recorded)} frames at speed {args.dance_speed} -> {len(frames) / args.fps:.1f} s, "
+              f"speed cap {shown_cap} deg/tick", flush=True)
+        prepared.append((name, frames))
+    queue = itertools.cycle(prepared)
+
+    def next_dance() -> Replay:
+        name, frames = next(queue)
+        return Replay(f"dance {name}", frames, max_step_deg=min(1.5, cap or 1.5), play_max_step_deg=args.dance_max_step_deg)
+    return next_dance
+
+
 def run_robot(args) -> None:
     if not (args.port and args.top_camera and args.wrist_camera):
         sys.exit("--robot needs --port, --top-camera and --wrist-camera")
@@ -278,6 +322,7 @@ def run_robot(args) -> None:
     rename = dict(pair.split("=", 1) for pair in args.camera_rename)
     pick_policy = LoadedPolicy(args.pick_policy, args.device, args.n_action_steps, rename)
     clear_policy = LoadedPolicy(args.clear_gray_policy, args.device, None, rename) if args.clear_gray_policy else None
+    dances = load_dances(args)
     receiver = import_from(handover_dir, "hand_socket").HandReceiver(*split_address(args.hand_listen)) if has_receiver else None
     frame_link_dir = Path(args.handtrack_dir)
     frame_writer, wrist_writer = None, None
@@ -291,7 +336,7 @@ def run_robot(args) -> None:
         print(f"WARNING: no frame_link.py in {frame_link_dir}: the hand tracker gets no top-camera frames", flush=True)
     try:
         run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy,
-                      clear_policy, wrist_writer)
+                      clear_policy, wrist_writer, dances)
     finally:
         # A crash or Ctrl-C must not leave the shared-memory blocks: the next start would fail with FileExistsError.
         for writer in (frame_writer, wrist_writer):
@@ -332,7 +377,7 @@ def give_settings_from(args) -> GiveSettings:
 
 
 def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy,
-                  clear_policy, wrist_writer=None) -> None:
+                  clear_policy, wrist_writer=None, dances=()) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
     log = TransitionLog(args.log)
@@ -377,6 +422,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
             tip_height = lambda joints: float(kinematics.forward_kinematics(np.asarray(joints))[2])  # noqa: E731
         elif args.grasp_max_tip_height is not None:
             sys.exit(f"--grasp-max-tip-height needs #13's kinematics.py in {handover_dir}")
+        skills.dance = dance_skill(args, list(dances), rest, tip_height)
         sensors = Sensors(palms_seen=palms_seen, gripper_load=arm.gripper_load, tip_height=tip_height, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
                           destination=commands.destination,
                           target=commands.target, finish_round=commands.clear, held_ball_area=held_check_hook(args),
@@ -391,9 +437,11 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   min_held_area_px=settings.min_held_area_px, camera_fourcc=args.camera_fourcc,
                   grasp_check=None if settings.grasp_check is None else vars(settings.grasp_check),
                   n_action_steps=pick_policy.policy.config.n_action_steps, budgets_s=budgets(settings),
-                  put_down_pose=args.put_down_pose)
+                  put_down_pose=args.put_down_pose, dance=args.dance_episode, dance_speed=args.dance_speed,
+                  dance_max_step_deg=dance_cap(args))
         publish_status(args, skills, receiver, settings)
-        print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.", flush=True)
+        print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, "
+              "d + Enter: dance, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
                 commands.go.clear()
@@ -401,7 +449,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                     supervisor.idle_until(commands.go)
                 except Aborted:
                     break
-            if supervisor.run_round(number).outcome == "aborted":
+            if supervisor.run_round(number, dance=commands.take_dance()).outcome == "aborted":
                 print("ABORT: arm holds its pose with torque on. Hold the arm, then switch the power off.", flush=True)
                 break
     finally:
@@ -417,13 +465,14 @@ def tick_log_path(log: str) -> str:
 
 def budgets(settings: Settings) -> dict:
     return {"PICK": settings.pick_timeout_s, "GIVE": settings.give_timeout_s, "PUT_DOWN": settings.put_down_timeout_s,
-            "REST": settings.move_timeout_s, "CLEAR_GRAY": settings.clear_timeout_s}
+            "REST": settings.move_timeout_s, "CLEAR_GRAY": settings.clear_timeout_s, "DANCE": settings.dance_timeout_s}
 
 
 def publish_status(args, skills: Skills, receiver, settings: Settings) -> None:
     targets = ["striped", *(["red", "blue"] if skills.pick_colour else [])]
     destinations = [*(["hand"] if skills.give else []), "container"]
-    STATUS.update(available={"targets": targets, "destinations": destinations}, pick_policy=args.pick_policy,
+    STATUS.update(available={"targets": targets, "destinations": destinations, "dance": skills.dance is not None},
+                  pick_policy=args.pick_policy,
                   log_path=str(Path(args.log).resolve()) if args.log else None, budgets_s=budgets(settings),
                   hold_range=list(settings.hold_range), min_held_target_area_px=args.min_held_target_area)
     if receiver is not None:
@@ -453,8 +502,15 @@ def run_fake(args) -> None:
     for number, scenario in enumerate(chosen, 1):
         arm, skills, sensors, settings, abort, clock, _world = build(scenario)
         rest = pose_of(arm.last_sent)
-        result = Supervisor(arm, skills, sensors, settings, rest, log, abort, clock).run_round(number)
+        result = Supervisor(arm, skills, sensors, settings, rest, log, abort, clock).run_round(number, scenario.dance)
         print(f"{scenario.name:32s} {result.outcome:9s} {' -> '.join(s.value for s in result.states)}")
+
+
+def playback_speed(value: str) -> float:
+    speed = float(value)
+    if not 0 < speed <= 1:
+        raise argparse.ArgumentTypeError("a dance plays at its recorded pace (1) or slower, e.g. 0.5")
+    return speed
 
 
 def parse_args() -> argparse.Namespace:
@@ -589,6 +645,16 @@ def parse_args() -> argparse.Namespace:
                    help="grasp check: a close with the FK tip above this (m) is a miss at once; off by default "
                         "(model tip z at holding closes 0.02-0.16 m, empty closes overlap)")
     p.add_argument("--max-step-deg", type=float, help="speed cap: largest arm joint change per tick, all skills")
+    p.add_argument("--dance-episode", action="append", default=[], metavar="REPO_ID:EPISODE",
+                   help="an episode replayed as a dance (d + Enter, or Dance on the dashboard); repeat it for several, "
+                        "played in turn. None: no dance. See docs/dance.md")
+    p.add_argument("--dance-speed", type=playback_speed, default=1.0,
+                   help="dance playback pace, 0.5 = half speed (frames interpolated); at most 1")
+    p.add_argument("--dance-max-step-deg", type=float,
+                   help="dance speed cap (deg per tick, arm joints); default: --max-step-deg alone. The smaller of the two holds")
+    p.add_argument("--dance-timeout", type=float, default=Settings.dance_timeout_s)
+    p.add_argument("--dance-min-tip-height", type=float, default=0.20,
+                   help="refuse a dance whose tip (our kinematic model) goes below this many metres, approach included")
     return p.parse_args()
 
 

@@ -23,6 +23,7 @@ class State(Enum):
     GIVE = "GIVE"
     SHAKE = "SHAKE"
     PUT_DOWN = "PUT_DOWN"
+    DANCE = "DANCE"
     DONE = "DONE"
     ABORT = "ABORT"
 
@@ -41,6 +42,7 @@ class Settings:
     give_timeout_s: float = 45.0
     shake_timeout_s: float = 15.0
     put_down_timeout_s: float = 20.0
+    dance_timeout_s: float = 120.0
     move_timeout_s: float = 15.0
     hold_range: tuple[float, float] = (6.0, 20.0)
     gripper_hold: float | None = None
@@ -91,6 +93,8 @@ class Skills:
     clear_gray: Callable[[], Skill] | None = None
     shake: Callable[[], Skill] | None = None
     present: Callable[[], Skill] | None = None
+    # A replayed dance, the next one each call. None: no --dance-episode, a dance round is refused before the arm moves.
+    dance: Callable[[], Skill] | None = None
 
 
 @dataclass
@@ -168,6 +172,7 @@ class Round:
     after_rest: State = State.LOOK
     target: str | None = None
     colour: str | None = None
+    dance: Skill | None = None
     states: list[State] = field(default_factory=list)
 
 
@@ -185,22 +190,29 @@ class Supervisor:
         self.hold_load: float | None = None
         self.handlers = {State.REST: self._rest, State.LOOK: self._look, State.CLEAR_GRAY: self._clear_gray,
                          State.PICK: self._pick, State.VERIFY_HOLD: self._verify_hold, State.GIVE: self._give,
-                         State.SHAKE: self._shake, State.PUT_DOWN: self._put_down}
+                         State.SHAKE: self._shake, State.PUT_DOWN: self._put_down, State.DANCE: self._dance}
 
-    def run_round(self, number: int) -> Round:
+    def run_round(self, number: int, dance: bool = False) -> Round:
         try:
-            return self._run_round(number)
+            return self._run_round(number, dance)
         finally:
             self.sensors.finish_round()
 
-    def _run_round(self, number: int) -> Round:
-        self.round = Round(number, self.clock.now(), after_rest=self._first_state(), target=self.sensors.target())
+    def _run_round(self, number: int, dance: bool) -> Round:
+        if dance:
+            self.round = Round(number, self.clock.now(), after_rest=State.DANCE,
+                               dance=self.skills.dance() if self.skills.dance else None)
+            self.log.write(event="round_start", round=number, target=None, destination=None,
+                           dance=self.round.dance.name if self.round.dance else "unavailable")
+        else:
+            self.round = Round(number, self.clock.now(), after_rest=self._first_state(), target=self.sensors.target())
+            self.log.write(event="round_start", round=number, target=self.round.target, destination=self.sensors.destination())
         state = State.REST
-        self.log.write(event="round_start", round=number, target=self.round.target, destination=self.sensors.destination())
-        if self.round.target in COLOURS and self.skills.pick_colour is None:
-            self.round.outcome = "unsupported_target"
+        refusal = self._refusal(dance)
+        if refusal:
+            self.round.outcome, reason = refusal
             self.log.write(event="round_end", round=number, outcome=self.round.outcome, pick_attempts=0, clear_attempts=0,
-                           duration_s=0.0, states=[], reason=f"no pick skill for {self.round.target!r} yet")
+                           duration_s=0.0, states=[], reason=reason)
             return self.round
         while state not in (State.DONE, State.ABORT):
             self.round.states.append(state)
@@ -219,6 +231,13 @@ class Supervisor:
                        wrong_balls=self.round.wrong_balls, duration_s=round(self.clock.now() - self.round.started, 2),
                        states=[s.value for s in self.round.states])
         return self.round
+
+    def _refusal(self, dance: bool) -> tuple[str, str] | None:
+        if not dance and self.round.target in COLOURS and self.skills.pick_colour is None:
+            return "unsupported_target", f"no pick skill for {self.round.target!r} yet"
+        if dance and self.round.dance is None:
+            return "unsupported_dance", "no dance episode in this robot program (--dance-episode)"
+        return None
 
     # The state's own details are lost when it raises (VLA 5K take 2: the held-check verdict), so log what is known.
     def _error_details(self, error: Exception) -> dict:
@@ -310,6 +329,12 @@ class Supervisor:
 
     def _rest(self):
         holding, reading = self.holding()
+        # A dance swings the arm at speed, so it starts only from an empty gripper, refused before anything moves.
+        if holding and self.round.dance and self.round.outcome is None:
+            self.round.outcome = "refused_holding"
+            return State.DONE, "the gripper holds something: empty it before a dance", {"reading": reading}
+        if holding and self.round.dance:
+            return State.ABORT, "gripper reads holding after the dance", {"reading": reading}
         if holding:
             result = self._move_to_rest(holding=True)
             return State.VERIFY_HOLD, "gripper reads holding at REST", {"move": result, "reading": reading}
@@ -485,6 +510,12 @@ class Supervisor:
         if self.skills.shake is not None:
             return State.SHAKE, "ball given", details
         return State.REST, "ball given", details
+
+    def _dance(self):
+        result = self.run_skill(self.round.dance, self.s.dance_timeout_s)
+        self.round.outcome = "danced" if result == "replayed" else f"dance_{result}"
+        self.round.after_rest = State.DONE
+        return State.REST, f"dance: {result}", {"skill": result, "dance": self.round.dance.name}
 
     def _shake(self):
         result = self.run_skill(self.skills.shake(), self.s.shake_timeout_s)

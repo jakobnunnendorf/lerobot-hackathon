@@ -16,6 +16,7 @@ class Commands:
         self._lock = threading.Lock()
         self._destination: str | None = None
         self._target: str | None = None
+        self._dance = False
         self.voice = None
 
     def set_destination(self, destination: str | None) -> None:
@@ -36,11 +37,22 @@ class Commands:
         with self._lock:
             return self._target
 
+    def request_dance(self) -> None:
+        with self._lock:
+            self._dance = True
+        self.go.set()
+
+    def take_dance(self) -> bool:
+        with self._lock:
+            wanted, self._dance = self._dance, False
+            return wanted
+
     # A command is for one round: the supervisor calls this when the round ends, so the next round does not reuse a
-    # stale "hand" or "container" (or a colour).
+    # stale "hand" or "container" (or a colour), and a dance asked for during a round does not start after it.
     def clear(self) -> None:
         with self._lock:
             self._destination = self._target = None
+            self._dance = False
 
     # Line-based (key + Enter) so it works the same in a Windows console, WSL and macOS.
     def listen_keyboard(self) -> None:
@@ -55,6 +67,8 @@ class Commands:
                     self.set_target(TARGET_KEYS[key])
                 elif key == "x":
                     self.clear()
+                elif key == "d":
+                    self.request_dance()
                 self.go.set()
         threading.Thread(target=read, daemon=True).start()
 
@@ -70,11 +84,14 @@ class Commands:
 
         threading.Thread(target=poll_forever, daemon=True).start()
 
-    # Voice, the dashboard and link.py send {"target", "destination"}; the dashboard's ABORT sends {"abort": true}.
+    # Voice, the dashboard and link.py send {"target", "destination"}; the dashboard's ABORT sends {"abort": true} and
+    # its Dance {"dance": true}.
     def poll_voice(self) -> None:
         command = self.voice.poll() if self.voice is not None else None
         if command is not None and command.get("abort"):
             self.abort.set()
+        elif command is not None and command.get("dance") is True:
+            self.request_dance()
         elif command is not None and command.get("target") in TARGETS:
             self.set_target(command["target"])
             self.set_destination(command.get("destination"))
