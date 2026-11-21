@@ -40,10 +40,13 @@ class World:
     held_ball: str | None = None
     violations: list[str] = field(default_factory=list)
     # Grasp physics for FakeGraspPick, one outcome per close (the last repeats): "ball" (held), "nothing" (empty),
-    # "tips" (held, slips out after 6 ticks, during the settle), "late_slip" (slips after 25 ticks, during the lift).
+    # "tips" (held, slips out after 6 ticks, during the settle), "late_slip" (slips after 25 ticks, during the lift),
+    # "light" (in the band but a low servo load, e.g. a soft or tip contact; let go when the gripper opens).
+    # A pick that re-opens (FakeGraspPick reopen) drops a held ball when the command opens above 20.
     # Empty list: off (the scripted picks set `holding` themselves).
     grasps: list[str] = field(default_factory=list)
     slip_in: int | None = None
+    light: bool = False
     queries: int = 0
 
 
@@ -77,9 +80,10 @@ class FakeArm:
             if outcome != "nothing":
                 self.world.holding, self.world.held_ball = True, self.world.held_balls[0]
                 self.world.slip_in = {"tips": 6, "late_slip": 25}.get(outcome)
+                self.world.light = outcome == "light"
         if self.world.holding and gripper > self.world.hold_goal + 0.5:
-            if self.world.release_ok:
-                self.world.holding = False
+            if self.world.release_ok or self.world.light or (self.world.grasps and gripper > 20):
+                self.world.holding, self.world.held_ball, self.world.light = False, None, False
             else:
                 self.world.violations.append(f"gripper goal {gripper:.1f} sent while holding")
         self.last_sent = dict(action)
@@ -106,13 +110,16 @@ class ScriptedSkill:
 
 
 # A pick policy as the grasp check sees it: approach with the gripper open, close (crossing 10), lift back. One
-# instance per PICK attempt; requery() counts the re-queries the grasp check asks for.
+# instance per PICK attempt; requery() counts the re-queries the grasp check asks for. reopen: like ACT on the arm
+# (2026-11-21 r1, r6), after the close it opens to 30 for 40 ticks (releasing the ball) and closes again.
 class FakeGraspPick:
     name = "pick"
     CLOSE = (30.0, 20.0, 12.0, 1.0)
+    REOPEN = (30, 70)
 
-    def __init__(self, world: World, ticks: int = 60):
-        self.world, self.ticks = world, ticks
+    def __init__(self, world: World, ticks: int = 60, reopen: bool = False):
+        self.world, self.reopen = world, reopen
+        self.ticks = 100 if reopen else ticks
 
     def start(self, obs, last_sent, now):
         self.count, self.base = 0, pose_of(last_sent)
@@ -124,6 +131,8 @@ class FakeGraspPick:
         pose[1] += 0.5 * down
         k = self.count - 20
         pose[5] = 40.0 if k < 0 else self.CLOSE[min(k, len(self.CLOSE) - 1)]
+        if self.reopen and self.REOPEN[0] <= self.count < self.REOPEN[1]:
+            pose[5] = 30.0
         return action_of(pose)
 
     def done(self, obs, now):
@@ -218,6 +227,9 @@ class Scenario:
     # Grasp check: outcomes per close (World.grasps); non-empty = FakeGraspPick as PICK and the grasp check on.
     grasps: list[str] = field(default_factory=list)
     tip_z: float | None = None
+    reopen: bool = False
+    # Gripper servo load: "physics" (480 holding, 120 for a "light" hold, 30 empty), "raises" (read fails).
+    load: str = "physics"
 
 
 FAKE_HELD_AREA_PX, FAKE_HELD_THRESHOLD_PX = 900, 300
@@ -234,6 +246,14 @@ def fake_held_ball_area(world: World, mode: str):
     return area
 
 
+def fake_gripper_load(world: World, mode: str):
+    def load():
+        if mode == "raises":
+            raise RuntimeError("no Present_Load")
+        return (120.0 if world.light else 480.0) if world.holding else 30.0
+    return load
+
+
 def build(scenario: Scenario):
     abort = threading.Event()
     world = World(buried=scenario.buried, hand=scenario.hand, destination=scenario.destination,
@@ -242,7 +262,7 @@ def build(scenario: Scenario):
     arm = FakeArm(world, abort)
     containers = {c: scripted("put_down_" + c, world, ["ok"], release_effect(world, "ok")) for c in ("red", "blue")}
     skills = Skills(
-        pick=(lambda: FakeGraspPick(world)) if scenario.grasps
+        pick=(lambda: FakeGraspPick(world, reopen=scenario.reopen)) if scenario.grasps
         else scripted("pick", world, scenario.picks, pick_effect(world), ticks=60),
         put_down=scripted("put_down", world, scenario.put_downs, release_effect(world, "ok")),
         give=(lambda: Releasing(PresentAndDrop(lambda: world.hand, 60.0), world)) if scenario.give_mode == "present"
@@ -258,7 +278,8 @@ def build(scenario: Scenario):
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
                       held_ball_area=fake_held_ball_area(world, scenario.held_check),
                       ball_colour=(lambda: world.held_ball) if scenario.colour_sensor else None,
-                      tip_height=(lambda joints: scenario.tip_z) if scenario.tip_z is not None else None)
+                      tip_height=(lambda joints: scenario.tip_z) if scenario.tip_z is not None else None,
+                      gripper_load=fake_gripper_load(world, scenario.load))
     held = ({"min_held_target_area_px": FAKE_HELD_THRESHOLD_PX, "min_held_area_px": {"red": FAKE_HELD_THRESHOLD_PX}}
             if scenario.held_check != "off" else {})
     grasp = {"grasp_check": GraspCheckSettings()} if scenario.grasps else {}
@@ -330,6 +351,13 @@ SCENARIOS = [
     Scenario("grasp_check_misses_hit_pick_limit", [R, P, P, P, V, R, D], "gave_up", grasps=["nothing"]),
     Scenario("grasp_check_too_high_miss_before_reading", [R, P, P, P, V, R, D], "gave_up", grasps=["nothing"],
              tip_z=0.30, settings={"grasp_check": GraspCheckSettings(max_tip_height=0.16)}),
+    # r1 pattern: held, the policy re-opens above 20 and closes again. Locked: the open is blocked, the ball kept.
+    Scenario("grasp_check_lock_blocks_reopen", [R, P, V, G, R, D], "given", grasps=["ball", "nothing"], reopen=True),
+    # Unlocked (today's flow): the re-open drops the ball, re-arms, the empty close is a fresh check and a miss.
+    Scenario("grasp_check_unlocked_reopen_rearms", [R, P, P, V, G, R, D], "given", grasps=["ball", "nothing", "ball"],
+             reopen=True, settings={"grasp_check": GraspCheckSettings(lock_after_hold=False)}),
+    Scenario("grasp_check_low_load_is_miss", [R, P, P, V, G, R, D], "given", grasps=["light", "ball"]),
+    Scenario("grasp_check_load_unreadable_reading_rule", [R, P, V, G, R, D], "given", grasps=["ball"], load="raises"),
     Scenario("grasp_check_off_old_flow_carries_empty", [R, P, V, R, P, V, G, R, D], "given", grasps=["nothing", "ball"],
              settings={"grasp_check": None}),
     Scenario("held_check_detector_unavailable_accepts", [R, P, V, G, R, D], "given", held_balls=["red"],

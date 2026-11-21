@@ -16,11 +16,22 @@ def requery(skill) -> None:
         skill.loaded.reset()
 
 
+# |Present_Load| (0-1000, 0.1% of max torque). The STS3215 register is sign-magnitude with the direction in bit 10;
+# 2026-11-21 it read 28-500, all positive, so the bus decodes it or the close is always one way. abs() covers a
+# signed decode, and bit 10 is dropped in case a raw value (1024 + magnitude) ever comes through.
+def load_magnitude(value):
+    if value is None:
+        return None
+    value = abs(float(value))
+    return value - 1024 if value >= 1024 else value
+
+
 # Grasp check (Jakob, 2026-11-21): ACT often closes on the jaw tips, misses the ball and, because the chunk keeps
 # running, carries on to the target as if holding. GraspChecked pauses the pick the moment the policy closes the
 # gripper, holds the arm still, squeezes to close_goal and reads the gripper after settle_s:
 #   held = hold_low <= reading <= hold_high and reading - goal >= min_error (a ball stalls the jaw short of its goal)
-#   [and |Present_Load| >= min_load, if set]
+#   and |Present_Load| >= min_load (both rules must agree; a load that cannot be read leaves the reading rule alone,
+#   logged as "load_rule": "unavailable")
 # Measured on 606 teleoperated closes in molnrb's four pick datasets (rb_mixed, ball, blue_ball, buried_ball),
 # 0.5 s after the leader closed below 10: closes carried to the end of the episode (ball held, 218, excluding
 # so101_pick_ball's empty end closes) read p1 10.9, median 12.9; 217 of 218 pass the rule. All 78 closes reading
@@ -30,6 +41,11 @@ def requery(skill) -> None:
 # ends the skill as "grasp_miss": the supervisor re-runs PICK at once (a fresh policy query), within the pick limit.
 # A hold re-queries the policy and keeps watching: a ball that slips out of the tips later (median of watch_frames
 # readings below hold_low while the policy still commands closed) is a miss too, opened in place.
+# Lock after a hold (calibration run 2026-11-21, molnrb/arm-logs 4e20743, r1 and r6): ACT later re-opened on the held
+# ball, as its demos end, and closed again on nothing, which the check judged a fresh miss. With lock_after_hold the
+# gripper sent is min(policy, held goal) for the rest of the pick, a policy command >= trigger is logged as
+# "release_blocked" (at most once a second) and the slip watch keeps running. Unlocked, a re-open is logged as
+# "release" and the trigger re-arms only after the command is >= armed_above again.
 @dataclass
 class GraspCheckSettings:
     trigger: float = 10.0          # a commanded gripper falling below this = "the policy closes"
@@ -39,11 +55,15 @@ class GraspCheckSettings:
     window_frames: int = 5         # median of the last frames of the settle
     min_error: float = 3.0
     hold_range: tuple[float, float] = (6.0, 20.0)
-    min_load: float | None = None  # |Present_Load| of the gripper servo; None = logged only (not measured on the arm)
+    # |Present_Load| of the gripper servo (0.1% of max torque) for a hold; None = logged only. 2026-11-21 on the arm:
+    # ball 440-500 (500 = the gripper's Max_Torque_Limit), empty 28-44.
+    min_load: float | None = 200.0
     backoff_s: float = 0.5
     open_goal: float | None = None  # None: the widest gripper command of this pick, at least trigger + 10
     watch_frames: int = 5
     requery_on_hold: bool = True
+    lock_after_hold: bool = True
+    release_log_interval_s: float = 1.0
     # "Too high": a close commanded with the tip (FK of the commanded joints, #13's kinematics) above this is a miss
     # before the gripper is read. None = off: on the datasets the model's tip z at a holding close is 0.019-0.156 m
     # (p95 0.11) and empty closes overlap it (median 0.07), so it can only catch closes far above the bowl.
@@ -69,6 +89,7 @@ class GraspChecked:
         self.history.append(pose_of(last_sent))
         self.watch = deque(maxlen=self.s.watch_frames)
         self.load_failed = False
+        self.last_release_log = None
 
     def _open_goal(self) -> float:
         return self.s.open_goal if self.s.open_goal is not None else max(self.widest, self.s.trigger + 10.0)
@@ -77,7 +98,7 @@ class GraspChecked:
         if self.read_load is None or self.load_failed:
             return None
         try:
-            return self.read_load()
+            return load_magnitude(self.read_load())
         except Exception as error:  # noqa: BLE001 - a failed load read must not stop the pick
             self.load_failed = True
             self.load_error = repr(error)
@@ -96,9 +117,19 @@ class GraspChecked:
         gripper = float(action["gripper.pos"])
         if self.watching:
             self.watch.append(float(obs["gripper.pos"]))
-            if gripper >= self.s.trigger:
-                self.watching = False
-            elif len(self.watch) == self.watch.maxlen and statistics.median(self.watch) < self.s.hold_range[0]:
+            if self.s.lock_after_hold:
+                if gripper >= self.s.trigger and (self.last_release_log is None
+                                                  or now - self.last_release_log >= self.s.release_log_interval_s):
+                    self.last_release_log = now
+                    self._record({"phase": "release_blocked", "command": round(gripper, 2), "sent": round(self.goal, 2),
+                                  "reading": round(float(obs["gripper.pos"]), 2)})
+                gripper = min(gripper, self.goal)
+                action = {**action, "gripper.pos": gripper}
+            elif gripper >= self.s.trigger:
+                self.watching, self.armed = False, False  # re-armed once the command is >= armed_above again
+                self._record({"phase": "release", "command": round(gripper, 2),
+                              "reading": round(float(obs["gripper.pos"]), 2)})
+            if self.watching and len(self.watch) == self.watch.maxlen and statistics.median(self.watch) < self.s.hold_range[0]:
                 return self._miss(obs, now, {"phase": "watch", "reading": round(statistics.median(self.watch), 2),
                                              "readings": [round(r, 2) for r in self.watch]}, back_off=False)
         self.armed |= gripper >= self.s.armed_above
@@ -133,11 +164,17 @@ class GraspChecked:
         low, high = self.s.hold_range
         load = statistics.median(abs(v) for v in self.loads[-self.s.window_frames:]) if self.loads else None
         in_band, stalled = low <= reading <= high, error >= self.s.min_error
-        load_ok = self.s.min_load is None or (load is not None and load >= self.s.min_load)
+        if self.s.min_load is None:
+            load_ok, load_rule = True, "off"
+        elif load is None:
+            load_ok, load_rule = True, "unavailable"  # fall back to the reading rule alone
+        else:
+            load_ok, load_rule = load >= self.s.min_load, "on"
         record = {"phase": "settle", "reading": round(reading, 2), "goal": round(self.goal, 2), "error": round(error, 2),
                   "spread": round(max(window) - min(window), 2), "first_reading": round(self.readings[0], 2),
                   "command_at_trigger": round(self.command_at_trigger, 2), "load": load, "in_band": in_band,
-                  "stalled": stalled, "load_ok": load_ok, "settle_s": round(now - self.settle_start, 2),
+                  "stalled": stalled, "load_ok": load_ok, "load_rule": load_rule, "min_load": self.s.min_load,
+                  "settle_s": round(now - self.settle_start, 2),
                   "tip_z": None if self.tip_z is None else round(self.tip_z, 3)}
         if getattr(self, "load_error", None):
             record["load_error"] = self.load_error
