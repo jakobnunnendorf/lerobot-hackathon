@@ -44,5 +44,5 @@ python scripts/supervisor/run_supervisor.py --robot \
   --rest -5.6 -102.8 96.6 -100.1 -5.2 30 \
   --put-down-pose $PUT_DOWN_POSE \
   --give-mode follow --voice --voice-host 0.0.0.0 --rounds 10 \
-  --log "$HOME/so101/demo/chain_$(date +%Y%m%d_%H%M%S).jsonl" \
+  --log "$HOME/so101/demo/chain_$(date +%Y%m%d_%H%M%S).jsonl" --tick-log \
   "$@"

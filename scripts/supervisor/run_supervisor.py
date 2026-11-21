@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from commands import Commands
 from grasp_check import GraspCheckSettings
-from machine import Aborted, Sensors, Settings, Skills, Supervisor, TransitionLog
+from machine import Aborted, Sensors, Settings, Skills, State, Supervisor, TransitionLog
 from skills import (
     KEYS,
     PRESENT_POSE,
@@ -31,6 +31,7 @@ from skills import (
     put_down_at,
 )
 from status import STATUS
+from ticks import TICKS
 
 DEFAULT_PICK = "molnrb/act_pick_ball_combined"
 
@@ -52,6 +53,8 @@ class RobotArm:
             self.wrist_writer.write(self.last_obs["wrist"], time.perf_counter_ns())
         STATUS.update(joints=[round(float(self.last_obs[key]), 1) for key in KEYS[:5]],
                       gripper=round(float(self.last_obs["gripper.pos"]), 1), observes=self.observes)
+        if TICKS.on:
+            TICKS.observed(joint_values(self.last_obs), self._load_or_none())
         return self.last_obs
 
     # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
@@ -60,10 +63,31 @@ class RobotArm:
     def gripper_load(self) -> float:
         return float(self.robot.bus.sync_read("Present_Load", "gripper")["gripper"])
 
+    def _load_or_none(self) -> float | None:
+        try:
+            return self.gripper_load()
+        except Exception:  # noqa: BLE001 - a failed read leaves a gap in the tick log, the arm carries on
+            return None
+
     def send(self, action: dict) -> None:
+        command = action
         action = capped(action, self.last_sent, self.max_step_deg)
         self.robot.send_action(action)
         self.last_sent = dict(action)
+        TICKS.note(command=joint_values(command), sent=joint_values(action))
+
+
+def joint_values(values: dict) -> list[float]:
+    return [round(float(values[key]), 2) for key in KEYS]
+
+
+def tick_context(supervisor: Supervisor):
+    def context() -> dict:
+        current = getattr(supervisor, "round", None)
+        if current is None or not current.states or current.states[-1] in (State.DONE, State.ABORT):
+            return {"round": None, "state": "idle"}
+        return {"round": current.number, "state": current.states[-1].value}
+    return context
 
 
 def camera_source(value: str):
@@ -207,6 +231,8 @@ def run_robot(args) -> None:
         sys.exit("--robot needs --port, --top-camera and --wrist-camera")
     if not (args.put_down_episode or args.put_down_pose):
         sys.exit("--robot needs --put-down-episode REPO:EPISODE or --put-down-pose (5 joints)")
+    if args.tick_log and not args.log:
+        sys.exit("--tick-log needs --log")
     handover_dir = Path(args.handover_dir)
     has_loop = (handover_dir / "handover_loop.py").exists()
     follow = args.give_mode == "follow" or (args.give_mode == "auto" and has_loop)
@@ -282,6 +308,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
     sync_goal_to_present(robot.bus)
     robot.connect()
     log = TransitionLog(args.log)
+    if args.tick_log:
+        TICKS.open(tick_log_path(args.log))
     try:
         arm = RobotArm(robot, args.max_step_deg, wrist_writer)
         first = arm.observe()
@@ -327,7 +355,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                           save_wrist_frame=wrist_frame_saver(args.log))
         supervisor = Supervisor(arm, skills, sensors, settings, rest, log, commands.abort, frame_writer=frame_writer,
                                 on_tick=commands.poll_voice)
-        log.write(event="start", rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
+        TICKS.context = tick_context(supervisor)
+        log.write(event="start", tick_log=tick_log_path(args.log) if args.tick_log else None, rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy,
                   held_check=sensors.held_ball_area is not None, min_held_target_area_px=args.min_held_target_area,
                   held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours),
@@ -348,7 +377,14 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                 print("ABORT: arm holds its pose with torque on. Hold the arm, then switch the power off.", flush=True)
                 break
     finally:
+        TICKS.close()
         robot.disconnect()
+
+
+# Experiment folders hold one supervisor.jsonl (Jakob's runs), demo_chain.sh writes one chain_<time>.jsonl per start.
+def tick_log_path(log: str) -> str:
+    path = Path(log)
+    return str(path.with_name("ticks.jsonl" if path.stem == "supervisor" else f"{path.stem}.ticks.jsonl"))
 
 
 def budgets(settings: Settings) -> dict:
@@ -399,6 +435,10 @@ def parse_args() -> argparse.Namespace:
     mode.add_argument("--fake", metavar="SCENARIO", help="scripted fake skills and arm; 'all' runs every scenario")
     mode.add_argument("--robot", action="store_true", help="connect to and move the real arm")
     p.add_argument("--log", help="JSONL file for transitions and round results (appended)")
+    p.add_argument("--tick-log", action="store_true",
+                   help="robot mode: also write one line per control tick (policy action, command, sent goal after the "
+                        "speed cap, measured joints, gripper load) to <log>.ticks.jsonl, or ticks.jsonl next to a "
+                        "supervisor.jsonl; needs --log")
     p.add_argument("--verbose", action="store_true", help="fake mode: print every transition")
     p.add_argument("--port")
     p.add_argument("--top-camera")

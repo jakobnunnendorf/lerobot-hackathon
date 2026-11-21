@@ -80,8 +80,7 @@ class LogTail:
         named = self.status.latest.get("log_path") if self.status.fresh() else None
         if named and Path(named).exists():
             return Path(named)
-        logs = sorted(self.log_dir.glob("chain_*.jsonl"), key=lambda p: p.stat().st_mtime)
-        return logs[-1] if logs else None
+        return newest_chain_log(self.log_dir)
 
     def _follow(self) -> None:
         handle, buffer = None, ""
@@ -111,6 +110,12 @@ class LogTail:
     def snapshot(self) -> list[dict]:
         with self._lock:
             return list(self.events)
+
+
+# --tick-log writes chain_<time>.ticks.jsonl next to the event log, and touches it 30 times a second.
+def newest_chain_log(log_dir: Path) -> Path | None:
+    logs = [p for p in log_dir.glob("chain_*.jsonl") if not p.name.endswith(".ticks.jsonl")]
+    return max(logs, key=lambda p: p.stat().st_mtime, default=None)
 
 
 def parse_event(line: str) -> dict | None:

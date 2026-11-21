@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from skills import MoveTo, Sequence, action_of, pose_of
+from ticks import TICKS
 
 
 # Re-query a pick skill: drop the rest of its queued chunk so the next step predicts from the current observation.
@@ -106,6 +107,7 @@ class GraspChecked:
             return None
 
     def step(self, obs, now):
+        TICKS.note(grasp="watch" if self.phase == "run" and self.watching else self.phase)
         if self.phase == "settle":
             return self._settle(obs, now)
         if self.phase == "release":

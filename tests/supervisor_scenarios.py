@@ -633,6 +633,55 @@ def wrist_frames_shared() -> None:
           int(frame[0, 0, 0]) == 4, f"pixel {int(frame[0, 0, 0])} after 4 observes")
 
 
+class _TickBus:
+    def sync_read(self, name, motors=None):
+        if name == "Present_Load":
+            return {"gripper": 450}
+        return {motor: 0.0 for motor in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")}
+
+
+class _TickRobot:
+    bus = _TickBus()
+
+    def get_observation(self):
+        return {**{key: 1.0 for key in KEYS}, "top": np.zeros((4, 4, 3), np.uint8), "wrist": np.zeros((4, 4, 3), np.uint8)}
+
+    def send_action(self, action):
+        return action
+
+
+def tick_log(work: str) -> None:
+    from types import SimpleNamespace
+
+    import run_supervisor
+    from machine import State
+    from ticks import TICKS
+
+    path = run_supervisor.tick_log_path(f"{work}/chain_test.jsonl")
+    TICKS.open(path)
+    TICKS.context = lambda: {"round": 1, "state": "PICK"}
+    arm = run_supervisor.RobotArm(_TickRobot(), 5.0)
+    arm.observe()
+    TICKS.note(policy=[20.0, 0, 0, 0, 0, 30.0])
+    arm.send(dict(zip(KEYS, [20.0, 0, 0, 0, 0, 3.0])))
+    arm.observe()
+    TICKS.close()
+    lines = [json.loads(line) for line in Path(path).read_text().splitlines()]
+    first, second = lines
+    check("tick log: one line per observation, paired with the policy action, command and capped goal sent from it",
+          len(lines) == 2 and first["state"] == "PICK" and first["load"] == 450 and first["measured"][0] == 1.0
+          and first["policy"][5] == 30.0 and first["command"][0] == 20.0 and first["sent"][0] == 5.0
+          and "command" not in second and path.endswith("chain_test.ticks.jsonl"), str(lines))
+    supervisor = SimpleNamespace(round=SimpleNamespace(number=3, states=[State.REST, State.PICK]))
+    context = run_supervisor.tick_context(supervisor)
+    running = context()
+    supervisor.round.states.append(State.DONE)
+    check("tick log: round and state while a round runs, idle between rounds; ticks.jsonl next to supervisor.jsonl",
+          running == {"round": 3, "state": "PICK"} and context() == {"round": None, "state": "idle"}
+          and Path(run_supervisor.tick_log_path("exp/supervisor.jsonl")).as_posix() == "exp/ticks.jsonl",
+          f"{running} / {context()}")
+
+
 def pick_end_rule() -> None:
     rest = np.array([-5.6, -102.8, 96.6, -100.1, -5.2, 30.0])
     never_left = np.array([*rest[:5], 17.8])
@@ -748,6 +797,7 @@ def main() -> None:
         pick_end_rule()
         status_datagram()
         wrist_frames_shared()
+        tick_log(work)
         goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():

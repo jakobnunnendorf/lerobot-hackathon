@@ -6,6 +6,7 @@ from typing import Protocol
 
 import numpy as np
 from status import STATUS
+from ticks import TICKS
 
 MOTORS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")
 KEYS = tuple(f"{motor}.pos" for motor in MOTORS)
@@ -204,7 +205,9 @@ class PolicySkill:
         policy = self.loaded.policy
         action = predict_action(frame, policy, self.loaded.device, self.loaded.pre, self.loaded.post,
                                 policy.config.use_amp, task=self.task, robot_type=self.robot_type)
-        return make_robot_action(action, self.features)
+        action = make_robot_action(action, self.features)
+        TICKS.note(policy=[round(float(action[key]), 2) for key in KEYS])
+        return action
 
     def done(self, obs, now):
         self.settled = self.finished is not None and self.finished(obs, now)
