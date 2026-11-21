@@ -4,6 +4,15 @@
     uv run modal run scripts/modal_train.py::bench --recipe act_redblue --gpus L40S,A100-80GB --budget-usd 10
     uv run modal run --detach scripts/modal_train.py::train --recipe act_redblue --gpu L40S --steps N --max-minutes M
     uv run modal volume get lerobot-smolvla outputs/<run_name> outputs/
+
+SmolVLA on the red/blue data, pushed to a new Hugging Face model repo (needs the Modal secret
+huggingface-secret with HF_TOKEN, a write token of the repo's owner):
+
+    uv run modal run scripts/modal_train.py::prepare --recipe smolvla_redblue
+    uv run modal run scripts/modal_train.py::train --recipe smolvla_redblue --gpu H100 --smoke --hub-repo USER/smolvla_redblue
+    uv run modal run --detach scripts/modal_train.py::train --recipe smolvla_redblue --gpu H100 \
+        --steps 20000 --max-minutes 115 --hub-repo USER/smolvla_redblue
+    uv run modal run scripts/modal_train.py::push --run-name <run_name> --hub-repo USER/smolvla_redblue  # after a stop
 """
 
 import json
@@ -36,16 +45,20 @@ REDBLUE_AUGMENTATION = json.dumps(
     }
 )
 
-REDBLUE_ACT_ARGS = [
-    # 2e-5 at batch 32 instead of ACT's 1e-5 at batch 8: a cautious step below linear scaling.
-    "--policy.optimizer_lr=2e-5",
-    "--policy.optimizer_lr_backbone=2e-5",
+REDBLUE_COMMON_ARGS = [
     "--dataset.image_transforms.enable=true",
     f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION}",
     # Same split and seed as the stopped local batch-8 run, so eval losses compare.
     "--dataset.eval_split=0.05",
     "--seed=1000",
     "--eval_steps=5000",
+]
+
+REDBLUE_ACT_ARGS = [
+    # 2e-5 at batch 32 instead of ACT's 1e-5 at batch 8: a cautious step below linear scaling.
+    "--policy.optimizer_lr=2e-5",
+    "--policy.optimizer_lr_backbone=2e-5",
+    *REDBLUE_COMMON_ARGS,
 ]
 
 FOIL_CHECKPOINT = "molnrb/act_pick_ball_combined"
@@ -71,6 +84,21 @@ RECIPES = {
         "args": ["--policy.type=act", *REDBLUE_ACT_ARGS],
         "schedule_follows_steps": False,
     },
+    # SmolVLA docs' fine-tune settings (batch 64, 20k steps, lr 1e-4 from smolvla_base) on the red/blue data,
+    # with act_redblue's augmentation, split and seed so the eval losses compare. Kamel's smolvla_combined:
+    # 0.26 s/step on an H100 at batch 64, so 20k steps take about 90 min there.
+    "smolvla_redblue": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 64,
+        "prefetch_models": ["lerobot/smolvla_base", "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"],
+        "args": [
+            "--policy.path=lerobot/smolvla_base",
+            f"--rename_map={SMOLVLA_RENAME_MAP}",
+            *REDBLUE_COMMON_ARGS,
+        ],
+        "schedule_follows_steps": True,
+    },
     # Same as act_redblue except the start: the foil-scene policy's weights. See decisions/act-redblue-init.md.
     "act_redblue_from_foil": {
         "dataset": "molnrb/so101_pick_rb_mixed",
@@ -88,6 +116,8 @@ MEMORY = 32 * 1024
 GPU_USD_H = {"H100": 3.95, "A100-80GB": 2.50, "A100-40GB": 2.10, "L40S": 1.95, "A10": 1.10, "L4": 0.80}
 CPU_USD_H = CPU * 0.0472 + (MEMORY / 1024) * 0.0080
 STARTUP_MINUTES = 8
+SMOKE = {"steps": 50, "save_freq": 50, "eval_steps": 25, "log_freq": 10, "max_minutes": 15}
+HF_SECRET = "huggingface-secret"  # Modal secret holding HF_TOKEN; only attached when --hub-repo is given
 
 VOL = "/vol"
 volume = modal.Volume.from_name("lerobot-smolvla", create_if_missing=True)
@@ -113,12 +143,18 @@ def usd(gpu: str, minutes: float) -> float:
     return (GPU_USD_H[gpu] + CPU_USD_H) * minutes / 60
 
 
-def train_command(recipe: str, run_name: str, steps: int, batch_size: int, save_freq: int, log_freq: int, save: bool) -> list:
+def train_command(
+    recipe: str, run_name: str, steps: int, batch_size: int, save_freq: int, log_freq: int, save: bool,
+    eval_steps: int | None = None,
+) -> list:
     r = RECIPES[recipe]
+    args = r["args"]
+    if eval_steps is not None:
+        args = [a for a in args if not a.startswith("--eval_steps")] + [f"--eval_steps={eval_steps}"]
     command = [
         "lerobot-train",
         f"--dataset.repo_id={r['dataset']}",
-        *r["args"],
+        *args,
         "--policy.device=cuda",
         "--policy.push_to_hub=false",
         "--accelerator.mixed_precision=bf16",
@@ -203,6 +239,46 @@ def run_training(command: list, max_minutes: float, log_path: str) -> tuple[int,
     return proc.returncode, (time.time() - start) / 60, samples
 
 
+def check_hub_repo(hub_repo: str) -> None:
+    """Fail before training if the token cannot write to hub_repo or the repo is someone else's."""
+    from huggingface_hub import HfApi
+
+    user = HfApi().whoami()["name"]
+    owner = hub_repo.split("/")[0]
+    if owner != user:
+        raise SystemExit(f"--hub-repo {hub_repo}: the token belongs to {user}, not {owner}; refusing to push there")
+    HfApi().create_repo(hub_repo, repo_type="model", exist_ok=True)
+    print(f"[hub] {hub_repo} ready for {user}", flush=True)
+
+
+def push_checkpoints(run_name: str, hub_repo: str, prefix: str = "") -> list:
+    """Newest checkpoint at the repo root (or under prefix), every checkpoint under checkpoints/<step>/."""
+    from huggingface_hub import HfApi
+
+    check_hub_repo(hub_repo)
+    checkpoint_dir = f"{VOL}/outputs/{run_name}/checkpoints"
+    steps = sorted(d for d in os.listdir(checkpoint_dir) if d.isdigit()) if os.path.isdir(checkpoint_dir) else []
+    if not steps:
+        print(f"[hub] no checkpoints in {checkpoint_dir}, nothing pushed", flush=True)
+        return []
+    api = HfApi()
+    for step in steps:
+        api.upload_folder(
+            repo_id=hub_repo,
+            folder_path=f"{checkpoint_dir}/{step}/pretrained_model",
+            path_in_repo=f"{prefix}checkpoints/{step}",
+            commit_message=f"{run_name}: checkpoint {step}",
+        )
+    api.upload_folder(
+        repo_id=hub_repo,
+        folder_path=f"{checkpoint_dir}/{steps[-1]}/pretrained_model",
+        path_in_repo=prefix or None,
+        commit_message=f"{run_name}: newest checkpoint {steps[-1]}",
+    )
+    print(f"[hub] pushed {steps} to https://huggingface.co/{hub_repo}", flush=True)
+    return steps
+
+
 @app.function(cpu=4.0, memory=16 * 1024, volumes={VOL: volume}, timeout=60 * 60)
 def prepare(recipe: str = "act_redblue") -> None:
     from huggingface_hub import snapshot_download
@@ -245,17 +321,43 @@ def bench_remote(recipe: str, gpu: str, batch_size: int, steps: int) -> dict:
 
 
 @app.function(cpu=CPU, memory=MEMORY, volumes={VOL: volume}, gpu="L40S", timeout=4 * 60 * 60)
-def train_remote(recipe: str, run_name: str, steps: int, batch_size: int, save_freq: int, max_minutes: float) -> dict:
-    command = train_command(recipe, run_name, steps, batch_size, save_freq, 100, save=True)
-    code, minutes, samples = run_training(command, max_minutes, f"{VOL}/logs/{run_name}.log")
+def train_remote(
+    recipe: str, run_name: str, steps: int, batch_size: int, save_freq: int, max_minutes: float,
+    log_freq: int = 100, eval_steps: int | None = None, hub_repo: str = "", hub_prefix: str = "",
+) -> dict:
+    if hub_repo:
+        check_hub_repo(hub_repo)
+    command = train_command(recipe, run_name, steps, batch_size, save_freq, log_freq, save=True, eval_steps=eval_steps)
+    log_path = f"{VOL}/logs/{run_name}.log"
+    code, minutes, samples = run_training(command, max_minutes, log_path)
     checkpoint_dir = f"{VOL}/outputs/{run_name}/checkpoints"
     util = [s[0] for s in samples]
+    text = open(log_path, errors="ignore").read()
+    step_s = [float(m) for m in re.findall(r"step_s:([\d.]+)", text)]
+    step_s = step_s[len(step_s) // 3 :]
+    eval_lines = [line for line in text.splitlines() if "eval" in line.lower() and "loss" in line.lower()]
+    pushed: list = []
+    if hub_repo:
+        try:
+            pushed = push_checkpoints(run_name, hub_repo, hub_prefix)
+        except Exception as e:  # noqa: BLE001 - checkpoints stay on the Volume; retry with ::push
+            print(f"[hub] push failed: {e}; checkpoints stay on the Volume, retry with "
+                  f"modal run scripts/modal_train.py::push --run-name {run_name} --hub-repo {hub_repo}", flush=True)
     return {
         "code": code,
         "minutes": minutes,
+        "step_s": sum(step_s) / len(step_s) if step_s else None,
         "checkpoints": sorted(os.listdir(checkpoint_dir)) if os.path.isdir(checkpoint_dir) else [],
+        "pushed": pushed,
         "gpu_util_pct": sum(util) / max(len(util), 1),
+        "eval_lines": eval_lines[-3:],
     }
+
+
+@app.function(cpu=2.0, memory=8 * 1024, volumes={VOL: volume}, timeout=60 * 60)
+def push_remote(run_name: str, hub_repo: str) -> list:
+    volume.reload()
+    return push_checkpoints(run_name, hub_repo)
 
 
 @app.local_entrypoint()
@@ -301,12 +403,38 @@ def train(
     max_minutes: float = 170,
     save_freq: int = 5000,
     run_name: str = "",
+    hub_repo: str = "",
+    smoke: bool = False,
 ) -> None:
+    check_hub_repo_name(hub_repo)
     batch_size = batch_size or RECIPES[recipe]["batch_size"]
-    run_name = run_name or f"{recipe}_{gpu}_b{batch_size}_{steps // 1000}k"
+    log_freq, eval_steps, hub_prefix = 100, None, ""
+    if smoke:
+        steps, save_freq, max_minutes = SMOKE["steps"], SMOKE["save_freq"], SMOKE["max_minutes"]
+        log_freq, eval_steps, hub_prefix = SMOKE["log_freq"], SMOKE["eval_steps"], "smoke/"
+    run_name = run_name or f"{recipe}_{gpu}_b{batch_size}_{steps // 1000}k" + (f"_smoke{int(time.time())}" if smoke else "")
     print(f"{run_name}: cap {max_minutes} min, worst case ~{usd(gpu, max_minutes + STARTUP_MINUTES):.2f} USD")
-    result = train_remote.with_options(gpu=gpu, timeout=int((max_minutes + 20) * 60)).remote(
-        recipe, run_name, steps, batch_size, save_freq, max_minutes
+    options = {"gpu": gpu, "timeout": int((max_minutes + 20) * 60)}
+    if hub_repo:
+        options["secrets"] = [modal.Secret.from_name(HF_SECRET)]
+    result = train_remote.with_options(**options).remote(
+        recipe, run_name, steps, batch_size, save_freq, max_minutes, log_freq, eval_steps, hub_repo, hub_prefix
     )
     print(result)
+    if result.get("step_s"):
+        full = 20000 * result["step_s"] / 60
+        print(f"20000 steps at {result['step_s']:.3f} s/step: ~{full:.0f} min, "
+              f"~{usd(gpu, full + STARTUP_MINUTES):.2f} USD on {gpu}")
     print(f"download: uv run modal volume get lerobot-smolvla outputs/{run_name} outputs/")
+
+
+def check_hub_repo_name(hub_repo: str) -> None:
+    if hub_repo and (hub_repo.count("/") != 1 or "<" in hub_repo or hub_repo.startswith("USER/")):
+        raise SystemExit(f"--hub-repo {hub_repo!r}: give your own Hugging Face user and a new repo, e.g. jdoe/smolvla_redblue")
+
+
+@app.local_entrypoint()
+def push(run_name: str, hub_repo: str) -> None:
+    """Push the checkpoints of a stopped or finished run from the Volume to the Hub (CPU only)."""
+    check_hub_repo_name(hub_repo)
+    print(push_remote.with_options(secrets=[modal.Secret.from_name(HF_SECRET)]).remote(run_name, hub_repo))
