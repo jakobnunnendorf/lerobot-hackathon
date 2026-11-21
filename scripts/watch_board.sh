@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
-# Wait for new comments on the team message board (GitHub issue #1).
-#
-# Polls once a minute. Prints every new comment that was not written by your
-# own agent, then exits. If nothing new arrives within MAX_SECONDS it prints
-# NO_NEW_COMMENTS and exits, so the caller can simply run it again.
-#
-# usage: bash scripts/watch_board.sh <state_file> [max_seconds] [poll_seconds]
-#
-# <state_file> remembers the last comment already seen. Keep it outside the
-# repo (a temp directory). On the first run it is set to the newest comment,
-# so only comments posted after that are reported.
-#
-# Needs only the GitHub CLI (gh), no jq.
+# Exits on the first new comments (or NO_NEW_COMMENTS after MAX_SECONDS) instead of
+# streaming, so a background caller is woken once per event and just restarts it.
+# A fresh state file starts at the newest comment so the backlog is not replayed;
+# keep it outside the repo. Uses gh's built-in --jq so jq need not be installed.
 
 set -u
 
@@ -24,7 +15,6 @@ POLL_SECONDS="${3:-60}"
 me="$(gh api user --jq .login 2>/dev/null)"
 own_prefix="**[agent of @${me}]"
 
-# Runs a jq filter over every comment of the issue. Prints nothing on failure.
 comments() {
   gh api "repos/$REPO/issues/$ISSUE/comments?per_page=100" --paginate --jq "$1" 2>/dev/null
 }

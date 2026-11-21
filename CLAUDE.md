@@ -63,11 +63,22 @@ Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-
 - `pyproject.toml` and `uv.lock` are committed together whenever dependencies change (`uv add <pkg>`).
 - `outputs/`, `data/`, `wandb/` and `*.safetensors` are git-ignored. Datasets and checkpoints go to the Hugging Face Hub, never into git.
 
+## Decisions get documented, code does not
+
+The repo records *why* things are the way they are, so nobody explores the same search space twice. It does not describe *what* the code does: the code says that itself, and at this point agents read the code, not people.
+
+- **Read `decisions/` before you explore an approach.** If the question already has a record, start from it. Do not retry an alternative listed there unless its "Revisit if" condition holds, and if you do retry it, add the result to that same file.
+- **Write a decision record whenever you choose between alternatives or drop something you tried.** Use `decisions/<question>.md`, one file per question; `decisions/README.md` has the format. Failed attempts are the most valuable part: record them while the question is still open. Put the record in the same pull request as the code or config it explains. A choice with no real alternative needs no record.
+- **No documentation layer about the code.** No architecture walkthroughs, module overviews, API docs or READMEs that retell what a script does; they go stale and agents read the code directly. Runbooks for the people at the table (which command to run, what to check) still belong in `docs/`.
+- **Code is clean, concise and self-explanatory.** Use clear names and small functions, not comments.
+- **The only comments are about decisions**: why it is done this way, which alternative was tried or rejected, or a constraint the code cannot show (`# no reset() here: it moves the gripper back to its connect pose and drops the ball`). No comments that restate the code, no section banners, no docstrings that repeat the signature, no commented-out code, no change notes. If the reasoning takes more than two lines, write a decision record and point to it (`# see decisions/skill-policies.md`). When you change code, delete or fix comments that no longer hold.
+
 ## Where things go
 
 - `scripts/` - our own code (data collection helpers, perception, demo app).
 - `tests/` - smoke scripts (see above).
-- `kb/` - knowledge base: verified facts the team learned the hard way (port mapping, calibration notes, camera settings, what worked and what failed). One topic per file.
+- `decisions/` - one file per question: what was chosen, why, and what else was considered or tried, with results. See the section above.
+- `kb/` - knowledge base: verified facts about our setup that the team learned the hard way (port mapping, calibration notes, camera settings, training settings that worked or failed). One topic per file. Facts only: a choice, and the alternatives behind it, goes in `decisions/` and links to the facts it rests on.
 - `ideas/` - candidate project ideas, one file per idea, each with a status line.
 - `research/` - external research with source links (hackathon rules, the ball-picking idea, LeRobot feasibility and the multi-skill runner). `research/README.md` says which files belong to dropped ideas.
 - `docs/` - all other documentation (roadmap, runbooks, demo script, pitch). Only `README.md` and this file stay at the repo root.
