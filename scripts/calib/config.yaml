@@ -26,7 +26,7 @@ extrinsics:
   # 3 = diagonally opposite 1; 4 = from 1 along the short side (four squares). No rotation sense is assumed: the
   # script reads from these values whether z = (2 - 1) x (4 - 1) points up or down.
   # Example:  board_corners_in_base_mm: {1: [215.0, 82.0], 2: [216.0, -90.5], 3: [331.0, -89.0], 4: [330.0, 83.5]}
-  board_corners_in_base_mm: null
+  board_corners_in_base_mm: {1: [99.6, -173.4], 2: [270.2, -171.4], 3: [269.2, -56.2], 4: [98.5, -59.4]}
   # The alternative to the four corners: corner 1 in metres and the direction from corner 1 to corner 2
   # (0 = robot +x, 90 = robot +y). Used only when board_corners_in_base_mm is empty.
   board_origin_in_base_xyz_m: null
@@ -37,7 +37,7 @@ extrinsics:
   # top-right, bottom-left or bottom-right), used when the tape is not found; camera_position_in_base_m, the lens
   # position to +-5 cm, which decides unless the camera is almost straight above the board's centre.
   origin_image_corner: null
-  camera_position_in_base_m: null
+  camera_position_in_base_m: [0.460, -0.539, 0.840]
 
 touch:
   # The point the gripper touches and the person clicks, in gripper_frame_link coordinates (z points out of the
