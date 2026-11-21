@@ -25,7 +25,9 @@ CRASHES=0
 while true; do
   pkill -f "rerun --port" && sleep 1
   MARK=$(($(wc -l < "$LOG") + 1))
-  bash "$SO101_DIR/record.sh" "$NAME" 1000 "$TASK" "$LABEL" 2>&1 | tee -a "$LOG"
+  # not "| tee": the Rerun viewer lerobot spawns inherits the pipe and keeps it open, so the script never got past here
+  bash "$SO101_DIR/record.sh" "$NAME" 1000 "$TASK" "$LABEL" > >(tee -a "$LOG") 2>&1
+  sleep 1
   tail -n +"$MARK" "$LOG" | grep -q Traceback || break
   CRASHES=$((CRASHES + 1))
   echo ""

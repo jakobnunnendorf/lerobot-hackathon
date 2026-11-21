@@ -6,7 +6,9 @@ model: sonnet
 
 # Collect SO-101 episodes
 
-`scripts/so101/collect.sh <name>` does the whole session in its own window: records until the person presses ESC, checks the new episodes, pushes them to the Hub, and writes one result line to `~/so101/logs/collect_last.txt`. After a crash it asks the person R+Enter (re-attach USB, record again) or Enter (stop and push). Do not hand-build `lerobot-record` commands. The person lets the agent open this window on this laptop.
+`scripts/so101/collect.sh <name>` does the whole session in its own window: records until the person presses ESC, checks the new episodes, pushes them to the Hub, and writes one result line to `~/so101/logs/collect_last.txt`. After a crash it asks the person R+Enter (re-attach USB, record again) or Enter (stop and push). Do not hand-build `lerobot-record` commands.
+
+**Who starts it.** `collect.sh` runs `lerobot-record` with teleop live, so CLAUDE.md's rule applies: hand the step-2 command to the person at the table. The one exception is the robot laptop of molnrb, whose person asked their agent to open the window themself; elsewhere, only if your person says so in this session.
 
 ## 1. Pick the dataset
 
@@ -17,10 +19,10 @@ Read `scripts/so101/datasets.json`. Each entry is a Hub dataset `molnrb/<name>` 
 
 ## 2. Start it
 
-From PowerShell (no double quotes inside the `bash -lc` string besides the outer pair):
+From PowerShell, with `<repo>` the repo path as WSL sees it (`wslpath -a .` in the repo; no double quotes inside the `bash -lc` string besides the outer pair):
 
 ```powershell
-Start-Process -FilePath wsl.exe -ArgumentList '-e','bash','-lc','"bash /mnt/c/Users/molib/Documents/elrobot/lerobot-hackathon/scripts/so101/collect.sh <name>"'
+Start-Process -FilePath wsl.exe -ArgumentList '-e','bash','-lc','"bash /mnt/c/<repo>/scripts/so101/collect.sh <name>"'
 ```
 
 Tell the person, in one short message: click into the window, wait for the yellow WAITING box, SPACE start/finish episode (kept), LEFT throw it away, ESC (in the pause between episodes) end the session; the push runs by itself; close the window at "ALL DONE".
