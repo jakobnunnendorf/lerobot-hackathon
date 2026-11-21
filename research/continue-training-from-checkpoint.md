@@ -19,10 +19,10 @@ ACT uses a constant learning rate (AdamW 1e-5, no scheduler, no warmup; `configu
 
 1. Record the new episodes as their own dataset with the same cameras and fps as the old one, `--dataset.no_stamp=true`, and a **distinct task sentence** (see pitfalls).
 2. Merge: `lerobot-edit-dataset --new_repo_id <merged> --operation.type merge --operation.repo_ids "['<old>', '<new>']" --push_to_hub true`. The datasets must have identical fps, robot_type and features including camera names (`datasets/aggregate.py:140-156`); stats are aggregated from both.
-3. Fine-tune from a checkpoint (the person at the table or Kamel runs it; suggested 30,000 steps, untested):
+3. Fine-tune from a checkpoint (the person at the table or Kamel runs it; suggested 5,000-10,000 steps, untested: offline, held-out error on the red/blue run stopped improving after 5K steps, board 7064912974):
 
 ```bash
-uv run lerobot-train --policy.path=<old run>/checkpoints/<step>/pretrained_model --dataset.repo_id=<merged> --dataset.image_transforms.enable=true --dataset.image_transforms.tfs='<full JSON from board 7061985752, hue and saturation weight 0>' --dataset.eval_split=0.02 --batch_size=8 --steps=30000 --save_freq=5000 --output_dir=outputs/train/<NEW dir> --job_name=<name> --policy.repo_id=<NEW repo id>
+uv run lerobot-train --policy.path=<old run>/checkpoints/<step>/pretrained_model --dataset.repo_id=<merged> --dataset.image_transforms.enable=true --dataset.image_transforms.tfs='<full JSON from board 7061985752, hue and saturation weight 0>' --dataset.eval_split=0.02 --batch_size=8 --steps=10000 --save_freq=5000 --output_dir=outputs/train/<NEW dir> --job_name=<name> --policy.repo_id=<NEW repo id>
 ```
 
 **Correction to the subagent's command:** it used `--dataset.image_transforms.tfs.hue.weight=0`. Kamel's agent showed that single-field form fails with "unrecognized arguments" (board 7062043167, 7062218338); the full `tfs` JSON form is the one that works. Check the first lines of the log show hue and saturation with weight 0.0.
