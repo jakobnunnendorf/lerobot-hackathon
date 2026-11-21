@@ -145,10 +145,18 @@ def export_plan(catalog, selected, spec):
     return plan
 
 
+def found_by_repo_id(dataset):
+    return dataset.root.parent.name == "snapshots" or dataset.root.as_posix().endswith("/" + dataset.repo_id)
+
+
+def py_list(items):
+    return '"[' + ", ".join(f"'{i}'" for i in items) + ']"'
+
+
 def shell_script(catalog, selected, spec):
     output = spec["output_repo_id"]
     plan = export_plan(catalog, selected, spec)
-    folder_sources = any(p["dataset"].root.parent.parent.name != "snapshots" and not p["dataset"].root.as_posix().endswith(p["dataset"].repo_id) for p in plan)
+    folder_sources = any(not found_by_repo_id(p["dataset"]) for p in plan)
     new_dirs = [p["part"] for p in plan if p["delete"]] + [output]
     lines = [
         "#!/usr/bin/env bash",
@@ -163,15 +171,17 @@ def shell_script(catalog, selected, spec):
     ]
     for p in plan:
         if p["delete"]:
-            root = [f"--root {shlex.quote(str(p['dataset'].root))}"] if folder_sources else []
+            root = [f"--root {shlex.quote(p['dataset'].root.as_posix())}"] if folder_sources else []
             lines.append(" ".join(["lerobot-edit-dataset", f"--repo_id {shlex.quote(p['dataset'].repo_id)}", *root,
                                    f"--new_repo_id {shlex.quote(p['part'])}", "--operation.type delete_episodes",
                                    f"--operation.episode_indices {shlex.quote(json.dumps(p['delete']))}"]))
+    # concatenate_videos false: delete_episodes re-encodes some files at time base 1/90000 and stream-copies others
+    # at 1/15360, and 0.7.0's stream-copy concat then fails on non-monotonic DTS (tried 2026-11-21 on molnrb data).
     merge = ["lerobot-edit-dataset", f"--new_repo_id {shlex.quote(output)}", "--operation.type merge",
-             f"--operation.repo_ids {shlex.quote(str([p['part'] for p in plan]))}"]
+             f"--operation.repo_ids {py_list(p['part'] for p in plan)}", "--operation.concatenate_videos false"]
     if folder_sources:
-        roots = ['$LEROBOT_HOME/' + p["part"] if p["delete"] else str(p["dataset"].root) for p in plan]
-        merge.append(f"--operation.roots \"{str(roots)}\"")
+        roots = ['$LEROBOT_HOME/' + p["part"] if p["delete"] else p["dataset"].root.as_posix() for p in plan]
+        merge.append(f"--operation.roots {py_list(roots)}")
     lines += ["", " ".join(merge), ""]
     tasks = {str(k): v for p in plan for k, v in p["tasks"].items()}
     items = list(tasks.items())
