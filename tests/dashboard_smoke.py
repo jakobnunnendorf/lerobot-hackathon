@@ -51,7 +51,8 @@ def main() -> None:
         robot = subprocess.Popen([sys.executable, "-u", str(ROOT / "scripts/dashboard/fake_robot.py"), "--log-dir", logs,
                                   "--speed", "6", "--quiet-pick", "3", *PORTS])
         server = subprocess.Popen([sys.executable, "-u", str(ROOT / "scripts/dashboard/server.py"), "--host", "127.0.0.1",
-                                   "--port", "18080", "--log-dir", logs, "--no-speech", *PORTS])
+                                   "--port", "18080", "--log-dir", logs, "--no-speech", "--fake-collect",
+                                   "--collect-log-dir", f"{logs}/collect", "--collect-port", "18868", *PORTS])
         try:
             event = wait_for(lambda: _try(first_event), 30)
             check("events: live status from the robot program and its log", bool(event and event["status"]
@@ -81,6 +82,13 @@ def main() -> None:
             sys.path.insert(0, str(ROOT / "scripts/dashboard"))
             no_overwrite(Path(logs))
             stale_status_keeps_log(Path(logs))
+            refused = call("/api/collect/start", {"name": "smoke_set", "task": "Pick", "episodes": 2, "episode_s": 30})
+            check("collect: refused while the robot program runs", not refused["ok"] and "robot program" in refused["reason"],
+                  refused["reason"])
+            robot.terminate()
+            robot.wait(timeout=10)
+            time.sleep(4.5)  # status stale (2 s), and the page lets go of the frame blocks (3 s): Windows keeps them while open
+            collect_session()
         finally:
             for process in (server, robot):
                 process.terminate()
@@ -117,6 +125,40 @@ def round_video(logs: Path) -> None:
           and abs((first - start).total_seconds()) < 1.0 and 0 <= (last - end).total_seconds() < 3.0,
           f"{video.name if video else None}: {frames} frames, {len(rows)} rows, first {(first - start).total_seconds():+.2f} s "
           f"from round_start, last {(last - end).total_seconds():+.2f} s from round_end")
+
+
+def wait_phase(phase: str, seconds: float = 15):
+    return wait_for(lambda: (lambda s: s if s.get("phase") == phase else None)((_try(first_event) or {}).get("status") or {}),
+                    seconds)
+
+
+def collect_session() -> None:
+    form = {"name": "smoke_set", "task": "Pick up the striped ball", "episodes": 2, "episode_s": 30}
+    started = call("/api/collect/start", form)
+    again = call("/api/collect/start", form)
+    waiting = wait_phase("waiting")
+    check("collect: a session starts from the page; a second start is refused while it runs",
+          started["ok"] and not again["ok"] and "running" in again["reason"] and bool(waiting), f"{started} {again}")
+    busy = call("/api/command", {"target": "striped", "destination": "hand"})
+    check("collect: chain commands are refused while a session owns the arm", not busy["ok"]
+          and "collection" in busy["reason"], busy["reason"])
+    steps = []
+    for control, phase in (("next", "recording"), ("next", "reset"), ("discard", "recording"), ("next", "reset"),
+                           ("next", "recording"), ("next", "done")):
+        call("/api/collect/control", {"control": control})
+        reached = wait_phase(phase)
+        steps.append((control, phase, bool(reached)))
+    final = reached or {}
+    event = _try(first_event) or {}
+    check("collect: next/discard walk lerobot-record's phases; the discarded episode is recorded again",
+          all(ok for _, _, ok in steps), str(steps))
+    check("collect: counts at the end (2 saved, 1 thrown away, dataset 40 -> 42)",
+          final.get("saved") == 2 and final.get("discarded") == 1 and final.get("dataset_total") == 42, str(final))
+    ended = wait_for(lambda: not call("/api/collect/datasets") is None and not (_try(first_event) or {}).get(
+        "collect", {}).get("running"), 10)
+    check("collect: the session process ends by itself; its output reaches the page",
+          bool(ended) and any("Recording episode" in line for line in event.get("collect", {}).get("output", [])),
+          str(event.get("collect", {}).get("output", [])[-3:]))
 
 
 def stale_status_keeps_log(logs: Path) -> None:

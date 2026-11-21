@@ -19,7 +19,7 @@ const HAND_LOST_S = 5;
 
 const state = {
   status: null, statusAge: null, events: [], results: {}, log: null, speech: "loading",
-  lastObserves: null, loopHz: null, holdSince: null, camerasLive: {},
+  lastObserves: null, loopHz: null, holdSince: null, camerasLive: {}, mode: "chain", collect: null, datasets: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -169,11 +169,15 @@ async function stopRecording() {
 }
 
 $("mic").onclick = () => (recorder.context ? stopRecording() : startRecording());
+const typing = () => ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
+const COLLECT_KEYS = { Space: "next", ArrowLeft: "discard", Escape: "stop" };
 document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && !e.repeat && document.activeElement.tagName !== "INPUT") { e.preventDefault(); startRecording(); }
+  if (typing() || e.repeat) return;
+  if (state.mode === "collect" && COLLECT_KEYS[e.code]) { e.preventDefault(); collectControl(COLLECT_KEYS[e.code]); return; }
+  if (state.mode === "chain" && e.code === "Space") { e.preventDefault(); startRecording(); }
 });
 document.addEventListener("keyup", (e) => {
-  if (e.code === "Space" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); stopRecording(); }
+  if (state.mode === "chain" && e.code === "Space" && !typing()) { e.preventDefault(); stopRecording(); }
 });
 
 function setFeeds(on) {
@@ -189,6 +193,7 @@ function renderRound() {
   const current = running();
   const all = rounds();
   const shown = current || all[all.length - 1];
+  if (state.mode === "collect") return;
   setFeeds(Boolean(current) || $("toggle-cameras").checked);
   if (!shown) {
     $("round-title").textContent = "Waiting for a command";
@@ -329,12 +334,138 @@ function renderEvents() {
   $("events").style.whiteSpace = "pre";
 }
 
+// Phases of scripts/collect/record_session.py, in lerobot-record's order: an episode is saved only when the pause
+// after it ends, so "next" in the pause keeps it and "discard" there throws it away.
+const COLLECT_PHASES = {
+  starting: ["", "STARTING", "Connecting to both arms and cameras…", null],
+  waiting: ["wait", "WAITING · not recording", "Put the arm at rest and reset the scene, then start the first episode.", "▶ Start episode"],
+  recording: ["rec", "RECORDING episode %n", "Do the task. Finish when done, or throw it away if it went wrong.", "■ Finish episode"],
+  reset: ["wait", "PAUSED · episode %n not saved yet", "Reset the scene. Next keeps it and starts the next episode; ✗ throws it away.", "▶ Keep it · next episode"],
+  saving: ["info", "SAVING…", "Wait a moment.", null],
+  discarded: ["info", "THROWN AWAY", "It is recorded again after the pause.", null],
+  finishing: ["info", "FINISHING · saving everything", "Wait. Do not close the dashboard or the terminal.", null],
+  done: ["done", "SESSION ENDED", "", null],
+};
+
+function collectStatus() {
+  const s = state.status;
+  return s && s.mode === "collect" ? s : null;
+}
+
+function collectRunning() {
+  const fresh = state.statusAge !== null && state.statusAge < 2;
+  return Boolean((state.collect && state.collect.running) || (fresh && collectStatus() && collectStatus().phase !== "done"));
+}
+
+async function collectControl(control) {
+  if (!collectRunning()) return;
+  await post("/api/collect/control", { control });
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  try { localStorage.setItem("mode", mode); } catch (error) { /* per-viewer convenience only */ }
+  document.body.classList.toggle("mode-collect", mode === "collect");
+  $("mode-chain").classList.toggle("on", mode === "chain");
+  $("mode-collect").classList.toggle("on", mode === "collect");
+  if (mode === "collect") loadDatasets();
+  render();
+}
+
+async function loadDatasets() {
+  const data = await (await fetch("/api/collect/datasets")).json();
+  state.datasets = data;
+  const select = $("collect-dataset");
+  const chosen = select.value;
+  select.innerHTML = "";
+  for (const d of data.datasets) {
+    const option = new Option(`${d.name} (${d.episodes} episodes)`, d.name);
+    select.appendChild(option);
+  }
+  select.appendChild(new Option("New dataset…", ""));
+  if ([...select.options].some((o) => o.value === chosen)) select.value = chosen;
+  else if (!data.datasets.length) select.value = "";
+  pickDataset();
+}
+
+function pickDataset() {
+  const name = $("collect-dataset").value;
+  $("collect-new-label").hidden = Boolean(name);
+  const tasks = (state.datasets && state.datasets.tasks) || {};
+  if (name && tasks[name]) $("collect-task").value = tasks[name];
+  $("collect-task-note").textContent = name
+    ? `Adding to ${state.datasets.user}/${name}: use the task sentence it was recorded with.`
+    : "";
+}
+
+$("collect-dataset").onchange = pickDataset;
+$("mode-chain").onclick = () => setMode("chain");
+$("mode-collect").onclick = () => setMode("collect");
+$("collect-next").onclick = () => collectControl("next");
+$("collect-discard").onclick = () => collectControl("discard");
+$("collect-stop").onclick = () => collectControl("stop");
+$("collect-force").onclick = async () => {
+  if (confirm("Stop the recording like Ctrl+C? The episodes saved so far are kept.")) await post("/api/collect/force_stop", {});
+};
+$("collect-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const name = $("collect-dataset").value || $("collect-name").value.trim();
+  const form = { name, task: $("collect-task").value.trim(), episodes: Number($("collect-episodes").value),
+    episode_s: Number($("collect-limit").value) };
+  const fake = state.datasets && state.datasets.fake ? " (FAKE recorder: no arm, no dataset)" : "";
+  if (!confirm(`Start recording ${form.episodes} episodes into ${name}${fake}?\n\nThe follower arm will mirror the leader arm. Keep hands clear of the follower.`)) return;
+  const reply = await post("/api/collect/start", form);
+  $("collect-start-note").textContent = reply.ok ? "Starting…" : `✗ ${reply.reason}`;
+};
+
+function renderCollect() {
+  if (state.mode !== "collect") return;
+  const s = collectStatus();
+  const busy = collectRunning();
+  const phase = s ? s.phase : null;
+  const [kind, title, hint, nextLabel] = COLLECT_PHASES[phase] || ["", "No session", "Fill in the form and start a session.", null];
+  const episode = s && s.episode !== null && s.episode !== undefined ? s.episode : "";
+  $("collect-banner").className = `collect-banner collect-only ${kind}`;
+  $("collect-title").textContent = title.replace("%n", episode);
+  $("collect-hint").textContent = phase === "done" && s
+    ? `${s.saved} saved this session · ${s.dataset} now has ${s.dataset_total} episodes. ` +
+      `Upload (PR #6): python scripts/so101/upload_dataset.py ${s.dataset}`
+    : hint;
+  setFeeds(busy || $("toggle-cameras").checked);
+
+  const age = state.statusAge || 0;
+  const elapsed = s && s.phase_started ? s.time - s.phase_started + age : 0;
+  const limit = s && phase === "recording" ? s.episode_limit_s : null;
+  $("collect-bar").style.width = limit ? `${Math.min(elapsed / limit, 1) * 100}%` : "0";
+  $("collect-bar").style.background = limit && elapsed / limit > 0.85 ? "var(--bad)" : "var(--accent)";
+  $("collect-time").textContent = s && busy ? (limit ? `${elapsed.toFixed(0)} s of ${limit} s` : `${elapsed.toFixed(0)} s`) : "";
+
+  $("collect-counts").innerHTML = s
+    ? `<span>Saved <b>${s.saved}</b> / ${s.target}</span><span>Thrown away <b>${s.discarded}</b></span>` +
+      `<span>${s.dataset}: <b>${s.dataset_total}</b> episodes</span>` +
+      `<span>Loop <b>${state.loopHz ? state.loopHz.toFixed(0) : "-"}</b> Hz</span>`
+    : "";
+  $("collect-next").textContent = nextLabel || "▶ Start episode";
+  $("collect-next").disabled = !busy || !nextLabel;
+  $("collect-discard").disabled = !busy || !["recording", "reset"].includes(phase);
+  $("collect-discard").textContent = phase === "reset" ? "✗ Throw away last" : "✗ Throw away";
+  $("collect-stop").disabled = !busy || ["finishing", "done"].includes(phase);
+  $("collect-force").hidden = !(state.collect && state.collect.force_stop);
+  for (const field of $("collect-form").elements) field.disabled = busy;
+  const output = state.collect ? state.collect.output.join("\n") : "";
+  if ($("collect-output").textContent !== output) {
+    $("collect-output").textContent = output;
+    $("collect-output").scrollTop = $("collect-output").scrollHeight;
+  }
+}
+
 function render() {
   renderTiles();
   renderRound();
   renderLive();
   renderHistory();
   renderEvents();
+  renderCollect();
 }
 
 async function loadResults() {
@@ -364,6 +495,10 @@ function connect() {
     state.log = data.log;
     state.speech = data.speech;
     state.recording = data.recording;
+    const wasRunning = state.collect && state.collect.running;
+    state.collect = data.collect;
+    if (collectStatus() && state.mode !== "collect" && collectRunning()) setMode("collect");
+    if (wasRunning && !data.collect.running && state.mode === "collect") loadDatasets();
     if (Date.now() - renderedAt > 200) { render(); renderedAt = Date.now(); }
   };
   source.onerror = () => { $("badge-robot").textContent = "Dashboard server unreachable"; $("badge-robot").className = "badge off"; };
@@ -379,5 +514,8 @@ $("summary").onclick = async () => {
 };
 
 say("Pick a tile, type a command, or click 🎤 and say “give me the ball”.", "info");
+let savedMode = "chain";
+try { savedMode = localStorage.getItem("mode") || "chain"; } catch (error) { /* per-viewer convenience only */ }
+setMode(savedMode === "collect" ? "collect" : "chain");
 loadResults().then(connect);
-setInterval(() => renderRound(), 500);
+setInterval(() => { renderRound(); renderCollect(); }, 500);

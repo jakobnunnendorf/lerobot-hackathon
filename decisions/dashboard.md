@@ -8,6 +8,19 @@
 A browser page, `scripts/dashboard/server.py`, runs in WSL on the robot laptop and is opened at `http://localhost:8080`. It starts chains (tiles, chat, push-to-talk), shows both cameras while a round runs, shows the supervisor's state and live values, stores the tester's result per round, and writes a board summary. Why: Balazs tested from three terminals plus a Windows voice program, posted results by hand, and his agent was running out of tokens.
 
 - **The page only sends commands to a running supervisor**, the same `{target, destination}` JSON on 8765 as voice. ABORT sends `{"abort": true}`, the same as `a` + Enter. It cannot start the robot program, which a person starts.
+- **One exception: the page starts a data collection session** (Tian, 2026-11-21: "through the dashboard so it's visual and easier to do").
+  - A person at the table clicks Start after a confirm.
+  - The follower only mirrors the leader arm; no policy drives it.
+  - Start is refused while a robot program sends status.
+- **The session is `lerobot-record` itself**, run by `scripts/collect/record_session.py` with `record.sh`'s exact arguments (PR #6). Four module-level names of `lerobot_record` are replaced, plus `LeRobotDataset.save_episode`:
+  - the page's buttons set the same `events` as the keys, through `apply_recording_control`;
+  - the spoken lines give the phase;
+  - `get_observation` also feeds the frame blocks;
+  - `save_episode` counts saved episodes.
+
+  So the datasets and molnrb's installed patches (SPACE, wait before the first episode, banners and voice) stay as they are. The terminal keys keep working when the session has a TTY.
+  - Rejected: a record loop of our own. It would drift from `record.sh`'s datasets, which every policy was trained on.
+  - Rejected: typing keys into a terminal `lerobot-record`. Its keyboard needs a TTY, and a pty bridge is fragile.
 - **No commands while a round runs, or within 3 s of the last one** (ABORT always goes through). The supervisor reads the destination again at VERIFY_HOLD, so a command mid-round would change that round.
 - **The mic is in the browser; speech is recognised in the server**, with the same Parakeet model, phrase table and padding as `listen.py` (`decisions/voice-commands.md`). So there is no Python install on Windows; `getUserMedia` works on localhost without HTTPS. On Tian's laptop, two recorded commands were recognised in 0.3 s each.
 - **Frames come from shared memory and live values over UDP.** The supervisor writes the top block (as for the tracker) and a wrist block, both every second observe, about 0.3 ms per write. A thread sends the newest values (`scripts/supervisor/status.py`) at 5 Hz, fire and forget. The page needs no work in the 30 Hz loop, and a slow or closed page cannot stall it. History comes from the supervisor's JSONL log, which the server tails.

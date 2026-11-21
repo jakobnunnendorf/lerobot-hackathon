@@ -5,11 +5,15 @@ import argparse
 import asyncio
 import csv
 import json
+import os
+import re
+import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
-from collections import Counter
+from collections import Counter, deque
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Callable
@@ -41,6 +45,17 @@ VOICE_PAD_S = 0.5
 COMMAND_SETTLE_S = 3.0
 VIDEO_FPS = 15
 VIDEO_TAIL_S = 2.0
+COLLECT_CONTROLS = ("next", "discard", "stop")
+COLLECT_FORCE_AFTER_S = 30.0
+DATASET_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+# record.sh's filter for lerobot-record's encoder and timing chatter.
+COLLECT_NOISE = re.compile(r"Svt\[|SVT \[|asm level|^-{20,}|moov atom|Map: |^[ {]+'|py:[0-9]+ \{'|Streaming encoding|"
+                           r"Text-to-speech|Cadence|ticks|loop-body|^ +(observe|process_obs|teleop|send|record|"
+                           r"telemetry) |pacing headroom|effective cadence|Control loop is running slower|tqdm.py|"
+                           r"warnings.warn")
+COLLECT_COMMAND = ('set -a; source ~/.so101.env; set +a; eval "$SO101_ACTIVATE"; '
+                   'exec python -u scripts/collect/record_session.py "$@"')
 VIDEO_BAR_PX = 32  # under the frames, not over them: the wrist frame's bottom edge shows the held ball
 RESULTS = ("success", "wrong_ball", "empty", "dropped", "still_digging", "never_started", "other")
 DEFAULT_AVAILABLE = {"targets": ["striped"], "destinations": ["hand", "container"]}
@@ -355,6 +370,123 @@ def summary_markdown(events: list[dict], results: list[dict], log: Path | None, 
     return "\n".join(lines)
 
 
+def so101_env(path: Path = Path("~/.so101.env").expanduser()) -> dict[str, str]:
+    values = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^\s*([A-Z0-9_]+)=(.*)$", line)
+            if match:
+                values[match[1]] = match[2].strip().strip("'\"")
+    return values
+
+
+def form_problem(form: dict) -> str | None:
+    if not DATASET_NAME.match(form["name"]):
+        return "dataset name: letters, digits, _ . - only"
+    if not form["task"] or len(form["task"]) > 300:
+        return "the task sentence is missing or too long"
+    if not 1 <= form["episodes"] <= 200:
+        return "episodes: 1 to 200"
+    if not 10 <= form["episode_s"] <= 600:
+        return "episode limit: 10 to 600 s"
+    return None
+
+
+# Data collection: the page starts scripts/collect/record_session.py (lerobot-record as record.sh runs it) and drives
+# it over a UDP control port. A person at the table clicks Start; see decisions/dashboard.md.
+class Collector:
+    def __init__(self, args):
+        self.args = args
+        self.log_dir = Path(args.collect_log_dir).expanduser()
+        self.process: subprocess.Popen | None = None
+        self.output: deque[str] = deque(maxlen=200)
+        self.stop_sent_at: float | None = None
+        self._lock = threading.Lock()
+
+    def running(self) -> bool:
+        return self.process is not None and self.process.poll() is None
+
+    def _tasks_path(self) -> Path:
+        return self.log_dir / "tasks.json"
+
+    def tasks(self) -> dict[str, str]:
+        try:
+            return json.loads(self._tasks_path().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def datasets(self) -> dict:
+        user = self.args.hf_user or so101_env().get("SO101_HF_USER")
+        home = Path(self.args.lerobot_home).expanduser()
+        found = []
+        for info in sorted((home / user).glob("*/meta/info.json")) if user else []:
+            try:
+                found.append({"name": info.parent.parent.name, "episodes": json.loads(info.read_text())["total_episodes"]})
+            except (OSError, ValueError, KeyError):
+                continue
+        return {"user": user, "datasets": found, "tasks": self.tasks(), "fake": self.args.fake_collect}
+
+    def command(self, form: dict) -> list[str]:
+        flags = ["--name", form["name"], "--task", form["task"], "--episodes", str(form["episodes"]),
+                 "--episode-s", str(form["episode_s"]), "--log-dir", str(self.log_dir),
+                 "--control-port", str(self.args.collect_port), "--status-port", str(self.args.status_port),
+                 "--top-shm", self.args.top_shm, "--wrist-shm", self.args.wrist_shm]
+        if self.args.fake_collect:
+            return [sys.executable, "-u", str(Path(__file__).resolve().parent / "fake_recorder.py"), *flags]
+        return ["bash", "-c", self.args.collect_command, "record_session", *flags]
+
+    def start(self, form: dict) -> str | None:
+        with self._lock:
+            if self.running():
+                return "a collection session is running"
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self._tasks_path().write_text(json.dumps({**self.tasks(), form["name"]: form["task"]}, indent=1),
+                                          encoding="utf-8")
+            self.output.clear()
+            self.stop_sent_at = None
+            raw = self.log_dir / f"collect_{form['name']}_{datetime.now():%Y%m%d_%H%M%S}.out"
+            try:
+                self.process = subprocess.Popen(
+                    self.command(form), cwd=SCRIPTS.parent, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, encoding="utf-8", errors="replace", env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                    start_new_session=os.name == "posix")
+            except OSError as error:
+                return f"could not start the recording: {error}"
+            threading.Thread(target=self._read, args=(self.process, raw), daemon=True).start()
+            return None
+
+    def _read(self, process: subprocess.Popen, raw: Path) -> None:
+        with open(raw, "a", encoding="utf-8") as handle:
+            for line in process.stdout:
+                handle.write(line)
+                handle.flush()
+                line = ANSI.sub("", line).rstrip()
+                if line.strip() and not COLLECT_NOISE.search(line):
+                    self.output.append(line)
+
+    def control(self, name: str) -> bool:
+        if name == "stop":
+            self.stop_sent_at = time.monotonic()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.sendto(json.dumps({"control": name}).encode(), ("127.0.0.1", self.args.collect_port))
+        return True
+
+    # SIGINT, as Ctrl+C in a terminal: lerobot-record's finally still finalizes the dataset.
+    def force_stop(self) -> bool:
+        if not self.running():
+            return False
+        if os.name == "posix":
+            os.killpg(self.process.pid, signal.SIGINT)
+        else:
+            self.process.terminate()
+        return True
+
+    def state(self) -> dict:
+        waited = time.monotonic() - self.stop_sent_at if self.stop_sent_at else 0.0
+        return {"running": self.running(), "returncode": self.process.poll() if self.process else None,
+                "output": list(self.output)[-15:], "force_stop": self.running() and waited > COLLECT_FORCE_AFTER_S}
+
+
 def build_app(args) -> FastAPI:
     status = StatusListener(args.status_port)
     log = LogTail(Path(args.log_dir).expanduser(), status)
@@ -363,6 +495,7 @@ def build_app(args) -> FastAPI:
                                                         lambda: any(camera.live for camera in cameras.values()))
     voice_model = Speech(args.speech) if not args.no_speech else None
     results = Results(Path(args.log_dir).expanduser())
+    collector = Collector(args)
     app = FastAPI()
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -387,8 +520,12 @@ def build_app(args) -> FastAPI:
         ended = {e["round"] for e in events if e.get("event") == "round_end"}
         return bool(started - ended) or time.monotonic() - last_sent["at"] < COMMAND_SETTLE_S
 
+    def collecting() -> bool:
+        return collector.running() or (status.fresh() and status.latest.get("mode") == "collect")
+
     def send(command: dict) -> dict:
-        reason = "a round is running: wait for it to end, or ABORT" if round_running() else \
+        reason = "a data collection session owns the arm" if collecting() else \
+            "a round is running: wait for it to end, or ABORT" if round_running() else \
             unavailable_reason(command["target"], command["destination"])
         if reason:
             return {"ok": False, "reason": reason, "command": command}
@@ -436,6 +573,7 @@ def build_app(args) -> FastAPI:
                            "log": log.path.name if log.path else None, "reset": new_generation != generation,
                            "events": new, "cameras": {name: camera.live for name, camera in cameras.items()},
                            "recording": recorder.recording if recorder else None,
+                           "collect": collector.state(),
                            "speech": "ready" if voice_model and voice_model.transcribe else
                            (f"failed: {voice_model.error}" if voice_model and voice_model.error else
                             "off" if voice_model is None else "loading")}
@@ -470,6 +608,36 @@ def build_app(args) -> FastAPI:
     @app.post("/api/abort")
     def abort():
         return {"ok": link.send({"abort": True}, port=args.command_port)}
+
+    @app.get("/api/collect/datasets")
+    def collect_datasets():
+        return collector.datasets()
+
+    @app.post("/api/collect/start")
+    async def collect_start(request: Request):
+        body = await request.json()
+        try:
+            form = {"name": str(body.get("name", "")).strip(), "task": str(body.get("task", "")).strip(),
+                    "episodes": int(body.get("episodes", 0)), "episode_s": int(body.get("episode_s", 0))}
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "episodes and the episode limit must be numbers"}
+        reason = form_problem(form) or (
+            "a collection session is running" if collecting() else
+            "the robot program is running and owns the arm: stop it first" if status.fresh() else None)
+        if reason is None:
+            reason = collector.start(form)
+        return {"ok": reason is None, "reason": reason}
+
+    @app.post("/api/collect/control")
+    async def collect_control(request: Request):
+        name = (await request.json()).get("control")
+        if name not in COLLECT_CONTROLS:
+            raise HTTPException(400, f"control must be one of {', '.join(COLLECT_CONTROLS)}")
+        return {"ok": collector.control(name)}
+
+    @app.post("/api/collect/force_stop")
+    def collect_force_stop():
+        return {"ok": collector.force_stop()}
 
     @app.get("/api/results")
     def get_results():
@@ -510,6 +678,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-speech", action="store_true", help="skip loading the speech model (typed chat still works)")
     p.add_argument("--no-video", action="store_true", help="do not record a video of each round next to the log")
     p.add_argument("--video-fps", type=int, default=VIDEO_FPS)
+    p.add_argument("--collect-log-dir", default="~/so101/collect", help="session logs and remembered task sentences")
+    p.add_argument("--collect-port", type=int, default=8768, help="UDP control port of the recording session")
+    p.add_argument("--collect-command", default=COLLECT_COMMAND,
+                   help="bash script that starts the recording (gets record_session.py's flags as $@)")
+    p.add_argument("--fake-collect", action="store_true", help="start fake_recorder.py instead: no arm, no dataset")
+    p.add_argument("--hf-user", help="dataset owner; default SO101_HF_USER from ~/.so101.env")
+    p.add_argument("--lerobot-home", default=os.environ.get("HF_LEROBOT_HOME", "~/.cache/huggingface/lerobot"))
     return p.parse_args()
 
 
