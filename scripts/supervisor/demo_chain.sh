@@ -31,12 +31,14 @@ mkdir -p "$HOME/so101/demo"
 
 # --rest is eval_pick's HOME (median first frame of the training episodes, as P runs it) with the gripper at 30, not
 # 17.8: the supervisor refuses to start with the gripper in the holding band (6-20), so 17.8 would block every restart.
+# --max-step-deg 15 is eval_pick's max_relative_target: from black test frames the checkpoint's first goal was 50+ deg
+# from rest, and the supervisor has no cap of its own. A later --max-step-deg on the command line wins.
 # shellcheck disable=SC2086
 python scripts/supervisor/run_supervisor.py --robot \
   --port "${SO101_FOLLOWER_PORT:-/dev/so101_follower}" --robot-id "${SO101_FOLLOWER_ID:-mi_follower}" \
   --top-camera "${SO101_CAM_TOP:-/dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0}" \
   --wrist-camera "${SO101_CAM_WRIST:-/dev/v4l/by-id/usb-Sonix_Technology_Co.__Ltd._USB2.0_CAM1_USB2.0_CAM1-video-index0}" \
-  --pick-policy "$checkpoint" --pick-timeout 90 \
+  --pick-policy "$checkpoint" --pick-timeout 90 --max-step-deg 15 \
   --rest -5.6 -102.8 96.6 -100.1 -5.2 30 \
   --put-down-pose $PUT_DOWN_POSE \
   --give-mode follow --voice --voice-host 0.0.0.0 --rounds 10 \
