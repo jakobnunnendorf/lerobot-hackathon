@@ -19,6 +19,10 @@ A browser page, `scripts/dashboard/server.py`, runs in WSL on the robot laptop a
   - `save_episode` counts saved episodes.
 
   So the datasets and molnrb's installed patches (SPACE, wait before the first episode, banners and voice) stay as they are. The terminal keys keep working when the session has a TTY.
+  - **A session uploads its dataset when it ends** (default on, 20 episodes per session; Tian and Jakob, 2026-11-21, board 7067885958), so the training that follows the recording sees each batch (`decisions/continual-training.md`). It uses the same `push_to_hub` as PR #6's `upload_dataset.py`, in the session's own process, after `lerobot-record` returns.
+    - **The next session waits for the upload**, because both read and write the same files; a copy for the upload would cost about 2 GB per session.
+    - **A failed upload leaves the dataset on the laptop**, and the page offers a retry (`--upload-only`).
+    - Rejected: `--dataset.push_to_hub=true` inside `lerobot-record`. A failed push there gives no retry without recording again.
   - Rejected: a record loop of our own. It would drift from `record.sh`'s datasets, which every policy was trained on.
   - Rejected: typing keys into a terminal `lerobot-record`. Its keyboard needs a TTY, and a pty bridge is fragile.
 - **No commands while a round runs, or within 3 s of the last one** (ABORT always goes through). The supervisor reads the destination again at VERIFY_HOLD, so a command mid-round would change that round.
