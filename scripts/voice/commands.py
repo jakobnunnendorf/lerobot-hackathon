@@ -16,9 +16,17 @@ WAKE_VARIANTS = {
 WAKE_CUTOFF = 80
 
 DEFAULT_TARGET = "striped"
-TARGETS = {"striped": ("striped", "stripy", "stripes")}
+# Whole words, not fuzzy: a three-letter word such as "red" scores 100 inside "tired" or "hundred".
+TARGETS = {
+    "striped": {"striped", "stripy", "stripes", "stripe", "yellow", "green"},
+    "red": {"red"},
+    "blue": {"blue"},
+}
 DESTINATIONS = {
-    "hand": ("give it to me", "give me the ball", "hand it to me", "hand it over", "pass it to me", "in my hand"),
+    "hand": (
+        "give it to me", "give me the ball", "give me", "hand it to me", "hand me", "hand it over", "pass it to me",
+        "in my hand",
+    ),
     "container": ("put it in the container", "container"),
 }
 KEYS = {"1": "hand", "2": "container"}
@@ -42,8 +50,9 @@ def parse(transcript: str) -> Command | None:
     destination = best_match(text, DESTINATIONS)
     if destination is None:
         return None
-    # only one ball exists today, so a command that names none still means it
-    target = best_match(text, TARGETS) or DEFAULT_TARGET
+    target = named_target(rest)
+    if target is None:
+        return None
     return Command(target, destination, transcript.strip(), "voice")
 
 
@@ -58,6 +67,15 @@ def rejection_reason(transcript: str) -> str:
     if strip_wake_phrase(normalise(transcript).split()) is None:
         return f'no "{WAKE_PHRASE}" at the start'
     return "no single command recognised"
+
+
+# The striped ball is the demo's target, so a command that names no colour means it; two colours are refused,
+# because guessing one would send the wrong ball.
+def named_target(words: list[str]) -> str | None:
+    named = [target for target, colour_words in TARGETS.items() if colour_words & set(words)]
+    if not named:
+        return DEFAULT_TARGET
+    return named[0] if len(named) == 1 else None
 
 
 def normalise(text: str) -> str:

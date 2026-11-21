@@ -35,6 +35,15 @@ ACCEPTED = [
     ("Hey bot, put it in the contain her.", "container"),
 ]
 
+COLOURED = [
+    ("Hey bot, hand me the striped ball.", "hand", "striped"),
+    ("Hey bot, hand me the yellow and green ball.", "hand", "striped"),
+    ("Hey bot, hand me the red ball.", "hand", "red"),
+    ("Hey bot, give me the blue ball.", "hand", "blue"),
+    ("Hey bot, put the red ball in the container.", "container", "red"),
+    ("Hey bot, I'm tired, give it to me.", "hand", "striped"),
+]
+
 REJECTED = [
     "",
     "Hey bot.",
@@ -58,6 +67,8 @@ REJECTED = [
     "Hey bot, the ball.",
     "Hey bot, give it to me or put it in the container.",
     "Hey bot, put it in the container, no, give it to me.",
+    "Hey bot, hand me the red or the blue ball.",
+    "Hey bot, give me the red and the striped ball.",
 ]
 
 KEYS = [("1", "hand"), ("2", "container"), (" 1 ", "hand"), ("3", None), ("", None)]
@@ -67,6 +78,10 @@ for transcript, expected in ACCEPTED:
     command = parse(transcript)
     if command is None or (command.destination, command.target, command.source) != (expected, DEFAULT_TARGET, "voice"):
         failures.append(f"expected {expected!r:12} got {command}  <- {transcript!r}")
+for transcript, destination, target in COLOURED:
+    command = parse(transcript)
+    if command is None or (command.destination, command.target) != (destination, target):
+        failures.append(f"expected {destination!r} {target!r} got {command}  <- {transcript!r}")
 for transcript in REJECTED:
     if (command := parse(transcript)) is not None:
         failures.append(f"expected rejection, got {command.destination!r}  <- {transcript!r}")
@@ -75,8 +90,8 @@ for key, expected in KEYS:
     if (command and command.destination) != expected or (command and command.source != "keyboard"):
         failures.append(f"key {key!r}: expected {expected!r}, got {command}")
 
-total = len(ACCEPTED) + len(REJECTED) + len(KEYS)
-print(f"{total} cases: {len(ACCEPTED)} accepted, {len(REJECTED)} rejected, {len(KEYS)} keys")
+total = len(ACCEPTED) + len(COLOURED) + len(REJECTED) + len(KEYS)
+print(f"{total} cases: {len(ACCEPTED)} accepted, {len(COLOURED)} with a colour, {len(REJECTED)} rejected, {len(KEYS)} keys")
 for failure in failures:
     print("FAIL", failure)
 if failures:

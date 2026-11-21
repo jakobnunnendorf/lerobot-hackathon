@@ -45,6 +45,7 @@ scripts/voice/.venv/Scripts/python scripts/voice/listen.py
 3. A box shows `HEARD 'Hey bot, give it to me.'` and `>>> HAND  (striped ball)`, then `sent {...}`.
 4. Terminal 1 prints the same JSON line.
 5. Same with "Hey bot, put it in the container": `>>> CONTAINER`.
+6. "Hey bot, hand me the red ball" shows `>>> HAND  (red ball)`. Naming no colour means the striped ball; naming two colours is refused.
 
 Say "hey bot" first, then the command, in one breath. A recording stops by itself after 8 s.
 
