@@ -2,7 +2,9 @@
 
 Our team project for the LeRobot physical-AI hackathon in Bilbao. Hardware: SO-101 follower arm (+ leader arm), optionally a second arm.
 
-**What we are building:** the arm finds the one target ball (yellow and green stripes) among gray tinfoil balls in a bowl and picks it up. If the target ball is hidden, it takes gray balls out one at a time, drops each into the gray hole and looks again. Then it puts the target ball into a person's hand and shakes hands, or puts it down if there is no hand. Details: `ideas/ball-picking-and-handover.md`. Plan and deadlines: `docs/roadmap.md`.
+**What we are building** (current plan, as agreed on board issue #1 on 2026-11-21): one dig-and-pick ACT policy (`act_pick_ball_combined`) takes the target ball (yellow and green stripes) from the bowl whether it is visible or buried under gray tinfoil balls, and ends at the folded rest pose holding the ball. Then the arm follows a hand (MediaPipe tracker, camera calibration, inverse kinematics) and drops the ball between two flat palms, or puts it down in a container if there is no hand. Voice picks the destination, and a supervisor chains the steps. The handshake comes last, after everything else works. Colour choice is parked. Details: `ideas/ball-picking-and-handover.md`. Plan and deadlines: `docs/roadmap.md`.
+
+*Changed on 2026-11-21 because of board comments 7061614734 and 7061650334 (molnrb): there is no CLEAR GRAY dataset, and the combined policy digs and picks in one episode. Earlier plan: clear gray balls into a gray hole with a separate skill, hand the ball over with GIVE, then shake hands.*
 
 LeRobot is installed as a package (pinned to **0.7.0** in `pyproject.toml`), so nobody needs to clone the LeRobot repo.
 Use the matching docs: https://huggingface.co/docs/lerobot/v0.7.0/en/index
@@ -24,6 +26,8 @@ uv run python -c "import lerobot; print(lerobot.__version__)"
 ```
 
 Run every LeRobot command with `uv run` in front (or `source .venv/bin/activate` first).
+
+**macOS note:** `uv.lock` pins the CUDA 12.8 torch wheels, so `uv sync` fails on macOS (there is no macOS torch in the lock). Use an existing virtualenv, or work on the robot laptop. Any `--policy.device=mps` line below only applies to such a hand-made Mac environment.
 
 ## SO-101 quick commands
 
@@ -77,6 +81,8 @@ Recorded by the team on the SO-101 (top + wrist camera, 30 fps), all at https://
 | [molnrb/so101_pick_blue_ball](https://huggingface.co/datasets/molnrb/so101_pick_blue_ball) | 100 | 47,401 |
 | [molnrb/so101_pick_buried_ball](https://huggingface.co/datasets/molnrb/so101_pick_buried_ball) | 45 | 44,529 |
 | [molnrb/so101_pick_ball_combined](https://huggingface.co/datasets/molnrb/so101_pick_ball_combined) | 145 | 91,930 |
+
+Note: the task sentences in these datasets say "blue ball", but the ball is the one with yellow and green stripes (the target ball was blue at first). The dataset names and sentences stay as recorded, so do not rename them. Keep this in mind for language-conditioned policies and model cards.
 
 Browse episodes in the browser: https://huggingface.co/spaces/lerobot/visualize_dataset
 

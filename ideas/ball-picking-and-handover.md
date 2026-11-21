@@ -1,6 +1,17 @@
 # Find the target ball, clear the gray ones if it is hidden, hand it over
 
-**Status: CHOSEN.** The team switched to this idea on the evening of 2026-11-20 (reported by Tian). It replaces the bomb-defusal placeholder and the cable-cutting candidate. The structure below is agreed with Tian. The learned skills run as ACT policies, because pi0.5 did not fit on the demo laptop.
+**Status: CHOSEN.** The team switched to this idea on the evening of 2026-11-20 (reported by Tian). It replaces the bomb-defusal placeholder and the cable-cutting candidate. The learned skill runs as an ACT policy, because pi0.5 did not fit on the demo laptop.
+
+**Current plan (board issue #1, 2026-11-21; changed because of 7061614734, 7061650334 and 7061772563):**
+
+- One dig-and-pick ACT policy, `molnrb/act_pick_ball_combined`, for a visible and a buried ball. It ends at the folded rest pose holding the ball. All pick episodes start and end there, not at a HOME above the bowl.
+- Then hand following (MediaPipe tracker, camera calibration, inverse kinematics; #13, #15) with a drop between two flat palms, or PUT DOWN into a container (a taught pose).
+- Voice picks the destination (#16, merged). The supervisor chains the steps (#17, draft).
+- CLEAR GRAY and the gray hole: no dataset exists. Only wanted if the run counts show the policy cannot dig.
+- SHAKE (handshake): after everything else (Balazs, 7061650334). Colour choice: parked.
+- Status of the pieces: camera calibration is on branch `TianK003/camera-calibration`, not merged; #13, #15, #17 are open.
+
+Everything below is the **earlier plan** (2026-11-20), kept for history. Where it mentions CLEAR GRAY, the gray hole, HOME/CARRY, GIVE as a replay or SHAKE, the current plan above wins.
 
 ## The idea, as the team stated it
 
