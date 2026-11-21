@@ -1,3 +1,5 @@
+import json
+import re
 import socket
 import sys
 import tempfile
@@ -98,6 +100,65 @@ def test_cameras():
         with mock.patch.object(FakeCapture, "shape", (720, 1280, 3)):
             assert preflight.check_camera_top(args()).status == preflight.FAIL
     assert preflight.check_camera_top(args(top_camera="/nonexistent/camera")).status == preflight.FAIL
+
+
+NEW_NAMES = """\
+                     brightness 0x00980900 (int)    : min=-64 max=64 step=1 default=0 value=0
+                  auto_exposure 0x009a0901 (menu)   : min=0 max=3 default=3 value=3 (Aperture Priority Mode)
+         exposure_time_absolute 0x009a0902 (int)    : min=1 max=5000 step=1 default=157 value=300 flags=inactive
+        white_balance_automatic 0x0098090c (bool)   : default=1 value=1
+        white_balance_temperature 0x0098091a (int)    : min=2800 max=6500 step=1 default=4600 value=4200 flags=inactive
+"""
+OLD_NAMES = """\
+                  exposure_auto 0x009a0901 (menu)   : min=0 max=3 default=3 value=3 (Aperture Priority Mode)
+              exposure_absolute 0x009a0902 (int)    : min=1 max=5000 step=1 default=157 value=250 flags=inactive
+ white_balance_temperature_auto 0x0098090c (bool)   : default=1 value=1
+      white_balance_temperature 0x0098091a (int)    : min=2800 max=6500 step=1 default=4600 value=5000 flags=inactive
+"""
+
+
+class FakeV4l2:
+    def __init__(self, listing: str):
+        self.listing, self.calls = listing, []
+
+    def __call__(self, device, *arguments):
+        self.calls.append(arguments)
+        if arguments == ("--list-ctrls",):
+            return self.listing
+        for argument in arguments[1::2]:
+            name, value = argument.split("=")
+            self.listing = re.sub(rf"({name} .*value=)-?\d+", rf"\g<1>{value}", self.listing)
+        return ""
+
+
+def test_exposure_controls():
+    for listing, names in ((NEW_NAMES, ("auto_exposure=1", "exposure_time_absolute=300", "white_balance_automatic=0", "white_balance_temperature=4200")),
+                           (OLD_NAMES, ("exposure_auto=1", "exposure_absolute=250", "white_balance_temperature_auto=0", "white_balance_temperature=5000"))):
+        fake = FakeV4l2(listing)
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(preflight, "v4l2_ctl", fake), mock.patch.object(
+            preflight.shutil, "which", return_value="/usr/bin/v4l2-ctl"
+        ), mock.patch.object(preflight.sys, "platform", "linux"), mock.patch.object(preflight.os.path, "exists", return_value=True):
+            controls_file = str(Path(folder) / "controls.json")
+            result = preflight.check_exposure(args(controls_file=controls_file))
+            assert result.status == preflight.WARN and "top auto exposure" in result.message, result
+            assert any("value=" not in line and "=" in line for line in result.details)
+
+            result = preflight.check_exposure(args(controls_file=controls_file, lock_exposure=True))
+            assert result.status == preflight.PASS, result
+            setting = [call for call in fake.calls if call[:1] == ("-c",)][0]
+            assert [setting[i] for i in range(1, len(setting), 2)] == list(names), setting
+            saved = json.loads(Path(controls_file).read_text())
+            assert set(saved) == {"top", "wrist"}
+
+            result = preflight.check_exposure(args(controls_file=controls_file, unlock_exposure=True))
+            assert result.status == preflight.WARN, result
+            restored = [call for call in fake.calls if call[:1] == ("-c",)][2]  # top camera; the fake shares one listing, so wrist saw locked values
+            assert restored[1] == names[0].split("=")[0] + "=3" and restored[-1].endswith("=" + names[3].split("=")[1]), restored
+
+    with mock.patch.object(preflight.shutil, "which", return_value=None), mock.patch.object(preflight.sys, "platform", "linux"):
+        assert preflight.check_exposure(args()).status == preflight.WARN
+    with mock.patch.object(preflight.sys, "platform", "win32"):
+        assert preflight.check_exposure(args()).status == preflight.WARN
 
 
 def test_policy():

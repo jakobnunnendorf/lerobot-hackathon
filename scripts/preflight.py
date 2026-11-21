@@ -2,6 +2,7 @@ import argparse
 import importlib.metadata
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -26,6 +27,13 @@ POLICY_CAMERAS = ("top", "wrist")
 TRACKER_PORT = 8766
 VOICE_PORT = 8765
 MOTORS = {"shoulder_pan": 1, "shoulder_lift": 2, "elbow_flex": 3, "wrist_flex": 4, "wrist_roll": 5, "gripper": 6}
+CONTROLS_FILE = "~/.so101_camera_controls.json"
+# UVC control names differ between kernel versions; the first one a camera reports is used
+EXPOSURE_MODE = ("auto_exposure", "exposure_auto")
+EXPOSURE_TIME = ("exposure_time_absolute", "exposure_absolute")
+WB_AUTO = ("white_balance_automatic", "white_balance_temperature_auto")
+WB_TEMPERATURE = ("white_balance_temperature",)
+MANUAL_EXPOSURE, AUTO_EXPOSURE = 1, 3
 DISK_WARN_GB, DISK_FAIL_GB = 20, 5
 
 
@@ -156,6 +164,104 @@ def check_camera_wrist(args) -> Result:
     return check_camera(args, "wrist")
 
 
+def v4l2_ctl(device: str, *arguments: str) -> str:
+    done = subprocess.run(["v4l2-ctl", "-d", device, *arguments], capture_output=True, text=True, timeout=5)
+    if done.returncode != 0:
+        raise RuntimeError((done.stderr or done.stdout).strip()[:120])
+    return done.stdout
+
+
+def read_controls(device: str) -> dict[str, int]:
+    controls = {}
+    for line in v4l2_ctl(device, "--list-ctrls").splitlines():
+        match = re.match(r"\s*(\w+)\s+0x[0-9a-f]+\s+\(\w+\)\s*:.*\bvalue=(-?\d+)", line)
+        if match:
+            controls[match.group(1)] = int(match.group(2))
+    return controls
+
+
+def pick(controls: dict[str, int], names: tuple[str, ...]) -> str | None:
+    return next((name for name in names if name in controls), None)
+
+
+def auto_controls_on(controls: dict[str, int]) -> list[str]:
+    on = []
+    mode, white = pick(controls, EXPOSURE_MODE), pick(controls, WB_AUTO)
+    if mode and controls[mode] != MANUAL_EXPOSURE:
+        on.append("auto exposure")
+    if white and controls[white] == 1:
+        on.append("auto white balance")
+    return on
+
+
+def describe(controls: dict[str, int]) -> str:
+    names = EXPOSURE_MODE + EXPOSURE_TIME + WB_AUTO + WB_TEMPERATURE
+    return " ".join(f"{name}={controls[name]}" for name in names if name in controls) or "no exposure or white-balance controls"
+
+
+def lock_arguments(controls: dict[str, int]) -> list[str]:
+    mode, time_, white, temperature = (pick(controls, names) for names in (EXPOSURE_MODE, EXPOSURE_TIME, WB_AUTO, WB_TEMPERATURE))
+    wanted = [(mode, MANUAL_EXPOSURE), (time_, controls.get(time_)), (white, 0), (temperature, controls.get(temperature))]
+    return [f"{name}={value}" for name, value in wanted if name and value is not None]
+
+
+def save_controls(path: Path, saved: dict[str, dict[str, int]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing = json.loads(path.read_text()) if path.is_file() else {}
+    path.write_text(json.dumps({**existing, **saved}, indent=2))
+
+
+def restore_arguments(controls: dict[str, int], saved: dict[str, int] | None) -> list[str]:
+    if saved:
+        names = (*EXPOSURE_MODE, *EXPOSURE_TIME, *WB_AUTO, *WB_TEMPERATURE)
+        return [f"{name}={saved[name]}" for name in names if name in saved and name in controls]
+    mode, white = pick(controls, EXPOSURE_MODE), pick(controls, WB_AUTO)
+    return [f"{name}={value}" for name, value in ((mode, AUTO_EXPOSURE), (white, 1)) if name]
+
+
+def change_controls(device: str, camera: str, args) -> str:
+    controls = read_controls(device)
+    path = Path(args.controls_file).expanduser()
+    if args.lock_exposure:
+        # saved before the first lock only: locking twice must not overwrite the values to undo with
+        saved = json.loads(path.read_text()) if path.is_file() else {}
+        if camera not in saved:
+            save_controls(path, {camera: controls})
+        arguments = lock_arguments(controls)
+    else:
+        saved = json.loads(path.read_text()) if path.is_file() else {}
+        arguments = restore_arguments(controls, saved.get(camera))
+    if arguments:
+        v4l2_ctl(device, *[part for argument in arguments for part in ("-c", argument)])
+    return ("locked: " if args.lock_exposure else "restored: ") + " ".join(arguments)
+
+
+def check_exposure(args) -> Result:
+    if not sys.platform.startswith("linux"):
+        return Result(WARN, "not Linux: exposure and white balance not checked", "check them in the camera's own settings dialog")
+    if shutil.which("v4l2-ctl") is None:
+        return Result(WARN, "v4l2-ctl not installed: exposure and white balance not checked", "sudo apt install v4l-utils")
+    lines, auto, notes = [], [], []
+    for camera in POLICY_CAMERAS:
+        device = camera_source(args, camera)
+        if isinstance(device, int) or not os.path.exists(device):
+            lines.append(f"{camera}: {device} not found")
+            auto.append(f"{camera} camera missing")
+            continue
+        try:
+            if args.lock_exposure or args.unlock_exposure:
+                notes.append(f"{camera} {change_controls(device, camera, args)}")
+            controls = read_controls(device)
+        except Exception as error:
+            return Result(FAIL, f"{camera} camera controls: {error}", "close programs using the camera, re-plug, attach_usb.sh")
+        lines.append(f"{camera}: {describe(controls)}")
+        auto += [f"{camera} {name}" for name in auto_controls_on(controls)]
+    details = tuple(notes + lines)
+    if auto:
+        return Result(WARN, f"{', '.join(auto)}", "redo after every replug: python scripts/preflight.py --lock-exposure", details)
+    return Result(PASS, "exposure and white balance are manual on both cameras", details=details)
+
+
 def check_policy(args) -> Result:
     import lerobot.policies  # registers the policy types, otherwise from_pretrained finds none
     from lerobot.configs.policies import PreTrainedConfig
@@ -257,6 +363,7 @@ CHECKS = {
     "calibration": (check_calibration, "follower calibration"),
     "camera_top": (check_camera_top, "top camera"),
     "camera_wrist": (check_camera_wrist, "wrist camera"),
+    "exposure": (check_exposure, "camera exposure/WB"),
     "policy": (check_policy, "policy checkpoint"),
     "tracker": (check_tracker, "tracker link"),
     "voice": (check_voice, "voice link"),
@@ -325,12 +432,18 @@ def parse_args(argv=None):
     parser.add_argument("--policy", default=POLICY, help="Hub id or local pretrained_model folder")
     parser.add_argument("--load-policy", action="store_true", help="load the weights on the GPU, not only the config")
     parser.add_argument("--read-motors", action="store_true", help="open the port and read present positions (no writes)")
+    parser.add_argument("--lock-exposure", action="store_true", help="save the cameras' controls, then set manual exposure and white balance at their current values (cameras only)")
+    parser.add_argument("--unlock-exposure", action="store_true", help="put the saved controls back (auto exposure and white balance if none were saved)")
+    parser.add_argument("--controls-file", default=CONTROLS_FILE, help="where --lock-exposure saves the controls")
     parser.add_argument("--voice-host", default="127.0.0.1")
     parser.add_argument("--strict-services", action="store_true", help="a closed 8766/8765 is FAIL instead of WARN")
     parser.add_argument("--data-dir", default=os.environ.get("HF_LEROBOT_HOME", "~/.cache/huggingface/lerobot"))
     parser.add_argument("--skip", default="", help=f"comma list of: {','.join(CHECKS)} (camera skips both)")
     parser.add_argument("--timeout", type=float, default=20.0, help="seconds per check (policy gets 4x)")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.lock_exposure and args.unlock_exposure:
+        parser.error("--lock-exposure and --unlock-exposure exclude each other")
+    return args
 
 
 def main(argv=None) -> int:
