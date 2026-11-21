@@ -35,11 +35,21 @@ class Aborted(Exception):
     pass
 
 
+# --quiet-pick: the status goes silent during PICK, as it did on the arm in take 1 of the VLA restart (board 7067318509).
+class FakeStatus(Status):
+    quiet = False
+
+    def snapshot(self) -> dict:
+        if self.quiet:
+            raise OSError("status quiet")  # Status.start's sender skips the datagram on OSError
+        return super().snapshot()
+
+
 class FakeRobot:
-    def __init__(self, log: Log, status: Status, speed: float):
-        self.log, self.status, self.speed = log, status, speed
+    def __init__(self, log: Log, status: FakeStatus, speed: float, quiet_pick_s: float = 0.0):
+        self.log, self.status, self.speed, self.quiet_pick_s = log, status, speed, quiet_pick_s
         self.abort = threading.Event()
-        self.state, self.round = "REST", 0
+        self.state, self.round, self.gripper = "REST", 0, 30.0
 
     def wait(self, seconds: float, **live) -> None:
         end = time.monotonic() + seconds / self.speed
@@ -47,12 +57,20 @@ class FakeRobot:
             if self.abort.is_set():
                 raise Aborted
             self.status.update(**live)
+            self.gripper = live.get("gripper", self.gripper)
             time.sleep(0.05)
 
     def go(self, target_state: str, reason: str, **details) -> None:
         self.log.write(event="transition", round=self.round, source=self.state, target=target_state, reason=reason,
-                       gripper=self.status.snapshot().get("gripper"), **details)
+                       gripper=self.gripper, **details)
         self.state = target_state
+
+    def quiet_pick(self) -> None:
+        self.status.quiet = True
+        try:
+            self.wait(self.quiet_pick_s * self.speed)
+        finally:
+            self.status.quiet = False
 
     def run_round(self, target: str, destination: str) -> None:
         self.round += 1
@@ -66,6 +84,7 @@ class FakeRobot:
             self.go("PICK", "at rest")
             states.append("PICK")
             self.wait(4.0, gripper=40.0, joints=[0, -60, 40, -60, 0])
+            self.quiet_pick()
             self.log.write(event="grasp_check", round=self.round, pick_attempt=1, phase="settle", reading=13.0, goal=1.0,
                            error=12.0, verdict="held")
             self.wait(3.0, gripper=13.0, joints=REST)
@@ -136,12 +155,13 @@ def main() -> None:
     p.add_argument("--status-port", type=int, default=8767)
     p.add_argument("--top-shm", default="top_camera_frames")
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
+    p.add_argument("--quiet-pick", type=float, default=0.0, help="seconds without a status in each PICK")
     args = p.parse_args()
     log_dir = Path(args.log_dir).expanduser()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"chain_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
     log = Log(log_path)
-    status = Status()
+    status = FakeStatus()
     status.update(available={"targets": ["striped"], "destinations": ["hand", "container"]},
                   pick_policy="FAKE Space0code/act_redblue_from_foil@015000", log_path=str(log_path.resolve()),
                   budgets_s=BUDGETS, hold_range=[6.0, 20.0], min_held_target_area_px=120, gripper=30.0, joints=REST,
@@ -151,7 +171,7 @@ def main() -> None:
     status.start(port=args.status_port)
     writers = {"top": FrameWriter(args.top_shm), "wrist": FrameWriter(args.wrist_shm)}
     threading.Thread(target=feed_frames, args=(writers, args.webcam), daemon=True).start()
-    robot = FakeRobot(log, status, args.speed)
+    robot = FakeRobot(log, status, args.speed, args.quiet_pick)
     log.write(event="start", pick_policy="FAKE", budgets_s=BUDGETS, fake=True)
     receiver = link.CommandReceiver("127.0.0.1", args.command_port)
     print(f"fake robot: commands on {args.command_port}, status on {args.status_port}, log {log_path}. Ctrl+C stops.",

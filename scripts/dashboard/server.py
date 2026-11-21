@@ -31,6 +31,7 @@ import speech  # noqa: E402
 from frame_link import FrameReader  # noqa: E402
 
 STATUS_FRESH_S = 2.0
+STATUS_GAP_S = 1.0
 CAMERA_FPS = 15
 CAMERA_STALE_S = 3.0
 MAX_VOICE_S = 8.0
@@ -53,13 +54,21 @@ class StatusListener:
         sock.bind(("127.0.0.1", port))
         threading.Thread(target=self._listen, args=(sock,), daemon=True).start()
 
+    # The status went quiet for seconds during PICK in the VLA restart (take 1, board 7067318509), cause unknown. The
+    # sender's own timestamps tell a stalled robot program apart from a stalled dashboard.
     def _listen(self, sock: socket.socket) -> None:
         while True:
             data = sock.recv(65536)
             try:
-                self.latest, self.received_at = json.loads(data), time.time()
+                latest = json.loads(data)
             except ValueError:
-                pass
+                continue
+            now = time.time()
+            if self.received_at and now - self.received_at > STATUS_GAP_S:
+                sent_gap = float(latest.get("time", now)) - float(self.latest.get("time", now))
+                print(f"{log_stamp(now)} status gap: {now - self.received_at:.1f} s since the last one; "
+                      f"{sent_gap:.1f} s apart on the robot program's clock", flush=True)
+            self.latest, self.received_at = latest, now
 
     def age(self) -> float | None:
         return None if not self.received_at else time.time() - self.received_at
@@ -70,7 +79,8 @@ class StatusListener:
 
 
 class LogTail:
-    """Events of the supervisor's JSONL log: the file the status names, else the newest chain_*.jsonl in log_dir."""
+    """Events of the supervisor's JSONL log: the file the newest status names, however old, else the newest
+    chain_*.jsonl in log_dir. Requiring a fresh status lost the pick of take 1 when the status went quiet."""
 
     def __init__(self, log_dir: Path, status: StatusListener):
         self.log_dir, self.status = log_dir, status
@@ -81,7 +91,7 @@ class LogTail:
         threading.Thread(target=self._follow, daemon=True).start()
 
     def _current_file(self) -> Path | None:
-        named = self.status.latest.get("log_path") if self.status.fresh() else None
+        named = self.status.latest.get("log_path")
         if named and Path(named).exists():
             return Path(named)
         return newest_chain_log(self.log_dir)
@@ -245,7 +255,8 @@ class RoundRecorder:
     def _run(self) -> None:
         video, recorded, tail_until, next_at = None, None, None, time.monotonic()
         while True:
-            # An unfinished round in a crashed program's log is not running: record only while the program is live.
+            # An unfinished round in a crashed program's log is not running, so record only while camera frames arrive.
+            # Not the status: it can go quiet for seconds in the middle of a pick.
             number, state = active_round(self.log.snapshot()) if self.live() else (None, "idle")
             if video is not None and number == recorded:
                 tail_until = None
@@ -348,7 +359,8 @@ def build_app(args) -> FastAPI:
     status = StatusListener(args.status_port)
     log = LogTail(Path(args.log_dir).expanduser(), status)
     cameras = {"top": Camera(args.top_shm, "top"), "wrist": Camera(args.wrist_shm, "wrist")}
-    recorder = None if args.no_video else RoundRecorder(log, cameras, args.video_fps, status.fresh)
+    recorder = None if args.no_video else RoundRecorder(log, cameras, args.video_fps,
+                                                        lambda: any(camera.live for camera in cameras.values()))
     voice_model = Speech(args.speech) if not args.no_speech else None
     results = Results(Path(args.log_dir).expanduser())
     app = FastAPI()
