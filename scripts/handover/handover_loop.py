@@ -219,6 +219,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--frames-shm", default="top_camera_frames", help="shared-memory name the hand tracker reads")
     p.add_argument("--robot-id", default="mi_follower")
     p.add_argument("--listen", default="127.0.0.1:8766")
+    p.add_argument("--any-hand", action="store_true", help="also follow hands the tracker marks closed (default: open palms only)")
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--duration", type=float, help="seconds; default runs until Ctrl-C")
     p.add_argument("--home", type=float, nargs=5, help="HOME joints in degrees; default: the pose at start")
@@ -246,7 +247,7 @@ def main() -> None:
         sys.exit("--robot needs --port and --top-camera")
 
     host, port = args.listen.rsplit(":", 1)
-    receiver = HandReceiver(host, int(port))
+    receiver = HandReceiver(host, int(port), open_only=not args.any_hand)
     lim = Limits(args.max_step_deg, Limits.gripper_step, args.max_step_m, args.min_height, args.max_height,
                  args.min_radius, args.max_radius)
     if missing := unreachable_hover_points(args.hover_height, lim):
