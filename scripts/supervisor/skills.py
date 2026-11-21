@@ -1,5 +1,6 @@
 import sys
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -289,6 +290,18 @@ class _HandoverArm:
         self.arm.send(action_of(np.concatenate([joints_deg, [gripper]])))
 
 
+# The values of the command Balazs ran on the arm with Tian's branch (docs/hand-tracking-test.md section 2b on
+# TianK003/hand-tracking-test; board 7064755928, "works fine"): hover 28 cm, every target at least 20 cm up, half speed.
+# celebrate: Tian's 3 close-open cycles after the drop (3bb344d, dry run only so far).
+@dataclass
+class GiveSettings:
+    hover_height: float = 0.28
+    min_height: float = 0.20
+    max_step_deg: float = 1.0
+    max_step_m: float = 0.004
+    celebrate: int = 3
+
+
 # GIVE runs the #13 hand-following loop in this process on the supervisor's robot connection, so its
 # safety rules (gripper hold every tick, workspace clamp, guarded steps) apply unchanged. Why not a
 # subprocess: decisions/supervisor.md, "Robot ownership".
@@ -296,35 +309,46 @@ class GiveSkill:
     name = "give"
 
     def __init__(self, arm, handover_dir: Path, receiver, abort: threading.Event, timeout_s: float,
-                 gripper_open: float, frame_writer=None, fps: int = 30):
+                 gripper_open: float, frame_writer=None, fps: int = 30, settings: GiveSettings | None = None):
         self.arm, self.receiver, self.abort, self.timeout_s = arm, receiver, abort, timeout_s
         self.gripper_open, self.frame_writer, self.fps = gripper_open, frame_writer, fps
+        self.settings = settings or GiveSettings()
         self.loop = import_from(handover_dir, "handover_loop")
         self.following = import_from(handover_dir, "following")
+        if self.settings.celebrate and not hasattr(self.loop, "celebration_gripper"):
+            raise RuntimeError(f"{handover_dir}/handover_loop.py has no --celebrate (needs #13 at 47d437c or later)")
         self._result = "timeout"
         self._done = False
 
     def start(self, obs, last_sent, now):
         self.gripper_hold = float(last_sent["gripper.pos"])
         self.home = pose_of(last_sent)[:5]
-        self._result, self._done = "timeout", False
+        self._result, self._done, self._done_at = "timeout", False, None
 
     # The loop's HOME is the pose GIVE starts from: the present pose, not the rest pose (give_sequence).
     def _on_tick(self, t, decision, commanded, gripper, tip, goal_tip):
         Mode = self.following.Mode
         if self.abort.is_set():
             raise _GiveStopped("aborted")
-        if decision.mode == Mode.DONE and abs(gripper - self.gripper_open) < 0.5:
-            raise _GiveStopped("dropped")
+        if decision.mode == Mode.DONE:
+            self._done_at = t if self._done_at is None else self._done_at
+            # Tian's celebration (close-open cycles, arm still) runs inside the loop; GIVE ends once it is over and the
+            # gripper is open. The fold to rest is the supervisor's REST, so the loop gets no rest pose of its own.
+            celebrating = t - self._done_at < 2 * self.settings.celebrate * getattr(self.loop, "CELEBRATE_PHASE_S", 0.0)
+            if not celebrating and abs(gripper - self.gripper_open) < 0.5:
+                raise _GiveStopped("dropped")
         if decision.mode == Mode.HOME:
             raise _GiveStopped("hand_lost")
 
     def step(self, obs, now):
-        follower = self.following.Follower(self.following.FollowSettings())
+        g = self.settings
+        follower = self.following.Follower(self.following.FollowSettings(hover_height=g.hover_height))
+        limits = self.loop.Limits(max_step_deg=g.max_step_deg, max_step_m=g.max_step_m, min_height=g.min_height)
+        extra = {"rest": None, "celebrate_cycles": g.celebrate} if g.celebrate else {}
         try:
             self.loop.run(_HandoverArm(self.arm), self.receiver, follower, self.home, self.gripper_hold,
-                          self.gripper_open, self.loop.Limits(), self.fps, self.timeout_s, self._on_tick,
-                          self.frame_writer)
+                          self.gripper_open, limits, self.fps, self.timeout_s, self._on_tick,
+                          self.frame_writer, **extra)
         except _GiveStopped as stop:
             self._result = stop.result
         self._done = True
@@ -339,7 +363,8 @@ class GiveSkill:
 # The #13 loop moves the tip in clamped Cartesian steps (0.12-0.38 m from the pan axis, 0.08-0.30 m high), so
 # from the folded rest pose (tip 3.4 cm behind the axis) it never gets going: tried in the sim, it held for the
 # whole timeout. GIVE therefore starts from a present pose inside that workspace; board 7061460387 gives this
-# one as tip (0.15, 0, 0.20).
+# one as tip (0.15, 0, 0.20). With Tian's fitted offsets (#13 at 47d437c) the model puts it at (0.151, -0.010, 0.243),
+# above the loop's 0.20 m floor, and the joint move from Balazs's folded rest pose to it stays at 0.243-0.374 m.
 PRESENT_POSE = (0.0, -55.3, 5.6, 91.8, 0.0)
 
 

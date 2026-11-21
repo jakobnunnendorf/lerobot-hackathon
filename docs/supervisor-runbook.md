@@ -52,12 +52,34 @@ Then start the hand tracker (the receiver now ignores closed hands itself; `--on
 - **Cameras use MJPG** (`--camera-fourcc MJPG`, as PR #6's `scripts/so101/common.sh`): two uncompressed 640x480/30 fps streams usually do not both fit on one USB bus. `--camera-fourcc none` leaves the format to OpenCV if a camera refuses MJPG. PR #6 also sets the OpenCV backend (`backend: 200`, V4L2); this program does not.
 - **Crash or Ctrl-C:** the shared-memory block for the hand tracker is closed on exit, and a stale block of the same name left by an earlier crash is removed at start.
 - **`a` + Enter (or Ctrl-C) = ABORT.** The arm stops where it is with torque on, the gripper is not opened. Hold the arm, then switch the power off.
-- **Watch the first move from rest to the present pose** (default `0 -55.3 5.6 91.8 0`): in the model the tip passes about 3 cm above the table. If it comes close to the bowl or the table, stop and change `--present-pose`.
+- **Watch the first move from rest to the present pose** (default `0 -55.3 5.6 91.8 0`): from Balazs's folded rest pose the model (Tian's offsets) keeps the tip at 0.243-0.374 m; from the guessed rest `0 20 60 90 0` it passed about 3 cm above the table. If it comes close to the bowl or the table, stop and change `--present-pose`.
 - `--max-step-deg 1.0` caps every arm joint at 1 degree per tick (30 deg/s) in every skill, the policy included. Use it for the first runs with a person's hand; it changes how the policy moves.
 - Voice with the robot program in **WSL** and the listener on Windows: add `--voice-host 0.0.0.0`. With 127.0.0.1, 2 of 8 starts were unreachable from Windows for 11-15 s (`decisions/voice-commands.md`).
 - `--clear-gray-policy <checkpoint>` turns on CLEAR GRAY. It is for the **old foil-ball setup** (gray tinfoil balls, replaced by red and blue balls on 2026-11-21, board 7062034477) and stays off; LOOK's target mask is also for the striped ball only.
 - `--hold-range 6 20` (measured holds 9.3-16.4, open jaws 17-40) and `--max-pick-attempts 3` are flags. Every VERIFY_HOLD reading is in the log: check it after the first rounds, and read a foil ball once.
 - `--n-action-steps 20` replans ACT every 0.67 s instead of 3.3 s; `--camera-rename top=camera1 wrist=camera2` for a SmolVLA checkpoint.
+
+## Full chain PICK -> GIVE (Tian's hand-following loop) -> REST
+
+The chain the team decided on (Space0code, board 7064763916; Tian, 7064748304): learned PICK, then the hand-following loop that ran on the arm (Balazs, 7064755928, "works fine"), then back to rest, on one connection. **Not yet run on the arm as a chain.**
+
+- GIVE runs the loop with the values of that arm run: hover 0.28 m, no target below 0.20 m, half speed (`--give-hover-height`, `--give-min-height`, `--give-max-step-deg 1.0`, `--give-max-step-m 0.004`), then Tian's 3 close-open cycles after the drop (`--celebrate 3`, 0 turns it off).
+- The fold to rest is the supervisor's REST (a joint move, done when the measured joints are there), not the loop's `--rest`. Start with the arm at its folded rest pose (Balazs's reading `-3.69 -103.43 97.01 -100.26 1.45`), gripper empty: the pose at start is REST.
+- "Hand lost" for 3 s ends GIVE still holding: back to REST, then PUT DOWN.
+- Before torque on, each servo's goal is set to where it is (Tian's fix), so the arm does not jump at start.
+- In the model, with Tian's offsets, the tip stays 0.243-0.40 m above the table over the whole round (rest -> present pose -> follow -> rest, `tests/supervisor_scenarios.py`).
+- The handover and tracker files come from Tian's checkout (`~/track`, `TianK003/hand-tracking-test` at 3bb344d or later) or #13 (`jakobnunnendorf/handover-loop`); both work.
+
+```bash
+cd ~/track && git fetch origin && git checkout --detach origin/TianK003/hand-tracking-test   # tracker, calibration, loop
+cd ~/sup && git fetch origin && git checkout --detach origin/jakobnunnendorf/supervisor     # this program
+python scripts/supervisor/run_supervisor.py --robot --port /dev/so101_follower \
+  --top-camera /dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0 --wrist-camera <index> --robot-id mi_follower \
+  --handover-dir ~/track/scripts/handover --handtrack-dir ~/track/scripts/handtrack --give-mode follow \
+  --put-down-pose <5 joint values> --no-held-check --max-step-deg 1.0 --rounds 1 --log outputs/chain.jsonl
+```
+
+Then terminal 2, the tracker reading this program's frames, as in Tian's runbook (`docs/hand-tracking-test.md` 2b on his branch, no `--camera`). Press Enter, then `h` + Enter to go straight to GIVE once the arm holds the ball at the present pose (or show two palms within 3 s). Ctrl-C or `a` + Enter = ABORT.
 
 ## Counting for H5 / H7
 

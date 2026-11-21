@@ -10,6 +10,7 @@ from machine import Aborted, Sensors, Settings, Skills, Supervisor, TransitionLo
 from skills import (
     PRESENT_POSE,
     SCRIPTS,
+    GiveSettings,
     LoadedPolicy,
     PolicySkill,
     PresentAndDrop,
@@ -180,11 +181,13 @@ def run_robot(args) -> None:
     pick_policy = LoadedPolicy(args.pick_policy, args.device, args.n_action_steps, rename)
     clear_policy = LoadedPolicy(args.clear_gray_policy, args.device, None, rename) if args.clear_gray_policy else None
     receiver = import_from(handover_dir, "hand_socket").HandReceiver(*split_address(args.hand_listen)) if has_receiver else None
-    frame_link_dir = SCRIPTS / "handtrack"
+    frame_link_dir = Path(args.handtrack_dir)
     frame_writer = None
     if (frame_link_dir / "frame_link.py").exists():
         unlink_stale_block(args.frames_shm)
         frame_writer = import_from(frame_link_dir, "frame_link").FrameWriter(args.frames_shm)
+    else:
+        print(f"WARNING: no frame_link.py in {frame_link_dir}: the hand tracker gets no top-camera frames", flush=True)
     try:
         run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands)
     finally:
@@ -207,7 +210,26 @@ def unlink_stale_block(name: str) -> None:
     print(f"removed stale shared-memory block {name!r}", flush=True)
 
 
+def sync_goal_to_present(bus) -> None:
+    """Goal_Position = Present_Position (raw steps) on a bus of its own, torque untouched, before robot.connect().
+
+    LeRobot 0.7.0's connect() switches the torque on without writing a goal, so after the arm was moved by hand each
+    servo jumps to its stale stored goal. Tian's fix (TianK003/hand-tracking-test), as in #13's connect_robot().
+    """
+    bus.connect()
+    try:
+        bus.sync_write("Goal_Position", bus.sync_read("Present_Position", normalize=False), normalize=False)
+    finally:
+        bus.disconnect(disable_torque=False)
+
+
+def give_settings_from(args) -> GiveSettings:
+    return GiveSettings(hover_height=args.give_hover_height, min_height=args.give_min_height,
+                        max_step_deg=args.give_max_step_deg, max_step_m=args.give_max_step_m, celebrate=args.celebrate)
+
+
 def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands) -> None:
+    sync_goal_to_present(robot.bus)
     robot.connect()
     log = TransitionLog(args.log)
     try:
@@ -226,7 +248,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
             def give_skill():
                 return give_sequence(arm, args.present_pose, handover_dir=handover_dir, receiver=receiver,
                                      abort=commands.abort, timeout_s=settings.give_timeout_s,
-                                     gripper_open=args.gripper_open, frame_writer=frame_writer, fps=args.fps)
+                                     gripper_open=args.gripper_open, frame_writer=frame_writer, fps=args.fps,
+                                     settings=give_settings_from(args))
         elif receiver:
             def give_skill():
                 return PresentAndDrop(palms_seen, args.gripper_open)
@@ -318,11 +341,23 @@ def parse_args() -> argparse.Namespace:
                    help="joints (deg) over the blue sorting container, taught at the table; default: --put-down-pose")
     p.add_argument("--rest", type=float, nargs=6, help="rest pose incl. gripper; default: the pose at start")
     p.add_argument("--handover-dir", default=str(SCRIPTS / "handover"), help="where #13's handover_loop.py lives")
+    p.add_argument("--handtrack-dir", default=str(SCRIPTS / "handtrack"),
+                   help="where frame_link.py lives (shares top-camera frames with the hand tracker)")
     p.add_argument("--present-pose", type=float, nargs=5, default=PRESENT_POSE,
                    help="joints (deg) the ball is carried to before GIVE; the hand decision is made there")
     p.add_argument("--give-mode", choices=("auto", "follow", "present"), default="auto",
                    help="follow: #13 hand-following loop; present: hold the present pose, drop on two palms "
                         "(no camera calibration needed); auto: follow if #13 is there")
+    p.add_argument("--give-hover-height", type=float, default=GiveSettings.hover_height,
+                   help="follow GIVE: tip height over the hands (m); 0.28 ran on the arm (board 7064755928)")
+    p.add_argument("--give-min-height", type=float, default=GiveSettings.min_height,
+                   help="follow GIVE: no target below this (m), as --min-height of the run on the arm")
+    p.add_argument("--give-max-step-deg", type=float, default=GiveSettings.max_step_deg,
+                   help="follow GIVE: joint speed limit (deg/tick), half speed as on the arm")
+    p.add_argument("--give-max-step-m", type=float, default=GiveSettings.max_step_m,
+                   help="follow GIVE: tip step per tick (m), half speed as on the arm")
+    p.add_argument("--celebrate", type=int, default=GiveSettings.celebrate,
+                   help="follow GIVE: fast close-open gripper cycles after the drop (Tian's, 0 = off); then REST folds")
     p.add_argument("--hand-listen", default="127.0.0.1:8766")
     p.add_argument("--frames-shm", default="top_camera_frames")
     p.add_argument("--voice", action="store_true", help="receive voice commands (scripts/voice/link.py) on port 8765")

@@ -16,7 +16,7 @@ sys.path[:] = [str(SUPERVISOR)] + [p for p in sys.path if Path(p or ".").resolve
 from commands import Commands
 from fakes import SCENARIOS, FakeArm, Scenario, World, build, pick_effect, release_effect, scripted
 from machine import RealClock, Sensors, Settings, Skills, Supervisor, TransitionLog
-from skills import KEYS, LoadedPolicy, PolicySkill, capped, give_sequence, import_from, pose_of
+from skills import KEYS, GiveSettings, LoadedPolicy, PolicySkill, capped, give_sequence, import_from, pose_of
 
 failures: list[str] = []
 
@@ -295,15 +295,108 @@ def send_hands(port: int, stop: threading.Event) -> None:
 
 
 class TipRecorder(FakeArm):
-    def __init__(self, world, abort, kinematics):
-        super().__init__(world, abort)
-        self.kinematics, self.tips = kinematics, []
+    def __init__(self, world, abort, kinematics, rest=None):
+        super().__init__(world, abort) if rest is None else super().__init__(world, abort, rest)
+        self.kinematics, self.tips, self.grippers = kinematics, [], []
 
     def send(self, action):
         if self.world.holding and action["gripper.pos"] > 30:
             self.world.holding = False
         self.tips.append(self.kinematics.forward_kinematics(pose_of(action)[:5]))
+        self.grippers.append(action["gripper.pos"])
         self.last_sent = dict(action)
+
+
+# Balazs's folded rest pose (board 7064702491) with an open-ish gripper, the rest Tian's loop folds to on the arm.
+TABLE_REST = np.array([-3.69, -103.43, 97.01, -100.26, 1.45, 30.0])
+
+
+def chain_pick_give_rest(handover_dir: Path, log_path: str) -> None:
+    """PICK (scripted) -> VERIFY_HOLD -> present pose -> GIVE by #13's loop with Tian's tested settings (hover 0.28,
+    floor 0.20, half speed, 3 celebrate cycles) -> REST, on one simulated connection."""
+    hand_socket = import_from(handover_dir, "hand_socket")
+    kinematics = import_from(handover_dir, "kinematics")
+    port = 18767
+    receiver = hand_socket.HandReceiver("127.0.0.1", port)
+    stop = threading.Event()
+    threading.Thread(target=send_hands, args=(port, stop), daemon=True).start()
+
+    abort, world = threading.Event(), World(hand=True)
+    arm = TipRecorder(world, abort, kinematics, TABLE_REST)
+    settings = Settings()
+    give = GiveSettings()
+    skills = Skills(pick=scripted("pick", world, ["ok"], pick_effect(world), ticks=10),
+                    put_down=scripted("put_down", world, ["ok"], release_effect(world, "ok")),
+                    give=lambda: give_sequence(arm, handover_dir=handover_dir, receiver=receiver, abort=abort,
+                                                timeout_s=settings.give_timeout_s, gripper_open=60.0, settings=give))
+    sensors = Sensors(palms_seen=lambda: len(receiver.newest_hands()) >= 2)
+    rest = pose_of(arm.last_sent)
+    log = TransitionLog(log_path, echo=False)
+    started = time.monotonic()
+    result = Supervisor(arm, skills, sensors, settings, rest, log, abort, RealClock(settings.fps)).run_round(98)
+    stop.set()
+    events = [json.loads(line) for line in Path(log_path).read_text().splitlines()]
+    give_end = next(e for e in events if e["event"] == "transition" and e["source"] == "GIVE")
+    tips = np.array(arm.tips)
+    # Gripper closes after the drop opened it: the celebration (3 cycles -> 3 closes to the loop's CELEBRATE_CLOSED).
+    grips = np.array(arm.grippers)
+    opened = int(np.argmax(grips >= 59.5))
+    closes = int(np.sum((grips[opened:-1] > 30) & (grips[opened + 1:] < 30)))
+    check("chain PICK -> GIVE (Tian's loop) -> REST, table rest pose", result.outcome == "given"
+          and [s.value for s in result.states] == ["REST", "PICK", "VERIFY_HOLD", "GIVE", "REST", "DONE"]
+          and give_end["skill"] == "dropped" and np.allclose(pose_of(arm.last_sent), rest),
+          f"{' -> '.join(s.value for s in result.states)}; GIVE {give_end['skill']}; {time.monotonic() - started:.1f} s")
+    check("chain: 3 celebrate cycles inside GIVE, then the gripper stays open to REST", closes == 3
+          and np.all(grips[-5:] >= 30), f"closes after the drop {closes}")
+    check("chain: tip never below 0.20 m on the whole round (rest, present pose, follow, fold)",
+          tips[:, 2].min() >= 0.20 - 1e-3, f"tip z {tips[:, 2].min():.3f}-{tips[:, 2].max():.3f} m")
+
+
+class FakeBus:
+    def __init__(self, log):
+        self.log, self.goal = log, {"shoulder_pan": 2048}
+
+    def connect(self):
+        self.log.append("bus connect")
+
+    def sync_read(self, name, normalize=True):
+        assert name == "Present_Position" and normalize is False
+        return {"shoulder_pan": 2100}
+
+    def sync_write(self, name, values, normalize=True):
+        assert name == "Goal_Position" and normalize is False
+        self.goal = dict(values)
+        self.log.append("write goal")
+
+    def disconnect(self, disable_torque=True):
+        self.log.append(f"bus disconnect torque_off={disable_torque}")
+
+
+class _Stop(Exception):
+    pass
+
+
+class FakeRobot:
+    def __init__(self):
+        self.log = []
+        self.bus = FakeBus(self.log)
+
+    def connect(self):
+        self.log.append("robot connect")
+        raise _Stop
+
+
+def goal_sync_before_connect() -> None:
+    import run_supervisor
+
+    robot = FakeRobot()
+    try:
+        run_supervisor.run_connected(None, robot, None, None, None, False, None)
+    except _Stop:
+        pass
+    check("robot mode: Goal_Position set to the present position before connect() turns torque on (Tian's fix)",
+          robot.log == ["bus connect", "write goal", "bus disconnect torque_off=False", "robot connect"]
+          and robot.bus.goal == {"shoulder_pan": 2100}, str(robot.log))
 
 
 def give_integration(handover_dir: Path, log_path: str) -> None:
@@ -351,6 +444,7 @@ def main() -> None:
         held_ball_check(f"{work}/held.jsonl")
         robot_flags()
         speed_cap()
+        goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
             vision_adapter(vision_dir)
@@ -362,6 +456,7 @@ def main() -> None:
         handover_dir = Path(args.handover_dir)
         if (handover_dir / "handover_loop.py").exists():
             give_integration(handover_dir, f"{work}/give.jsonl")
+            chain_pick_give_rest(handover_dir, f"{work}/chain.jsonl")
         else:
             print(f"SKIP  GIVE integration: no handover_loop.py in {handover_dir}")
     print("FAIL" if failures else "PASS")
