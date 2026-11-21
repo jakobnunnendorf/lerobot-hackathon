@@ -345,6 +345,32 @@ def grasp_check_log(log_path: str) -> None:
     checks, _, _ = run("grasp_check_too_high_miss_before_reading")
     check("grasp check: close with the tip above --grasp-max-tip-height -> miss before reading the gripper",
           [(c["phase"], c.get("reason")) for c in checks] == [("trigger", "too_high")] * 3, str(checks[0]))
+    checks, world, events = run("grasp_check_lock_blocks_reopen")
+    verdicts = [c["verdict"] for c in checks if "verdict" in c]
+    blocked = [c for c in checks if c["phase"] == "release_blocked"]
+    pick_end = next(e for e in events if e["event"] == "transition" and e["source"] == "PICK")
+    check("grasp check lock (r1 pattern): held, policy re-opens to 30 for 1.3 s and closes -> one 'held', "
+          "release_blocked 2 lines (once a second, fake clock), ball kept, PICK ends ok, no miss",
+          verdicts == ["held"] and len(blocked) == 2 and all(b["command"] == 30.0 and b["sent"] == 1.0 for b in blocked)
+          and pick_end["target"] == "VERIFY_HOLD"
+          and pick_end["skill"] == "ok" and not world.violations, f"{checks} {pick_end}")
+    checks, _, events = run("grasp_check_unlocked_reopen_rearms")
+    check("grasp check unlocked: re-open logged as release, re-armed, the empty close is a fresh check (miss), "
+          "re-pick holds",
+          [(c["phase"], c.get("verdict")) for c in checks][:3] == [("settle", "held"), ("release", None), ("settle", "miss")]
+          and checks[2]["pick_attempt"] == 1 and checks[-1]["verdict"] == "held" and checks[-1]["pick_attempt"] == 2,
+          str([(c["phase"], c.get("verdict"), c["pick_attempt"]) for c in checks]))
+    checks, _, _ = run("grasp_check_low_load_is_miss")
+    check("grasp check: reading in the band but load 120 < 200 -> miss; then load 480 -> held",
+          [(c["verdict"], c["in_band"], c["stalled"], c["load"], c["load_ok"]) for c in checks]
+          == [("miss", True, True, 120.0, False), ("held", True, True, 480.0, True)], str(checks))
+    checks, _, _ = run("grasp_check_load_unreadable_reading_rule")
+    check("grasp check: load read fails -> reading rule alone decides, logged as load_rule unavailable",
+          [(c["verdict"], c["load"], c["load_rule"]) for c in checks] == [("held", None, "unavailable")]
+          and "no Present_Load" in checks[0].get("load_error", ""), str(checks))
+    from grasp_check import load_magnitude
+    check("grasp check: load magnitude = abs(), and bit 10 (sign-magnitude direction) dropped",
+          (load_magnitude(-480), load_magnitude(1024 + 480), load_magnitude(28), load_magnitude(None)) == (480, 480, 28, None))
     checks, _, _ = run("grasp_check_off_old_flow_carries_empty")
     check("grasp check off -> nothing logged, an empty close is only caught at VERIFY_HOLD", checks == [])
 
@@ -387,11 +413,14 @@ def robot_flags() -> None:
     args = parsed()
     settings, cameras = settings_from(args), camera_configs(args)
     grasp = settings.grasp_check
-    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, load logged only, "
-          "tip height off); --no-grasp-check turns it off",
+    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, min load 200, "
+          "locked after a hold, tip height off); --no-grasp-check turns it off",
           grasp is not None and (grasp.trigger, grasp.settle_s, grasp.min_error, grasp.hold_range, grasp.min_load,
-                                 grasp.max_tip_height) == (10.0, 0.4, 3.0, (6.0, 20.0), None, None)
+                                 grasp.lock_after_hold, grasp.max_tip_height)
+          == (10.0, 0.4, 3.0, (6.0, 20.0), 200.0, True, None)
           and settings_from(parsed("--no-grasp-check")).grasp_check is None, str(grasp))
+    check("--no-grasp-lock-after-hold restores the unlocked flow",
+          settings_from(parsed("--no-grasp-lock-after-hold")).grasp_check.lock_after_hold is False)
     check("robot defaults: striped judged only, red candidate 2000 kept, PR #30 region, both cameras MJPG",
           settings.held_check_colours == ("striped",) and settings.min_held_area_px == {"red": 2000}
           and settings.min_held_target_area_px is None and tuple(args.held_check_roi) == WRIST_HELD_ROI == (0.52, 0.72, 0.2, 0.25)

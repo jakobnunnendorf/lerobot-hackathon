@@ -55,7 +55,8 @@ class RobotArm:
         return self.last_obs
 
     # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
-    # Feetech docs; LeRobot 0.7.0's bus reads any register through rustypot, unnormalised). Not read on the arm yet.
+    # Feetech docs; LeRobot 0.7.0's bus reads any register through rustypot, unnormalised). On the arm 2026-11-21 it
+    # read 28-44 empty and 440-500 on the ball, all positive; the grasp check takes abs() in case the sign bit shows.
     def gripper_load(self) -> float:
         return float(self.robot.bus.sync_read("Present_Load", "gripper")["gripper"])
 
@@ -103,6 +104,7 @@ def settings_from(args) -> Settings:
                         trigger=args.grasp_trigger, armed_above=args.grasp_armed_above, close_goal=args.grasp_close_goal,
                         settle_s=args.grasp_settle, min_error=args.grasp_min_error, hold_range=tuple(args.hold_range),
                         min_load=args.grasp_min_load, backoff_s=args.grasp_backoff,
+                        lock_after_hold=args.grasp_lock_after_hold,
                         max_tip_height=args.grasp_max_tip_height))
 
 
@@ -492,7 +494,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--grasp-min-error", type=float, default=g.min_error,
                    help="grasp check: reading minus goal for a ball stalling the jaw (held closes: p1 5.5, median 12.4)")
     p.add_argument("--grasp-min-load", type=float, default=g.min_load,
-                   help="grasp check: |Present_Load| of the gripper servo for a hold; default: logged only (not measured)")
+                   help="grasp check: |Present_Load| of the gripper servo for a hold, as well as the reading rule "
+                        "(2026-11-21: ball 440-500, empty 28-44); an unreadable load falls back to the reading rule")
+    p.add_argument("--grasp-lock-after-hold", action=argparse.BooleanOptionalAction, default=g.lock_after_hold,
+                   help="grasp check: after 'held', send min(policy, held goal) to the gripper for the rest of PICK, so "
+                        "the policy cannot open on the ball (logged as release_blocked); --no-grasp-lock-after-hold: "
+                        "a re-open ends the hold, logged as release, and the next close is a fresh check")
     p.add_argument("--grasp-backoff", type=float, default=g.backoff_s,
                    help="grasp check: on a miss, back the arm off along the commanded path of this many seconds")
     p.add_argument("--grasp-max-tip-height", type=float, default=g.max_tip_height,
