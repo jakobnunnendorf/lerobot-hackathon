@@ -78,6 +78,7 @@ def main() -> None:
             call("/api/abort", {})
             aborted = wait_for(lambda: "| 2 | striped -> container | aborted" in call("/api/summary"), 15)
             check("ABORT ends round 2 'aborted'", bool(aborted), call("/api/summary").splitlines()[-3:])
+            no_overwrite(Path(logs))
         finally:
             for process in (server, robot):
                 process.terminate()
@@ -112,6 +113,20 @@ def round_video(logs: Path) -> None:
           and abs((first - start).total_seconds()) < 1.0 and 0 <= (last - end).total_seconds() < 3.0,
           f"{video.name if video else None}: {frames} frames, {len(rows)} rows, first {(first - start).total_seconds():+.2f} s "
           f"from round_start, last {(last - end).total_seconds():+.2f} s from round_end")
+
+
+def no_overwrite(logs: Path) -> None:
+    sys.path.insert(0, str(ROOT / "scripts/dashboard"))
+    from server import free_stem
+
+    stem = logs / "supervisor_round01"
+    first = free_stem(stem)
+    first.with_name(first.name + ".mp4").write_bytes(b"x")
+    second = free_stem(stem)
+    second.with_name(second.name + ".mp4").write_bytes(b"x")
+    check("a restarted robot program's round 1 gets a new video file, the earlier one stays",
+          first.name == "supervisor_round01" and second.name == "supervisor_round01_2"
+          and free_stem(stem).name == "supervisor_round01_3", f"{first.name}, {second.name}")
 
 
 def _try(function):

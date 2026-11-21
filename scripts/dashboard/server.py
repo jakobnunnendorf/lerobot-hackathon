@@ -12,6 +12,7 @@ import time
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Callable
 
 import cv2
 import numpy as np
@@ -192,8 +193,18 @@ def active_round(events: list[dict]) -> tuple[int | None, str]:
     return number, state
 
 
+# A restarted robot program appends to the same log and counts rounds from 1 again: never overwrite an earlier video.
+def free_stem(stem: Path) -> Path:
+    candidate, n = stem, 1
+    while candidate.with_name(candidate.name + ".mp4").exists():
+        n += 1
+        candidate = stem.with_name(f"{stem.name}_{n}")
+    return candidate
+
+
 class RoundVideo:
     def __init__(self, stem: Path, fps: int):
+        stem = free_stem(stem)
         self.path = stem.with_name(stem.name + ".mp4")
         self.writer = cv2.VideoWriter(str(self.path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (2 * 640, 480 + VIDEO_BAR_PX))
         self.times = open(stem.with_name(stem.name + ".frames.csv"), "w", newline="", encoding="utf-8")
@@ -226,16 +237,19 @@ def blank(label: str) -> np.ndarray:
 # One video per round next to the event log (<log stem>_roundNN.mp4): top | wrist, stamped with the capture time on
 # the log's clock, plus <...>.frames.csv with every frame's times, to line the video up with the event and tick logs.
 class RoundRecorder:
-    def __init__(self, log: LogTail, cameras: dict, fps: int):
-        self.log, self.cameras, self.fps = log, cameras, fps
+    def __init__(self, log: LogTail, cameras: dict, fps: int, live: Callable[[], bool]):
+        self.log, self.cameras, self.fps, self.live = log, cameras, fps, live
         self.recording: str | None = None
         threading.Thread(target=self._run, daemon=True).start()
 
     def _run(self) -> None:
         video, recorded, tail_until, next_at = None, None, None, time.monotonic()
         while True:
-            number, state = active_round(self.log.snapshot())
-            if video is not None and number != recorded:
+            # An unfinished round in a crashed program's log is not running: record only while the program is live.
+            number, state = active_round(self.log.snapshot()) if self.live() else (None, "idle")
+            if video is not None and number == recorded:
+                tail_until = None
+            elif video is not None:
                 tail_until = tail_until or time.monotonic() + VIDEO_TAIL_S
                 if number is not None or time.monotonic() >= tail_until:
                     video.close()
@@ -334,7 +348,7 @@ def build_app(args) -> FastAPI:
     status = StatusListener(args.status_port)
     log = LogTail(Path(args.log_dir).expanduser(), status)
     cameras = {"top": Camera(args.top_shm, "top"), "wrist": Camera(args.wrist_shm, "wrist")}
-    recorder = None if args.no_video else RoundRecorder(log, cameras, args.video_fps)
+    recorder = None if args.no_video else RoundRecorder(log, cameras, args.video_fps, status.fresh)
     voice_model = Speech(args.speech) if not args.no_speech else None
     results = Results(Path(args.log_dir).expanduser())
     app = FastAPI()
