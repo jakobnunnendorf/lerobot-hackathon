@@ -1,8 +1,32 @@
 # How does the robot do a spoken multi-step task ("3 blue, 2 red, then the target ball")?
 
-- Status: OPEN (2026-11-21, agent of TianK003, research only; Tomi's request on board 7069530124). Nothing trained or run on the arm. The first answer from Tian or Tomi picks the option.
+- Status: DECIDED (b), one ACT per colour. Tomi chose it on 2026-11-21 (board 7069673165): "ACT per colour because it performs better (more robustly) so far and is more lightweight". The research below recommended (a); it is kept because it explains the alternatives. Dataset builder checked offline; training not run yet, nothing on the arm yet.
 
-## Recommendation
+## Decision
+
+**(b): a rule-based planner, one clearing ACT per colour (clear-red, clear-blue), fine-tuned from `Space0code/act_redblue_from_foil` on segments cut from `rb_mixed`.** The last step (the striped ball) runs the demo's current best PICK and the existing VERIFY_HOLD -> GIVE / PUT_DOWN chain. Planner, plan message and STEP state: `decisions/multistep-step-state.md` (branch `TianK003/multistep-supervisor`).
+
+The research recommendation was (a), one SmolVLA prompted per step, gated by a language-swap test. Tomi picked (b) because ACT has the better record on the arm (from-foil 10 of 13) and runs at 30 Hz on the laptop; (b) also needs no language-swap gate, since the colour is chosen by which policy runs.
+
+## How the (b) datasets are built (checked offline, 2026-11-22)
+
+- **Segments become episodes without re-encoding.** `scripts/multistep/build_segment_dataset.py` copies each segment's data rows (new episode, frame and global indices, timestamps from 0) and points the episode at the *source* mp4 with `from_timestamp` moved to the segment start. LeRobot decodes at `from_timestamp + timestamp`, so no video is touched. Checked on rb_mixed 0-14 (18 red, 10 blue segments): states equal the source, first and last frames of 6+ episodes are pixel-identical to the source, ACT's action chunk is padded at each segment end, and `lerobot-train` fine-tuned 2 steps from `act_redblue_from_foil` with an eval loss.
+  - Tried before: whole-episode deletion with `lerobot-edit-dataset` cannot cut time ranges, and a re-encode would have taken longer to build.
+- **Segment source:** `research/label-patterns/segments.csv` (PR #54), `clear_r` / `clear_b` from `rb_mixed` only. Foil clears are not red (`so101-data` skill, §5.6).
+- **Kept and dropped** (`so101-data` §5):
+
+| | all | failure inside (miss, slip, put-back) | clean | joint check failed | kept | held out |
+| --- | --- | --- | --- | --- | --- | --- |
+| clear-red | 138 | 12 | 126 | 2 | **124** | 13 |
+| clear-blue | 118 | 20 | 98 | 6 | **92** | 10 |
+
+- **Joint check on every cut** (instead of spot-checking 10): a clear segment must contain exactly one drop at its own hole, in its last 1.5 s (drop rule below). It rejects 8 of 224 clean segments: 3 AI-labelled clear-blue starts that still contain the previous red drop (eps 142-144, the start sits about 0.5 s too early), and 5 partial opens the rule cannot see (eps 11, 28, 51, 160, 174; e.g. ep 11 opens from 12.5 to only 16.8 at the red hole). On Jakob's hand-labelled episodes in the test build, 28 of 28 segments end at his `r_hole`/`b_hole` + 0.5 s within 0.3 s.
+- **Hold-out:** 10% of segments, spread evenly over recording order and placed last, because `eval_split` holds out the last episodes and rb_mixed was recorded in scenario blocks. Held-out source episodes: red 6, 13, 18, 41, 55, 69, 123, 140, 150, 157, 162, 166, 184; blue 7, 26, 52, 69, 79, 141, 156, 161, 170, 185.
+- **Recovery tails are not used.** The skill suggests starting a segment after a failed close for ACT, but `segments.csv` has no failure times; the 32 failure segments are dropped whole.
+- **Re-grasps stay in.** Clean clearing segments often re-grasp in the bowl (gripper opens at a bowl pan); they are kept as recoveries.
+- **Training (not run yet):** `scripts/multistep/modal_clear.py`, same settings as `act_redblue_from_foil` (batch 32, lr 2e-5, its augmentation, bf16), 8K steps, checkpoints every 2K, eval every 1K, H100, 35 min cap per colour: worst case 6.84 USD for both, estimated about 3.5 USD. Dataset revision pinned to `8d36c36c` (201 episodes).
+
+## Recommendation of the research (superseded by the decision above)
 
 **(a): a rule-based planner plus one SmolVLA, fine-tuned once with three subtask sentences and prompted per step.** Gate it with an offline language-swap test before it goes on the arm. If the test shows the model ignores the colour word, switch to **(b)** (one ACT per colour), which reuses all the groundwork. The last step (the striped ball) runs the demo's current best PICK and the existing VERIFY_HOLD -> GIVE / PUT_DOWN chain in both cases.
 
@@ -50,20 +74,22 @@
 
 - Total segment counts come from the joint rule, checked against 36 hand-labelled episodes only. Jakob's pre-labels for the rest (on his machine) were not used.
 - That a mostly-direct-pick SmolVLA learns three sentences in about 3K steps, and that it follows the colour word.
-- For (b): a derived dataset whose episodes are segments, done by copying data rows and keeping each frame's original `timestamp` and the source episode's `videos/*/from_timestamp`. Video frames are looked up at `from_timestamp + timestamp` (`dataset_reader.py:437`), so no re-encode should be needed. Not run. The fallback is a re-encode, which is slower.
+- For (b): whether 92-124 segments of 7-9 s each are enough for a clearing ACT, and whether it clears the right colour in closed loop. Not trained yet.
+- GPU memory of PICK plus two clearing ACTs loaded together on the robot laptop.
 - GPU memory of SmolVLA plus the PICK ACT loaded together on the robot laptop.
 - Whether the 18 Hz of SmolVLA's synchronous inference hurts a 7 s clearing move more than a striped pick.
 - Every cost is an estimate from Kamel's measured runs (`decisions/act-redblue-generalisation.md` on `BrouthenKamel/modal-smolvla`). Paid runs are started by Tian only.
 
 ## Alternatives
 
-- **(b) one ACT per colour**: considered, not tried. It is the fallback if the language-swap gate fails. ACT has the better arm record so far (from foil 10 of 13), but it needs the untested segment dataset and two runs.
+- **(a) planner + one SmolVLA prompted per step**: the research recommendation, not chosen (see Decision). Still the option if one policy for both colours is wanted later.
+- **(b) one ACT per colour**: chosen.
 - **(c) pi0.5 / pi0-FAST**: considered, not tried. It does not fit the laptops (above). LeRobot has no subtask prediction for it.
 - **(d) one policy on the whole sentence**: considered, not tried. There are no demonstrations of it, and no memory of progress.
 - **Retrain the current single-sentence SmolVLA on more data**: does not answer the question. One sentence cannot select a colour.
 
 ## Revisit if
 
-- The language-swap gate fails: do (b).
+- The clearing ACTs fail on the arm because each colour has too few segments: try (a), which shares the clearing data of both colours in one model.
 - A laptop with clearly more than 8 GB of GPU memory joins the demo: (c) becomes possible, though still costly.
-- Arm rounds show the drop counter miscounting (for example, the policy releasing over the bowl): add the top camera's colour counts as a check.
+- Arm rounds show the drop counter miscounting (it matches Jakob's hole sequence in 53 of his 58 episodes and misses partial opens such as ep 11; or the policy releases over the bowl): add the top camera's colour counts as a check.
