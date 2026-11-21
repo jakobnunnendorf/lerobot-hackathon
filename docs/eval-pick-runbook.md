@@ -37,21 +37,21 @@ Every run is one row in `~/so101/evals/eval_<date>_<time>.csv` (inside WSL): run
 
 1. In the repo inside WSL, get the scripts from `main` without leaving the current branch, because `scripts/so101/` lives on PR #6's branch: `git fetch origin && git checkout origin/main -- scripts/eval docs/eval-pick-runbook.md`.
 2. The scripts use `~/.so101.env` and the conda env `lerobot` (LeRobot 0.7.0), as set up for `scripts/so101/` (PR #6). They read the ports, robot id and camera paths from `SO101_FOLLOWER_PORT`, `SO101_FOLLOWER_ID`, `SO101_CAM_TOP` and `SO101_CAM_WRIST`. Without that file they fall back to the values in `so101.env.example`.
-3. Hub checkpoints download on start-up (about 200 MB each, public, no login). A local run folder works too: give the folder that holds `checkpoints/<step>/pretrained_model`. The newest numbered step is used and `last` is ignored.
+3. Hub checkpoints download on start-up (about 200 MB each, public, no login). Both repo layouts work: `checkpoints/<step>/` (Tomi's) and `<step>/` at the top (Kamel's). A local run folder works too: give the folder that holds `checkpoints/<step>/pretrained_model`. The newest numbered step is used and `last` is ignored.
 4. Check that the devices are there: `ls /dev/so101_follower /dev/v4l/by-id/`. If not, run `attach_usb.sh` (so101-robot skill, known failures). Stop any other program that holds the arm or the cameras (teleop, recording, `run_loop.sh`, the hand-following loop).
 
 ## Start (the person runs it, or the agent opens the window; the arm only moves after SPACE)
 
-Inside WSL, repo root, with `<KAMEL>` replaced by Kamel's checkpoint location from the board:
+Inside WSL, repo root:
 
 ```bash
-bash scripts/eval/eval_pick.sh --policy foil=Space0code/act_redblue_from_foil --policy scratch=<KAMEL>
+bash scripts/eval/eval_pick.sh --policy foil=Space0code/act_redblue_from_foil --policy scratch=brouthen/act_so101_pick_rb_mixed_b32_38k
 ```
 
 From PowerShell, in its own window (the person needs a window to type in):
 
 ```powershell
-Start-Process -FilePath wsl.exe -ArgumentList '-e','bash','-lc','"bash /mnt/c/<repo>/scripts/eval/eval_pick.sh --policy foil=Space0code/act_redblue_from_foil --policy scratch=<KAMEL>"'
+Start-Process -FilePath wsl.exe -ArgumentList '-e','bash','-lc','"bash /mnt/c/<repo>/scripts/eval/eval_pick.sh --policy foil=Space0code/act_redblue_from_foil --policy scratch=brouthen/act_so101_pick_rb_mixed_b32_38k"'
 ```
 
 Options:

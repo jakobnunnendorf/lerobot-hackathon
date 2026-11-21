@@ -99,13 +99,22 @@ def wait_key(allowed: str) -> str:
     return k
 
 
-def latest_step(paths) -> str | None:
-    steps = {p.split("/")[1] for p in paths if p.startswith("checkpoints/") and p.split("/")[1].isdigit()}
-    return max(steps) if steps else None
+def checkpoint_folder(paths, step: str = "") -> str | None:
+    """Folder of the newest (or the given) step: `checkpoints/<step>` (LeRobot runs, Tomi's repo) or `<step>` (Kamel's repo)."""
+    found = {}
+    for p in paths:
+        parts = p.split("/")
+        if len(parts) > 2 and parts[0] == "checkpoints" and parts[1].isdigit():
+            found[parts[1]] = f"checkpoints/{parts[1]}"
+        elif len(parts) > 1 and parts[0].isdigit():
+            found.setdefault(parts[0], parts[0])
+    if step and step not in found:
+        raise SystemExit(f"step {step} not found; available: {sorted(found)}")
+    return found[step or max(found)] if found else None
 
 
 def model_dir(path: Path) -> str:
-    # LeRobot run dirs keep the weights in <step>/pretrained_model; our Hub repo keeps them in <step>/ directly.
+    # LeRobot run dirs keep the weights in <step>/pretrained_model; the Hub repos keep them in <step>/ directly.
     return str(path / "pretrained_model") if (path / "pretrained_model").is_dir() else str(path)
 
 
@@ -114,15 +123,14 @@ def resolve_checkpoint(spec: str) -> tuple[str, str]:
     source, _, step = spec.partition("@")
     if Path(source).is_dir():
         root = Path(source)
-        step = step or latest_step(p.relative_to(root).as_posix() for p in root.glob("checkpoints/*"))
-        path = root / "checkpoints" / step if step else root
+        dirs = [*root.glob("checkpoints/*"), *root.glob("*")]
+        folder = checkpoint_folder([d.relative_to(root).as_posix() + "/" for d in dirs if d.is_dir()], step)
+        path = root / folder if folder else root
     else:
-        step = step or latest_step(HfApi().list_repo_files(source))
-        if step:
-            path = Path(snapshot_download(source, allow_patterns=[f"checkpoints/{step}/*"])) / "checkpoints" / step
-        else:
-            path = Path(snapshot_download(source))
-    return model_dir(path), f"{source}@{step}" if step else source
+        folder = checkpoint_folder(HfApi().list_repo_files(source), step)
+        local = Path(snapshot_download(source, allow_patterns=[f"{folder}/*"] if folder else None))
+        path = local / folder if folder else local
+    return model_dir(path), f"{source}@{folder.split('/')[-1]}" if folder else source
 
 
 class Policy:
