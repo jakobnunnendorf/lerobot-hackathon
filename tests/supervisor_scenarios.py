@@ -370,6 +370,50 @@ def grasp_check_log(log_path: str) -> None:
           and checks[0]["lock_goal"] is None
           and checks[2]["pick_attempt"] == 1 and checks[-1]["verdict"] == "held" and checks[-1]["pick_attempt"] == 2,
           str([(c["phase"], c.get("verdict"), c["pick_attempt"]) for c in checks]))
+    checks, world, events = run("grasp_check_lock_blocks_reopen")
+    blocked = [c for c in checks if c["phase"] == "release_blocked"]
+    check("grasp check lock: every release_blocked line carries the gripper load and the count of blocked commands "
+          "since the last line (first line 1, then one line a second)",
+          [b["load"] for b in blocked] == [480.0, 480.0] and blocked[0]["count"] == 1
+          and 30 <= blocked[1]["count"] <= 31, str(blocked))
+    # Slow arm (exp1 R3): record what the grasp check sends against where the arm is measured.
+    scenario = next(s for s in SCENARIOS if s.name == "grasp_check_miss_slow_arm_backs_off_from_measured")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    sent, original = [], arm.send
+    arm.send = lambda action: (sent.append((pose_of(action), arm.last_obs and pose_of(arm.last_obs))), original(action))
+    log = TransitionLog(log_path, echo=False)
+    Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+    log.file.close()
+    events = [json.loads(line) for line in open(log_path)]
+    open(log_path, "w").close()
+    first = next(i for i, (pose, _) in enumerate(sent) if pose[5] < 10)
+    settle = sent[first:first + int(GraspCheckSettings().settle_s * settings.fps)]
+    measured = settle[0][1][:5]
+    still = all(np.abs(pose[:5] - measured).max() <= 0.5 for pose, _ in settle)
+    picks = [e for e in events if e["event"] == "transition" and e["source"] == "PICK"]
+    check("grasp check, slow arm: during the settle the arm is held where it is measured (not at the policy's raw "
+          "target), the miss opens and backs off and PICK re-queries at once (no PICK timeout)",
+          still and picks[0]["target"] == "PICK" and picks[0]["skill"] == "grasp_miss"
+          and "backoff_timeout" not in picks[0],
+          f"settle sent {[round(float(p[1]), 2) for p, _ in settle[:3]]} measured {round(float(measured[1]), 2)} {picks[:1]}")
+    checks, _, events = run("grasp_check_backoff_timeout_repicks")
+    picks = [e for e in events if e["event"] == "transition" and e["source"] == "PICK"]
+    timeouts = [c for c in checks if c["phase"] == "release_timeout"]
+    check("grasp check: an arm that cannot back off -> after --grasp-backoff-timeout (3 s) grasp_miss with "
+          "backoff_timeout: true, re-pick as normal",
+          picks[0]["target"] == "PICK" and picks[0]["skill"] == "grasp_miss" and picks[0].get("backoff_timeout") is True
+          and len(timeouts) == 1 and timeouts[0]["backoff_timeout"] is True and 3.0 <= timeouts[0]["release_s"] < 3.1,
+          f"{picks[:1]} {timeouts}")
+    checks, world, events = run("grasp_check_policy_releases_while_locked")
+    pick_end = next(e for e in events if e["event"] == "transition" and e["source"] == "PICK")
+    released = [c for c in checks if c["phase"] == "released_locked"]
+    end = next(e for e in events if e["event"] == "round_end")
+    check("grasp check lock: the policy commands open above the lock for 1.5 s in all -> PICK ends 'policy released "
+          "while locked', arm to rest with the gripper still locked, VERIFY_HOLD (no 40 s PICK timeout)",
+          pick_end["target"] == "VERIFY_HOLD" and pick_end["reason"] == "pick attempt 1: policy released while locked"
+          and pick_end.get("move") == "arrived" and len(released) == 1 and released[0]["open_s"] >= 1.5
+          and released[0]["sent"] == 5.0 and end["duration_s"] < 20 and not world.violations,
+          f"{pick_end} {released} {end['duration_s']}")
     checks, _, _ = run("grasp_check_low_load_is_miss")
     check("grasp check: reading in the band but load 120 < 200 -> miss; then load 480 -> held",
           [(c["verdict"], c["in_band"], c["stalled"], c["load"], c["load_ok"]) for c in checks]
@@ -433,6 +477,11 @@ def robot_flags() -> None:
           settings_from(parsed("--no-grasp-lock-after-hold")).grasp_check.lock_after_hold is False
           and settings_from(parsed("--grasp-lock-margin", "3")).grasp_check.lock_margin == 3.0
           and settings_from(parsed()).grasp_check.lock_margin == 4.0)
+    check("--grasp-backoff-timeout (default 3 s) and --grasp-open-intent-s (default 1.5 s)",
+          (settings_from(parsed()).grasp_check.backoff_timeout_s, settings_from(parsed()).grasp_check.open_intent_s)
+          == (3.0, 1.5)
+          and settings_from(parsed("--grasp-backoff-timeout", "2", "--grasp-open-intent-s", "1")).grasp_check.backoff_timeout_s == 2.0
+          and settings_from(parsed("--grasp-open-intent-s", "1")).grasp_check.open_intent_s == 1.0)
     check("robot defaults: striped judged only, red candidate 2000 kept, PR #30 region, both cameras MJPG",
           settings.held_check_colours == ("striped",) and settings.min_held_area_px == {"red": 2000}
           and settings.min_held_target_area_px is None and tuple(args.held_check_roi) == WRIST_HELD_ROI == (0.52, 0.72, 0.2, 0.25)
@@ -616,10 +665,10 @@ class _WristRobot:
                 "wrist": np.full((480, 640, 3), self.count, np.uint8)}
 
 
-def wrist_frames_shared() -> None:
+def wrist_frames_shared(handtrack_dir: Path) -> None:
     import run_supervisor
 
-    frame_link = import_from(SUPERVISOR.parent / "handtrack", "frame_link")
+    frame_link = import_from(handtrack_dir, "frame_link")
     name = f"wrist_test_{int(time.time())}"
     writer = frame_link.FrameWriter(name)
     reader = frame_link.FrameReader(name)
@@ -782,6 +831,8 @@ def main() -> None:
     p.add_argument("--skip-policy", action="store_true")
     p.add_argument("--vision-dir", default=str(SUPERVISOR.parent / "vision"),
                    help="directory with #24's colour_detector.py and supervisor_adapter.py; that test is skipped if missing")
+    p.add_argument("--handtrack-dir", default=str(SUPERVISOR.parent / "handtrack"),
+                   help="directory with frame_link.py (on main, not on this branch); the wrist-block test is skipped if missing")
     args = p.parse_args()
     # ignore_cleanup_errors: on Windows the transition logs are still open when the folder is removed.
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
@@ -796,7 +847,11 @@ def main() -> None:
         speed_cap()
         pick_end_rule()
         status_datagram()
-        wrist_frames_shared()
+        handtrack_dir = Path(args.handtrack_dir)
+        if (handtrack_dir / "frame_link.py").exists():
+            wrist_frames_shared(handtrack_dir)
+        else:
+            print(f"SKIP  wrist frames in the shared block: no frame_link.py in {handtrack_dir}")
         tick_log(work)
         goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)

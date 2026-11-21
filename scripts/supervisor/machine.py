@@ -322,6 +322,15 @@ class Supervisor:
                                                            pick_attempt=attempt, **record)
         result = self.run_skill(skill, self.s.pick_timeout_s)
         details = {"skill": result}
+        if getattr(skill, "backoff_timed_out", False):
+            details["backoff_timeout"] = True
+        if result == "released_while_locked":
+            # The policy wants to drop the held ball (a sorter at its hole) and never settles: take the arm to rest
+            # with the gripper still at the lock goal, then VERIFY_HOLD as after any pick.
+            details["move"] = self._move_to_rest(holding=True)
+            if details["move"] == "timeout":
+                return State.ABORT, "arm did not reach the rest pose after the policy released while locked", details
+            return State.VERIFY_HOLD, f"pick attempt {self.round.pick_attempts}: policy released while locked", details
         if result == "grasp_miss" and self.round.pick_attempts < self.s.max_pick_attempts:
             # Jaws closed on nothing (or the ball slipped): opened and backed off already, re-query from here.
             return State.PICK, f"pick attempt {self.round.pick_attempts}: grasp check miss, re-query", details

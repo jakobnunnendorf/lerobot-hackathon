@@ -129,7 +129,8 @@ def settings_from(args) -> Settings:
                         settle_s=args.grasp_settle, min_error=args.grasp_min_error, hold_range=tuple(args.hold_range),
                         min_load=args.grasp_min_load, backoff_s=args.grasp_backoff,
                         lock_after_hold=args.grasp_lock_after_hold, lock_margin=args.grasp_lock_margin,
-                        max_tip_height=args.grasp_max_tip_height))
+                        max_tip_height=args.grasp_max_tip_height, backoff_timeout_s=args.grasp_backoff_timeout,
+                        open_intent_s=args.grasp_open_intent_s))
 
 
 def colour_area(value: str) -> tuple[str, int]:
@@ -546,6 +547,12 @@ def parse_args() -> argparse.Namespace:
                         "a re-open ends the hold, logged as release, and the next close is a fresh check")
     p.add_argument("--grasp-backoff", type=float, default=g.backoff_s,
                    help="grasp check: on a miss, back the arm off along the commanded path of this many seconds")
+    p.add_argument("--grasp-backoff-timeout", type=float, default=g.backoff_timeout_s,
+                   help="grasp check: seconds for a miss's open + back-off; not there by then = grasp_miss anyway "
+                        "(logged backoff_timeout: true) and re-pick, never a hang until the PICK timeout")
+    p.add_argument("--grasp-open-intent-s", type=float, default=g.open_intent_s,
+                   help="grasp check: after a locked hold, once the policy has commanded open above the lock for this "
+                        "many seconds in all, end PICK (policy released while locked), arm to rest still locked")
     p.add_argument("--grasp-max-tip-height", type=float, default=g.max_tip_height,
                    help="grasp check: a close with the FK tip above this (m) is a miss at once; off by default "
                         "(model tip z at holding closes 0.02-0.16 m, empty closes overlap)")

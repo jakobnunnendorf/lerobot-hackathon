@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from machine import Sensors, Settings, Skills
 from grasp_check import GraspCheckSettings
-from skills import PRESENT_POSE, PresentAndDrop, action_of, holding_move, pose_of
+from skills import PRESENT_POSE, PresentAndDrop, action_of, holding_move, pose_of, step_towards
 
 DRY_RUN_REST = np.array([0.0, 20.0, 60.0, 90.0, 0.0, 30.0])
 HELD_READING, EMPTY_CLOSED_READING, CLOSED_GOAL = 13.0, 0.5, 2.0
@@ -48,12 +48,21 @@ class World:
     slip_in: int | None = None
     light: bool = False
     queries: int = 0
+    # A slow arm (exp1, --max-step-deg 1.0): the measured arm joints move at most lag_deg per tick towards the goal,
+    # so the policy's raw target runs ahead of the arm. lift_floor: the table, the measured shoulder_lift stays at or
+    # below it whatever the goal. None: the arm is where it was sent (the default).
+    lag_deg: float | None = None
+    lift_floor: float | None = None
+    # The arm stops for this many ticks after a close on nothing (a jaw caught on the bowl): the back-off cannot arrive.
+    stuck_after_miss_ticks: int = 0
+    stuck_for: int = 0
 
 
 class FakeArm:
     def __init__(self, world: World, abort: threading.Event, rest: np.ndarray = DRY_RUN_REST):
         self.world, self.abort = world, abort
         self.last_sent = action_of(rest)
+        self.position = np.asarray(rest, dtype=float)[:5].copy()
         self.last_obs = None
         self.sends_after_abort = 0
 
@@ -65,6 +74,14 @@ class FakeArm:
         goal = pose_of(self.last_sent)
         if self.world.blocked_at is not None:
             goal[:5] = self.world.blocked_at
+        if self.world.stuck_for > 0:
+            self.world.stuck_for -= 1
+            goal[:5] = self.position
+        if self.world.lag_deg is not None:
+            goal[:5] = step_towards(self.position, goal[:5], self.world.lag_deg)
+        if self.world.lift_floor is not None:
+            goal[1] = min(goal[1], self.world.lift_floor)
+        self.position = goal[:5].copy()
         gripper = HELD_READING if self.world.holding else (EMPTY_CLOSED_READING if goal[5] < 5 else goal[5])
         self.last_obs = {**action_of(np.concatenate([goal[:5], [gripper]])), "top": np.zeros((4, 4, 3), np.uint8),
                          "wrist": np.zeros((4, 4, 3), np.uint8)}
@@ -77,6 +94,8 @@ class FakeArm:
         closing = gripper < 10 <= self.last_sent["gripper.pos"]
         if self.world.grasps and closing and not self.world.holding:
             outcome = self.world.grasps.pop(0) if len(self.world.grasps) > 1 else self.world.grasps[0]
+            if outcome == "nothing" and self.world.stuck_after_miss_ticks:
+                self.world.stuck_for = self.world.stuck_after_miss_ticks
             if outcome != "nothing":
                 self.world.holding, self.world.held_ball = True, self.world.held_balls[0]
                 self.world.slip_in = {"tips": 6, "late_slip": 25}.get(outcome)
@@ -114,13 +133,15 @@ class ScriptedSkill:
 # A pick policy as the grasp check sees it: approach with the gripper open, close (crossing 10), lift back. One
 # instance per PICK attempt; requery() counts the re-queries the grasp check asks for. reopen: like ACT on the arm
 # (2026-11-21 r1, r6), after the close it opens to 30 for 40 ticks (releasing the ball) and closes again.
+# drop_at_hole: like the red/blue sorter in exp1, after the close it carries the ball on and commands open (30) from
+# tick 30 for good, and never settles at rest (done stays False).
 class FakeGraspPick:
     name = "pick"
     CLOSE = (30.0, 20.0, 12.0, 1.0)
     REOPEN = (30, 70)
 
-    def __init__(self, world: World, ticks: int = 60, reopen: bool = False):
-        self.world, self.reopen = world, reopen
+    def __init__(self, world: World, ticks: int = 60, reopen: bool = False, drop_at_hole: bool = False):
+        self.world, self.reopen, self.drop_at_hole = world, reopen, drop_at_hole
         self.ticks = 100 if reopen else ticks
 
     def start(self, obs, last_sent, now):
@@ -135,10 +156,12 @@ class FakeGraspPick:
         pose[5] = 40.0 if k < 0 else self.CLOSE[min(k, len(self.CLOSE) - 1)]
         if self.reopen and self.REOPEN[0] <= self.count < self.REOPEN[1]:
             pose[5] = 30.0
+        if self.drop_at_hole and self.count >= self.REOPEN[0]:
+            pose[5] = 30.0
         return action_of(pose)
 
     def done(self, obs, now):
-        return self.count >= self.ticks
+        return not self.drop_at_hole and self.count >= self.ticks
 
     def result(self):
         return "ok"
@@ -230,6 +253,11 @@ class Scenario:
     grasps: list[str] = field(default_factory=list)
     tip_z: float | None = None
     reopen: bool = False
+    drop_at_hole: bool = False
+    # Slow arm, table and a stuck arm after a miss (World.lag_deg, lift_floor, stuck_after_miss_ticks).
+    lag_deg: float | None = None
+    lift_floor: float | None = None
+    stuck_after_miss_ticks: int = 0
     # Gripper servo load: "physics" (480 holding, 120 for a "light" hold, 30 empty), "raises" (read fails).
     load: str = "physics"
 
@@ -260,11 +288,12 @@ def build(scenario: Scenario):
     abort = threading.Event()
     world = World(buried=scenario.buried, hand=scenario.hand, destination=scenario.destination,
                   block_after_pick=scenario.block_after_pick, held_balls=list(scenario.held_balls),
-                  grasps=list(scenario.grasps))
+                  grasps=list(scenario.grasps), lag_deg=scenario.lag_deg, lift_floor=scenario.lift_floor,
+                  stuck_after_miss_ticks=scenario.stuck_after_miss_ticks)
     arm = FakeArm(world, abort)
     containers = {c: scripted("put_down_" + c, world, ["ok"], release_effect(world, "ok")) for c in ("red", "blue")}
     skills = Skills(
-        pick=(lambda: FakeGraspPick(world, reopen=scenario.reopen)) if scenario.grasps
+        pick=(lambda: FakeGraspPick(world, reopen=scenario.reopen, drop_at_hole=scenario.drop_at_hole)) if scenario.grasps
         else scripted("pick", world, scenario.picks, pick_effect(world), ticks=60),
         put_down=scripted("put_down", world, scenario.put_downs, release_effect(world, "ok")),
         give=(lambda: Releasing(PresentAndDrop(lambda: world.hand, 60.0), world)) if scenario.give_mode == "present"
@@ -358,6 +387,17 @@ SCENARIOS = [
     # Unlocked (today's flow): the re-open drops the ball, re-arms, the empty close is a fresh check and a miss.
     Scenario("grasp_check_unlocked_reopen_rearms", [R, P, P, V, G, R, D], "given", grasps=["ball", "nothing", "ball"],
              reopen=True, settings={"grasp_check": GraspCheckSettings(lock_after_hold=False)}),
+    # exp1 R3: a slow arm lags the policy's raw target, which lies below the table. The miss must hold the arm where
+    # it is, open, back off along where the arm really was, and re-pick at once, not hang until the PICK timeout.
+    Scenario("grasp_check_miss_slow_arm_backs_off_from_measured", [R, P, P, V, G, R, D], "given",
+             grasps=["nothing", "ball"], lag_deg=0.5, lift_floor=25.0),
+    # The arm cannot move for 5 s after the miss: the back-off gives up after --grasp-backoff-timeout (3 s), re-picks.
+    Scenario("grasp_check_backoff_timeout_repicks", [R, P, P, V, G, R, D], "given", grasps=["nothing", "ball"],
+             stuck_after_miss_ticks=150),
+    # exp1 blue holds: the sorter carries the held ball to its hole and commands open; the lock clamps it and the
+    # policy never settles. After 1.5 s of open commands PICK ends, the arm goes to rest still locked, VERIFY_HOLD.
+    Scenario("grasp_check_policy_releases_while_locked", [R, P, V, G, R, D], "given", grasps=["ball"],
+             drop_at_hole=True),
     Scenario("grasp_check_low_load_is_miss", [R, P, P, V, G, R, D], "given", grasps=["light", "ball"]),
     Scenario("grasp_check_load_unreadable_reading_rule", [R, P, V, G, R, D], "given", grasps=["ball"], load="raises"),
     Scenario("grasp_check_off_old_flow_carries_empty", [R, P, V, R, P, V, G, R, D], "given", grasps=["nothing", "ball"],
