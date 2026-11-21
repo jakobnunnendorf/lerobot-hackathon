@@ -440,6 +440,81 @@ def give_survives_lost_hand(handover_dir: Path, log_path: str) -> None:
           f"{' -> '.join(s.value for s in result.states)}")
 
 
+def abort_over_socket_during_give(handover_dir: Path, log_path: str) -> None:
+    link = import_from(SUPERVISOR.parent / "voice", "link")
+    hand_socket = import_from(handover_dir, "hand_socket")
+    kinematics = import_from(handover_dir, "kinematics")
+    commands = Commands()
+    commands.listen_voice("127.0.0.1", 18769)
+    receiver = hand_socket.HandReceiver("127.0.0.1", 18770)
+    world = World(hand=True)
+    arm = TipRecorder(world, commands.abort, kinematics, TABLE_REST)
+    settings = Settings()
+    skills = Skills(pick=scripted("pick", world, ["ok"], pick_effect(world), ticks=10),
+                    put_down=scripted("put_down", world, ["ok"], release_effect(world, "ok")),
+                    give=lambda: give_sequence(arm, handover_dir=handover_dir, receiver=receiver, abort=commands.abort,
+                                                timeout_s=settings.give_timeout_s, gripper_open=60.0,
+                                                settings=GiveSettings()))
+    sensors = Sensors(destination=lambda: "hand")
+    threading.Timer(6.0, lambda: link.send({"abort": True}, port=18769)).start()
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), TransitionLog(log_path, echo=False),
+                        commands.abort, RealClock(settings.fps)).run_round(96)
+    states = [s.value for s in result.states]
+    check("dashboard ABORT ({\"abort\": true} on the command port) stops GIVE, which the tick poll never reaches",
+          result.outcome == "aborted" and "GIVE" in states and states[-1] == "ABORT", " -> ".join(states))
+
+
+def status_datagram() -> None:
+    from status import Status
+
+    port = 18771
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("127.0.0.1", port))
+    sock.settimeout(2.0)
+    status = Status()
+    status.update(gripper=13.2, give_mode="follow")
+    status.add_reader(lambda: {"palms": 1})
+    status.start(port=port, hz=20.0)
+    message = json.loads(sock.recv(65536))
+    sock.close()
+    check("live status: one UDP datagram with the stored values and the reader's", message["gripper"] == 13.2
+          and message["give_mode"] == "follow" and message["palms"] == 1 and "time" in message, str(message))
+
+
+class _WristBus:
+    def sync_read(self, name):
+        return {motor: 0.0 for motor in ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")}
+
+
+class _WristRobot:
+    bus = _WristBus()
+
+    def __init__(self):
+        self.count = 0
+
+    def get_observation(self):
+        self.count += 1
+        return {**{key: 0.0 for key in KEYS}, "top": np.zeros((480, 640, 3), np.uint8),
+                "wrist": np.full((480, 640, 3), self.count, np.uint8)}
+
+
+def wrist_frames_shared() -> None:
+    import run_supervisor
+
+    frame_link = import_from(SUPERVISOR.parent / "handtrack", "frame_link")
+    name = f"wrist_test_{int(time.time())}"
+    writer = frame_link.FrameWriter(name)
+    reader = frame_link.FrameReader(name)
+    arm = run_supervisor.RobotArm(_WristRobot(), None, writer)
+    for _ in range(4):
+        arm.observe()
+    frame, _ = reader.latest()
+    reader.close()
+    writer.close()
+    check("wrist frames: every second observe lands in the shared block the dashboard reads",
+          int(frame[0, 0, 0]) == 4, f"pixel {int(frame[0, 0, 0])} after 4 observes")
+
+
 def pick_end_rule() -> None:
     rest = np.array([-5.6, -102.8, 96.6, -100.1, -5.2, 30.0])
     never_left = np.array([*rest[:5], 17.8])
@@ -551,6 +626,8 @@ def main() -> None:
         robot_flags()
         speed_cap()
         pick_end_rule()
+        status_datagram()
+        wrist_frames_shared()
         goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
@@ -565,6 +642,7 @@ def main() -> None:
             give_integration(handover_dir, f"{work}/give.jsonl")
             chain_pick_give_rest(handover_dir, f"{work}/chain.jsonl")
             give_survives_lost_hand(handover_dir, f"{work}/lost.jsonl")
+            abort_over_socket_during_give(handover_dir, f"{work}/abort.jsonl")
         else:
             print(f"SKIP  GIVE integration: no handover_loop.py in {handover_dir}")
     print("FAIL" if failures else "PASS")

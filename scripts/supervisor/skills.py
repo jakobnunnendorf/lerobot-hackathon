@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 import numpy as np
+from status import STATUS
 
 MOTORS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_roll", "gripper")
 KEYS = tuple(f"{motor}.pos" for motor in MOTORS)
@@ -336,6 +337,7 @@ class GiveSkill:
     # The loop's HOME is the pose GIVE starts from: the present pose, not the rest pose (give_sequence).
     def _on_tick(self, t, decision, commanded, gripper, tip, goal_tip):
         Mode = self.following.Mode
+        STATUS.update(give_mode=decision.mode.value, give_s=round(t, 1), tip=np.round(tip, 3).tolist())
         if self.abort.is_set():
             raise _GiveStopped("aborted")
         if decision.mode == Mode.DONE:
@@ -359,6 +361,8 @@ class GiveSkill:
                           self.frame_writer, **extra)
         except _GiveStopped as stop:
             self._result = stop.result
+        finally:
+            STATUS.update(give_mode=None)
         self._done = True
 
     def done(self, obs, now):

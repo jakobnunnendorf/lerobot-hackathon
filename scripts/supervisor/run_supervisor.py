@@ -1,5 +1,6 @@
 import argparse
 import sys
+import time
 from dataclasses import replace
 from multiprocessing import shared_memory
 from pathlib import Path
@@ -9,6 +10,7 @@ from commands import Commands
 from grasp_check import GraspCheckSettings
 from machine import Aborted, Sensors, Settings, Skills, Supervisor, TransitionLog
 from skills import (
+    KEYS,
     PRESENT_POSE,
     SCRIPTS,
     GiveSettings,
@@ -27,19 +29,28 @@ from skills import (
     pose_of,
     put_down_at,
 )
+from status import STATUS
 
 DEFAULT_PICK = "molnrb/act_pick_ball_combined"
 
 
 class RobotArm:
-    def __init__(self, robot, max_step_deg: float | None = None):
-        self.robot, self.max_step_deg = robot, max_step_deg
+    def __init__(self, robot, max_step_deg: float | None = None, wrist_writer=None):
+        self.robot, self.max_step_deg, self.wrist_writer = robot, max_step_deg, wrist_writer
         goal = robot.bus.sync_read("Goal_Position")
         self.last_sent = {f"{motor}.pos": float(value) for motor, value in goal.items()}
         self.last_obs = None
+        self.observes = 0
 
+    # Every skill observes through here, GIVE's loop included, so the wrist frames and live values reach the
+    # dashboard in every state.
     def observe(self) -> dict:
         self.last_obs = self.robot.get_observation()
+        self.observes += 1
+        if self.wrist_writer is not None and self.observes % 2 == 0:
+            self.wrist_writer.write(self.last_obs["wrist"], time.perf_counter_ns())
+        STATUS.update(joints=[round(float(self.last_obs[key]), 1) for key in KEYS[:5]],
+                      gripper=round(float(self.last_obs["gripper.pos"]), 1), observes=self.observes)
         return self.last_obs
 
     # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
@@ -193,22 +204,26 @@ def run_robot(args) -> None:
     clear_policy = LoadedPolicy(args.clear_gray_policy, args.device, None, rename) if args.clear_gray_policy else None
     receiver = import_from(handover_dir, "hand_socket").HandReceiver(*split_address(args.hand_listen)) if has_receiver else None
     frame_link_dir = Path(args.handtrack_dir)
-    frame_writer = None
+    frame_writer, wrist_writer = None, None
     if (frame_link_dir / "frame_link.py").exists():
+        frame_link = import_from(frame_link_dir, "frame_link")
         unlink_stale_block(args.frames_shm)
-        frame_writer = import_from(frame_link_dir, "frame_link").FrameWriter(args.frames_shm)
+        frame_writer = frame_link.FrameWriter(args.frames_shm)
+        unlink_stale_block(args.wrist_shm)
+        wrist_writer = frame_link.FrameWriter(args.wrist_shm)
     else:
         print(f"WARNING: no frame_link.py in {frame_link_dir}: the hand tracker gets no top-camera frames", flush=True)
     try:
         run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy,
-                      clear_policy)
+                      clear_policy, wrist_writer)
     finally:
-        # A crash or Ctrl-C must not leave the shared-memory block: the next start would fail with FileExistsError.
-        if frame_writer is not None:
-            try:
-                frame_writer.close()
-            except Exception as error:  # noqa: BLE001 - closing must never hide the original error
-                print(f"frame writer close failed: {error}", file=sys.stderr, flush=True)
+        # A crash or Ctrl-C must not leave the shared-memory blocks: the next start would fail with FileExistsError.
+        for writer in (frame_writer, wrist_writer):
+            if writer is not None:
+                try:
+                    writer.close()
+                except Exception as error:  # noqa: BLE001 - closing must never hide the original error
+                    print(f"frame writer close failed: {error}", file=sys.stderr, flush=True)
 
 
 def unlink_stale_block(name: str) -> None:
@@ -241,12 +256,12 @@ def give_settings_from(args) -> GiveSettings:
 
 
 def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy,
-                  clear_policy) -> None:
+                  clear_policy, wrist_writer=None) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
     log = TransitionLog(args.log)
     try:
-        arm = RobotArm(robot, args.max_step_deg)
+        arm = RobotArm(robot, args.max_step_deg, wrist_writer)
         first = arm.observe()
         rest = np.array(args.rest) if args.rest else pose_of(first)
         settings = settings_from(args)
@@ -295,7 +310,9 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours),
                   min_held_area_px=settings.min_held_area_px, camera_fourcc=args.camera_fourcc,
                   grasp_check=None if settings.grasp_check is None else vars(settings.grasp_check),
-                  n_action_steps=pick_policy.policy.config.n_action_steps)
+                  n_action_steps=pick_policy.policy.config.n_action_steps, budgets_s=budgets(settings),
+                  put_down_pose=args.put_down_pose)
+        publish_status(args, skills, receiver, settings)
         print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
@@ -309,6 +326,23 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                 break
     finally:
         robot.disconnect()
+
+
+def budgets(settings: Settings) -> dict:
+    return {"PICK": settings.pick_timeout_s, "GIVE": settings.give_timeout_s, "PUT_DOWN": settings.put_down_timeout_s,
+            "REST": settings.move_timeout_s, "CLEAR_GRAY": settings.clear_timeout_s}
+
+
+def publish_status(args, skills: Skills, receiver, settings: Settings) -> None:
+    targets = ["striped", *(["red", "blue"] if skills.pick_colour else [])]
+    destinations = [*(["hand"] if skills.give else []), "container"]
+    STATUS.update(available={"targets": targets, "destinations": destinations}, pick_policy=args.pick_policy,
+                  log_path=str(Path(args.log).resolve()) if args.log else None, budgets_s=budgets(settings),
+                  hold_range=list(settings.hold_range), min_held_target_area_px=args.min_held_target_area)
+    if receiver is not None:
+        STATUS.add_reader(lambda: {"palms": palm_count(receiver),
+                                   "hands": [np.round(hand, 3).tolist() for hand in receiver.newest_hands()]})
+    STATUS.start(port=args.status_port)
 
 
 def palm_count(receiver) -> int:
@@ -381,6 +415,8 @@ def parse_args() -> argparse.Namespace:
                    help="follow GIVE: fast close-open gripper cycles after the drop (Tian's, 0 = off); then REST folds")
     p.add_argument("--hand-listen", default="127.0.0.1:8766")
     p.add_argument("--frames-shm", default="top_camera_frames")
+    p.add_argument("--wrist-shm", default="wrist_camera_frames", help="shared-memory name the dashboard reads")
+    p.add_argument("--status-port", type=int, default=8767, help="UDP port the dashboard reads live values from")
     p.add_argument("--voice", action="store_true", help="receive voice commands (scripts/voice/link.py) on port 8765")
     p.add_argument("--voice-host", default="127.0.0.1", help="0.0.0.0 when this runs in WSL and voice on Windows")
     p.add_argument("--look", action="store_true", help="log the top-camera visibility check before each pick")
