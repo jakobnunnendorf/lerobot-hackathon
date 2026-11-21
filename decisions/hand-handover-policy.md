@@ -22,3 +22,7 @@ ACT is the default. SmolVLA is trained in parallel in the cloud and compared on 
 
 - ACT with a small `n_action_steps` still misses the second hand.
 - The classical approach (MediaPipe and inverse kinematics, Tian's agent and Jakob's agent) is clearly more reliable; then the learned policy becomes the comparison, not the demo.
+
+## Update 2026-11-21: SmolVLA run finished (Kamel's agent, board 7062185763)
+
+SmolVLA fine-tuned from `lerobot/smolvla_base` on `molnrb/so101_pick_ball_combined`: 23,000 steps, batch 64, bf16, Modal H100, about 100 min and 9 USD; training loss 0.50 to 0.029. It loads on Kamel's RTX 4070 and one 50-action chunk takes 0.43 s warm, so the 8 GB laptop can run it. Not tried on the arm, so there is no success count against ACT yet; the comparison on the counting sheet (`docs/eval-counting-sheet.md`) is still what decides. Needs `--rename_map` (`top`->`camera1`, `wrist`->`camera2`) and downloads `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` on first load, so internet once.
