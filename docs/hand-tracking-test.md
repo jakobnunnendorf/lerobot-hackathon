@@ -65,13 +65,13 @@ Terminal 1:
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/track
-git pull                                    # brings the fitted offsets
+git fetch origin && git checkout --detach origin/TianK003/hand-tracking-test   # brings the fitted offsets
 python scripts/handover/read_pose.py --port /dev/so101_follower --robot-id mi_follower
 ```
 
 It switches torque off: hold the arm. It prints the joints and `jaw tip (m) x= y= z=` twice a second.
 
-1. Let the arm rest in its folded rest pose. Measure the height of the fixed jaw's end above the table with a ruler, and note it next to the printed `z`.
+1. The folded rest pose is already known: the jaw's end is at 35 cm, and the model says 31 cm. The model is weaker there than in the hand area, which is why the arm starts raised (step 3).
 2. Hold the fixed jaw's end about **25 cm above** a point you can measure, for example 25 cm straight ahead of the base's turning axis. Compare the printed `x`, `y` and `z` with the ruler. **Within about 3 cm: go on.** If z is more than 3 cm off, stop and post both readings.
 3. **Keep holding the arm in that raised pose** and go straight to 2b. The pose at start is where the arm returns when the hand is lost. Starting raised keeps every move at hover height, away from the bowl.
 

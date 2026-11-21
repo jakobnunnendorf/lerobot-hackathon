@@ -39,7 +39,8 @@ PITCHES_DEG = tuple(range(-90, 1))
 LEROBOT_SIGNS = dict.fromkeys(ARM_JOINTS, 1.0)
 # Fitted to four jaw-tip touches of the board corners on our arm (mi_follower, board comment 7064451117): the
 # corners moved from 44-63 mm off to 4-10 mm, 7-15 mm when each corner is predicted from the other three. Every
-# sign flip fitted worse (60 mm and up). Only checked at table height so far.
+# sign flip fitted worse (60 mm and up). The folded rest pose comes out 4 cm low (31 against 35 cm measured); fitting
+# it too made the corners worse (up to 17 mm) and moved hover targets by only 8-11 mm, so it is left out.
 LEROBOT_OFFSETS_DEG = {"shoulder_pan": -3.9, "shoulder_lift": 0.9, "elbow_flex": 9.9, "wrist_flex": 3.2, "wrist_roll": 0.0}
 
 
