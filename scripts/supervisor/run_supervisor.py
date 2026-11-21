@@ -2,6 +2,7 @@ import argparse
 import sys
 import time
 from dataclasses import replace
+from datetime import datetime
 from multiprocessing import shared_memory
 from pathlib import Path
 
@@ -96,7 +97,7 @@ def settings_from(args) -> Settings:
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
-                    held_check_colours=tuple(args.held_check_colours),
+                    held_check_colours=tuple(args.held_check_colours), held_unseen_floor_px=args.held_unseen_floor,
                     min_held_area_px={**Settings().min_held_area_px, **dict(args.min_held_area)},
                     grasp_check=None if args.no_grasp_check else GraspCheckSettings(
                         trigger=args.grasp_trigger, armed_above=args.grasp_armed_above, close_goal=args.grasp_close_goal,
@@ -157,6 +158,25 @@ def held_check_hook(args):
               "decides nothing. Suggested start from offline data: 120; confirm at the table (wrist frame at rest, "
               "target vs red/blue ball)", flush=True)
     return hook
+
+
+def wrist_frame_saver(log_path: str | None):
+    """Sensors.save_wrist_frame: one JPEG per VERIFY_HOLD next to the --log file, to see what the wrist camera saw.
+
+    None without --log. Best effort: the supervisor catches and logs any error, the round carries on.
+    """
+    if not log_path:
+        return None
+    log = Path(log_path)
+
+    def save(frame: np.ndarray, name: str) -> str:
+        from PIL import Image
+
+        path = log.parent / f"{log.stem}_{name}_{datetime.now().strftime('%H%M%S_%f')[:-3]}.jpg"
+        # Robot observations are RGB uint8 (OpenCVCamera's default colour mode), as PIL expects.
+        Image.fromarray(np.ascontiguousarray(frame, dtype=np.uint8)).save(path, quality=90)
+        return str(path)
+    return save
 
 
 def container_skills(args, arm) -> dict:
@@ -301,7 +321,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
             sys.exit(f"--grasp-max-tip-height needs #13's kinematics.py in {handover_dir}")
         sensors = Sensors(palms_seen=palms_seen, gripper_load=arm.gripper_load, tip_height=tip_height, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
                           destination=commands.destination,
-                          target=commands.target, finish_round=commands.clear, held_ball_area=held_check_hook(args))
+                          target=commands.target, finish_round=commands.clear, held_ball_area=held_check_hook(args),
+                          save_wrist_frame=wrist_frame_saver(args.log))
         supervisor = Supervisor(arm, skills, sensors, settings, rest, log, commands.abort, frame_writer=frame_writer,
                                 on_tick=commands.poll_voice)
         log.write(event="start", rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
@@ -448,6 +469,9 @@ def parse_args() -> argparse.Namespace:
                    choices=("striped", "red", "blue"),
                    help="balls whose wrist area decides; others are logged only (held_check=untrusted). Add red once "
                         "confirmed at the table (--held-check-colours striped red); blue is not usable on the wrist camera")
+    p.add_argument("--held-unseen-floor", type=int, default=Settings.held_unseen_floor_px,
+                   help="px: when every ball reads below this in the wrist region (a deep grasp hides the ball above "
+                        "the region), the held ball is unseen, not wrong: kept, logged as held_check=unseen")
     p.add_argument("--camera-fourcc", default="MJPG",
                    help="FOURCC of both cameras (as PR #6); 'none' leaves the format to OpenCV")
     p.add_argument("--no-held-check", action="store_true", help="turn the held-ball check off (gripper band only)")

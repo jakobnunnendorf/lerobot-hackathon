@@ -318,6 +318,8 @@ SCENARIOS = [
                        "max_pick_attempts": 1}),
     Scenario("held_check_blue_untrusted_by_default_logs_only", [R, P, V, U, R, D], "put_down", target="blue",
              destination="container", containers=True, colour_pick=True, held_balls=["striped"], held_check="on"),
+    # A deep grasp: the ball sits above the wrist region, every ball reads 0 px ("deep" matches no colour).
+    Scenario("held_check_deep_grasp_unseen_is_kept", [R, P, V, G, R, D], "given", held_balls=["deep"], held_check="on"),
     Scenario("held_check_unmeasured_threshold_logs_only", [R, P, V, G, R, D], "given", held_balls=["red"],
              held_check="on", settings={"min_held_target_area_px": None}),
     # Grasp check inside PICK (GraspChecked): pause at the close, read the gripper, re-query at once on a miss.

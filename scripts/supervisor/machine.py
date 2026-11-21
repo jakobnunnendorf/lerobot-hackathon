@@ -58,6 +58,11 @@ class Settings:
     # target held, the bluish ceiling).
     min_held_area_px: dict[str, int] = field(default_factory=lambda: {"red": 2000})
     held_check_frames: int = 5
+    # Every ball below this many px in the wrist region = the held ball is unseen, not wrong: a deep grasp holds it
+    # above the region (board 7065772934: one hold read striped 0, red 0, blue 0 and was rejected). The gripper
+    # band says held, so it is kept (held_check=unseen). Real readings that day: striped held 274, red 21,295,
+    # blue 1632 and 2443.
+    held_unseen_floor_px: int = 30
     # Balls whose wrist-frame area decides. Any other wanted ball is "untrusted": the area is logged, the ball is
     # accepted as without the check. Red joins with one flag (--held-check-colours striped red) once confirmed at
     # the table; blue stays out (see min_held_area_px).
@@ -99,6 +104,8 @@ class Sensors:
     # (scripts/vision/supervisor_adapter.py) when it is there. An error or a missing wrist frame counts as
     # "unavailable": the ball is accepted as before and the log says held_check=unavailable.
     held_ball_area: Callable[[np.ndarray, str], int] | None = None
+    # Saves one wrist frame per VERIFY_HOLD check (frame, name) and returns where; None: not saved. Best effort.
+    save_wrist_frame: Callable[[np.ndarray, str], str] | None = None
     # Grasp check: |Present_Load| of the gripper servo (logged; decides only with min_load) and the tip height (m)
     # of 5 commanded joints (only with max_tip_height). None: not available.
     gripper_load: Callable[[], float | None] | None = None
@@ -342,7 +349,8 @@ class Supervisor:
         return self.round.target if self.round.target in COLOURS else "striped"
 
     # The gripper reads the same for the striped target and a red/blue ball, so the wrist camera decides.
-    # Verdicts: off (no hook), unavailable (hook failed: accept), unmeasured (no threshold: log only, accept),
+    # Verdicts: off (no hook), unavailable (hook failed: accept), unseen (every ball below held_unseen_floor_px:
+    # accept, the gripper band says held), unmeasured (no threshold: log only, accept),
     # untrusted (this ball's wrist detection is not trusted: log only, accept), target, wrong, timeout (could not
     # settle at rest).
     def _check_held_ball(self, details: dict) -> str:
@@ -355,6 +363,7 @@ class Supervisor:
         wanted = self._wanted_ball()
         try:
             frames = [obs["wrist"] for obs in self._wait(self.s.held_check_frames / self.s.fps)][: self.s.held_check_frames]
+            self._save_wrist_frame(frames, details)
             # Every ball's area is logged, so the table log also measures the thresholds of the balls not asked for.
             areas = {ball: int(statistics.median(self.sensors.held_ball_area(frame, ball) for frame in frames))
                      for ball in HELD_BALLS}
@@ -363,7 +372,11 @@ class Supervisor:
             return "unavailable"
         area, threshold = areas[wanted], self.held_threshold(wanted)
         details["held_areas_px"] = areas
-        if wanted not in self.s.held_check_colours:
+        if all(value < self.s.held_unseen_floor_px for value in areas.values()):
+            # No ball seen at all: the camera cannot tell, so the gripper band decides (held), as without the check.
+            verdict = "unseen"
+            details["held_unseen_floor_px"] = self.s.held_unseen_floor_px
+        elif wanted not in self.s.held_check_colours:
             verdict = "untrusted"
         elif threshold is None:
             verdict = "unmeasured"
@@ -371,6 +384,15 @@ class Supervisor:
             verdict = "target" if area >= threshold else "wrong"
         details.update(held_check=verdict, held_ball=wanted, held_area_px=area, held_threshold_px=threshold)
         return verdict
+
+    def _save_wrist_frame(self, frames: list, details: dict) -> None:
+        if self.sensors.save_wrist_frame is None or not frames:
+            return
+        try:
+            name = f"verify_hold_r{self.round.number}_p{self.round.pick_attempts}"
+            details["wrist_frame"] = self.sensors.save_wrist_frame(frames[len(frames) // 2], name)
+        except Exception as error:  # noqa: BLE001 - a frame that cannot be saved must not end the round
+            details["wrist_frame_error"] = repr(error)
 
     def held_threshold(self, ball: str) -> int | None:
         if ball in self.s.min_held_area_px:
