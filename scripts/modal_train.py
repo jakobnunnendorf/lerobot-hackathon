@@ -50,6 +50,8 @@ REDBLUE_AUGMENTATION_V2 = json.dumps(
     }
 )
 
+VOL = "/vol"
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -81,6 +83,28 @@ RECIPES = {
             "--eval_steps=5000",
         ],
         "schedule_follows_steps": False,
+    },
+    # Starts from the morning's blue-ball SmolVLA (pretraining on related data helped our ACT runs).
+    # Not --resume, so the normaliser takes this dataset's stats instead of the blue-ball ones.
+    "smolvla_redblue_from_combined": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 64,
+        "prefetch_models": ["HuggingFaceTB/SmolVLM2-500M-Video-Instruct"],
+        "args": [
+            f"--policy.path={VOL}/outputs/smolvla_pick_ball_h100_23k/checkpoints/023000/pretrained_model",
+            f"--rename_map={SMOLVLA_RENAME_MAP}",
+            # half the from-base LR: the start point is already tuned to this arm and bowl
+            "--policy.optimizer_lr=5e-5",
+            "--dataset.image_transforms.enable=true",
+            "--dataset.image_transforms.backend=gpu",
+            "--dataset.image_transforms.max_num_transforms=4",
+            f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION_V2}",
+            "--dataset.eval_split=0.1",
+            "--seed=1000",
+            "--eval_steps=1000",
+        ],
+        "schedule_follows_steps": True,
     },
     # act_redblue held-out loss went flat after 10k steps while train loss kept falling; this run
     # targets that gap. See decisions/act-redblue-generalisation.md.
@@ -114,11 +138,10 @@ RECIPES = {
 CPU = 12.0
 MEMORY = 32 * 1024
 # Modal prices read from https://modal.com/pricing on 2026-11-21 (USD per hour).
-GPU_USD_H = {"H100": 3.95, "A100-80GB": 2.50, "A100-40GB": 2.10, "L40S": 1.95, "A10": 1.10, "L4": 0.80}
+GPU_USD_H = {"B200": 6.25, "H200": 4.54, "H100": 3.95, "A100-80GB": 2.50, "A100-40GB": 2.10, "L40S": 1.95, "A10": 1.10, "L4": 0.80}
 CPU_USD_H = CPU * 0.0472 + (MEMORY / 1024) * 0.0080
 STARTUP_MINUTES = 8
 
-VOL = "/vol"
 volume = modal.Volume.from_name("lerobot-smolvla", create_if_missing=True)
 
 image = (
