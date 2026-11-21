@@ -3,6 +3,7 @@
 # Running again with the same dataset name ADDS episodes. Keys: SPACE start/finish (kept), LEFT throw away, ESC end.
 # Needs the LeRobot patch once per install: python scripts/so101/patch_record.py
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_devices "$SO101_FOLLOWER_PORT" "$SO101_LEADER_PORT" "$SO101_CAM_TOP" "$SO101_CAM_WRIST"
 
 NAME=${1:?dataset name}
 NUM=${2:?number of episodes}

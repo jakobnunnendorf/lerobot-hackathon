@@ -22,6 +22,13 @@ CAMERAS="{ top: {type: opencv, index_or_path: $SO101_CAM_TOP, width: 640, height
 FOLLOWER_ARGS=(--robot.type=so101_follower --robot.port="$SO101_FOLLOWER_PORT" --robot.id="$SO101_FOLLOWER_ID")
 LEADER_ARGS=(--teleop.type=so101_leader --teleop.port="$SO101_LEADER_PORT" --teleop.id="$SO101_LEADER_ID")
 
+# WSL detaches every usbipd device when it shuts down after the last Linux process exits; a missing port means that.
+require_devices() {
+  for dev in "$@"; do
+    [ -e "$dev" ] || { echo -e "\033[97;41m NOT FOUND: $dev \033[0m  Re-attach from Windows: bash scripts/so101/attach_usb.sh"; exit 1; }
+  done
+}
+
 B='\033[1m'; X='\033[0m'
 banner() { echo -e "\033[$1m${B}$(printf '%-72s' "   $2")${X}"; }
 say() { espeak-ng -s 160 "$1" >/dev/null 2>&1 & }

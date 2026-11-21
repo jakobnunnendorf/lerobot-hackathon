@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Usage: teleop.sh [--no-cams]     Leader drives follower; with cameras the Rerun window shows both feeds. Nothing is recorded.
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+require_devices "$SO101_FOLLOWER_PORT" "$SO101_LEADER_PORT"
+[ "${1:-}" != "--no-cams" ] && require_devices "$SO101_CAM_TOP" "$SO101_CAM_WRIST"
 
 clear
 banner "30;42" "TELEOPERATION - nothing is recorded"
