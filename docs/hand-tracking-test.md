@@ -103,7 +103,7 @@ What should happen:
 - No hand: the arm holds still.
 - Open palm at 20 cm: the gripper first rises to 28 cm, then moves over the palm and follows it slowly.
 - Hand gone: the arm stops, and after 5 s it returns to the start pose.
-- Two open palms under it for 1 s: it opens the gripper (the drop; harmless without a ball), closes and opens it 3 times fast (`--celebrate 3`), then folds back into the rest pose (`--rest`, the joints Balazs read at rest, 7064702491) and stays there. Start the loop again for the next round.
+- One open palm held still under it for 1.5 s: it opens the gripper (the drop; harmless without a ball), closes and opens it 3 times fast (`--celebrate 3`), then folds back into the rest pose (`--rest`, the joints Balazs read at rest, 7064702491) and stays there. Start the loop again for the next round.
 
 **Stop: Ctrl+C in terminal 1.** The arm stays where it is, with torque on. If it moves **away from the hand or mirrored** (hand to the left, arm to the right), stop at once and post terminal 1's last lines.
 

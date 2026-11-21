@@ -4,7 +4,7 @@ For the people at the robot laptop. One round:
 1. Someone says "give me the ball" (or "put it in my hand").
 2. The learned ACT policy (Tomi's `Space0code/act_redblue_from_foil`, 15K by default) digs out and picks the striped ball, then returns to rest.
 3. The arm carries the ball to the present pose and follows an open palm at 28 cm.
-4. Two flat palms held still under the gripper for 1 s: it drops the ball, opens and closes 3 times fast, then folds back to rest.
+4. One open palm held still under the gripper for 1.5 s: it drops the ball, opens and closes 3 times fast, then folds back to rest.
 
 **Hand lost:** the arm holds. After 5 s it goes back to the present pose and follows again when the palm comes back. After 45 s without a drop, it folds back to rest and puts the ball down over the bowl.
 
@@ -120,7 +120,7 @@ Type `h` + Enter in terminal 1. Expect:
    - On a miss it opens and tries again, 3 picks at most.
    - PICK ends when the arm is back at rest holding the ball.
 3. **VERIFY_HOLD**: the wrist camera looks at the ball. Logging only, it decides nothing yet.
-4. **GIVE**: the arm carries the ball to the present pose. Hold one open palm about 20 cm above the table, 15-35 cm in front of the base. The gripper follows at 28 cm. Bring the second palm next to it and hold still 1 s: drop, 3 fast close-open cycles.
+4. **GIVE**: the arm carries the ball to the present pose. Hold one open palm about 20 cm above the table, 15-35 cm in front of the base. The gripper follows at 28 cm. Hold the palm still under it for 1.5 s: drop, 3 fast close-open cycles. Moving the hand more than about 3 cm restarts the count.
 5. **REST**: it folds back to rest. Terminal 1 prints the round's outcome, `given`.
 
 **Watch the first move from rest to the present pose:** in the model it stays 24-40 cm above the table. If it comes near the bowl or the table, press `a` + Enter.

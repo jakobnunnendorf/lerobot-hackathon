@@ -28,7 +28,8 @@ class FollowSettings:
     # 5 s, not 3 (Tian, 2026-11-21): in T2 the arm hid the palm in about 40% of tracker frames (board 7064755928).
     lost_to_home_s: float = 5.0
     drop_radius: float = 0.03
-    drop_dwell_s: float = 1.0
+    # One still palm for 1.5 s, not two palms for 1 s (Tian, 2026-11-21): see decisions/hand-following-safety.md.
+    drop_dwell_s: float = 1.5
     open_time_s: float = 1.0
     out_of_reach_to_home_s: float = 3.0
     filter_time_constant_s: float = 0.25
@@ -37,6 +38,9 @@ class FollowSettings:
     max_speed_m_s: float = 0.15
     jump_m: float = 0.15
     jump_confirm_frames: int = 5
+    drop_hands: int = 1
+    # The arm hides the palm in many tracker frames, so a gap this short does not restart the dwell.
+    drop_gap_s: float = 0.5
 
 
 # The loop clamps the workspace, solves the IK, limits joint speed and owns the gripper. This class decides the
@@ -49,6 +53,8 @@ class Follower:
         self.lost_since: float | None = None
         self.unreachable_since: float | None = None
         self.over_hands_since: float | None = None
+        self.last_over_at = 0.0
+        self.dwell_anchor: np.ndarray | None = None
         self._restart_approach()
 
     def _restart_approach(self) -> None:
@@ -64,7 +70,8 @@ class Follower:
             return Decision(Mode.DROP if now - self.drop_started < self.s.open_time_s else Mode.DONE)
 
         if not hands:
-            self.over_hands_since = None
+            if now - self.last_over_at > self.s.drop_gap_s:
+                self.over_hands_since = None
             self.lost_since = now if self.lost_since is None else self.lost_since
             if now - self.lost_since >= self.s.lost_to_home_s:
                 self._restart_approach()
@@ -147,9 +154,12 @@ class Follower:
             self.tracking = False
 
     def _dwelled_over_hands(self, hand_count: int, tip_xyz: np.ndarray, target: np.ndarray, now: float) -> bool:
-        over = hand_count >= 2 and np.hypot(*(np.asarray(tip_xyz)[:2] - target[:2])) <= self.s.drop_radius
+        over = hand_count >= self.s.drop_hands and np.hypot(*(np.asarray(tip_xyz)[:2] - target[:2])) <= self.s.drop_radius
         if not over:
             self.over_hands_since = None
             return False
-        self.over_hands_since = now if self.over_hands_since is None else self.over_hands_since
+        self.last_over_at = now
+        moved = self.dwell_anchor is not None and np.hypot(*(target[:2] - self.dwell_anchor)) > self.s.drop_radius
+        if self.over_hands_since is None or moved:
+            self.over_hands_since, self.dwell_anchor = now, target[:2].copy()
         return now - self.over_hands_since >= self.s.drop_dwell_s
