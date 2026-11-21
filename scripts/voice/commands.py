@@ -13,7 +13,8 @@ TARGETS = {
 DESTINATIONS = {
     "hand": (
         "give it to me", "give me the ball", "give me", "hand it to me", "hand me", "hand it over", "pass it to me",
-        "in my hand",
+        # "in the hand", not "put it in the hand": the longer phrase pulled "put it in the contain her" off container.
+        "in my hand", "in the hand",
     ),
     "container": ("put it in the container", "container"),
 }
