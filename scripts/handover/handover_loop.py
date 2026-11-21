@@ -201,7 +201,8 @@ def connect_robot(port: str, robot_id: str, top_camera: str):
 
     camera = int(top_camera) if top_camera.isdigit() else top_camera
     # Only one process can open the top camera, so the loop owns it and shares frames with the tracker.
-    cameras = {"top": OpenCVCameraConfig(index_or_path=camera, width=640, height=480, fps=30)}
+    # MJPG as in the recordings and the calibration: another pixel format can change the field of view.
+    cameras = {"top": OpenCVCameraConfig(index_or_path=camera, width=640, height=480, fps=30, fourcc="MJPG")}
     # Torque stays on at exit: the default disconnect switches it off and would drop a held ball.
     robot = SO101Follower(SO101FollowerConfig(port=port, id=robot_id, cameras=cameras, disable_torque_on_disconnect=False))
     robot.connect()
