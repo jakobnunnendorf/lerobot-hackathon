@@ -81,7 +81,52 @@ def wait_for_line(log: Path, text: str, seconds: float) -> bool:
     return False
 
 
+def chaining() -> None:
+    sys.path.insert(0, str(RUNNER.parent))
+    import train_until_new_data as follow
+
+    clock = {"t": 0.0}
+    hub = {"episodes": 120}
+    segments = []
+
+    def run_segment(segment, checkpoint, minutes):
+        segments.append((segment, checkpoint, round(minutes)))
+        clock["t"] += 600
+        if segment == 1:
+            hub["episodes"] = 140
+            return {"reason": "new_data", "minutes": 10, "checkpoint": "s01/000700", "episodes_trained": 120}
+        if segment == 2:
+            return {"reason": "done", "minutes": 10, "checkpoint": "s02/005000", "episodes_trained": 140}
+        if segment == 3:
+            return {"reason": "failed", "minutes": 1, "checkpoint": None, "episodes_trained": None}
+
+    def wait(seconds):
+        clock["t"] += seconds
+        if clock["t"] > 3000:
+            hub["episodes"] = 160
+
+    log = []
+    history = follow.follow_segments(
+        run_segment, lambda: hub["episodes"], wait, lambda: clock["t"], start_from="v2/018000", budget_usd=10,
+        usd_per_minute=0.08, overhead_minutes=8, deadline=4 * 3600, cap_minutes=60, min_new=20, poll_s=60,
+        log=log.append)
+    check("follow: each continuation starts from the previous one's newest checkpoint; one that ran out of steps "
+          "waits for 20 new episodes; a failure ends the chain",
+          [s[:2] for s in segments] == [(1, "v2/018000"), (2, "s01/000700"), (3, "s02/005000")]
+          and any(e.get("event") == "waiting" and e["for_episodes"] == 160 for e in log)
+          and log[-1] == {"event": "follow_end", "reason": "segment failed", "spent_usd": 3.6}, str(log))
+
+    calls = []
+    follow.follow_segments(
+        lambda s, c, m: calls.append(round(m)) or {"reason": "new_data", "minutes": m, "checkpoint": c},
+        lambda: 0, wait, lambda: 0.0, start_from=None, budget_usd=12, usd_per_minute=0.08, overhead_minutes=8,
+        deadline=10 * 3600, cap_minutes=60, min_new=20, poll_s=60, log=log.append)
+    check("follow: the USD cap bounds the chain (12 USD at 0.08/min with 8 min overhead each)",
+          calls == [60, 60, 6] and log[-1]["reason"] == "budget", f"{calls} {log[-1]}")
+
+
 def main() -> None:
+    chaining()
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         work = Path(work)
         make_dataset(work / "a", "local/tiny_a", 3)

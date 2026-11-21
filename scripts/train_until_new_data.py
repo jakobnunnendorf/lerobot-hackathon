@@ -90,6 +90,46 @@ def install_hooks(train_module, watch: Watch) -> None:
     train_module.update_last_checkpoint = update_last_checkpoint
 
 
+def segment_reason(exit_code: int) -> str:
+    # -15: modal_train.run_training ended it at its time cap; it continues from the newest periodic checkpoint.
+    return {NEW_DATA_EXIT: "new_data", 0: "done", -15: "capped"}.get(exit_code, "failed")
+
+
+# Chains continuations, each a fine-tune from the previous one's newest checkpoint. A continuation that ran out of
+# steps waits (on a CPU) for the next batch of episodes instead of training on the same data again.
+def follow_segments(run_segment, episodes_now, wait, clock, *, start_from: str | None, budget_usd: float,
+                    usd_per_minute: float, overhead_minutes: float, deadline: float, cap_minutes: float, min_new: int,
+                    poll_s: float, log) -> list[dict]:
+    spent, segment, checkpoint, history = 0.0, 1, start_from, []
+    while True:
+        budget_left = (budget_usd - spent) / usd_per_minute - overhead_minutes
+        time_left = (deadline - clock()) / 60
+        minutes = min(cap_minutes, budget_left, time_left)
+        if minutes < 5:
+            log({"event": "follow_end", "reason": "budget" if budget_left <= time_left else "deadline",
+                 "spent_usd": round(spent, 2)})
+            return history
+        result = run_segment(segment, checkpoint, minutes)
+        spent += usd_per_minute * (result["minutes"] + overhead_minutes)
+        result = {**result, "segment": segment, "started_from": checkpoint, "spent_usd": round(spent, 2)}
+        history.append(result)
+        log(result)
+        if result["reason"] == "failed":
+            log({"event": "follow_end", "reason": "segment failed", "spent_usd": round(spent, 2)})
+            return history
+        checkpoint = result.get("checkpoint") or checkpoint
+        segment += 1
+        if result["reason"] == "new_data":
+            continue
+        trained_on = result.get("episodes_trained") or episodes_now()
+        log({"event": "waiting", "for_episodes": trained_on + min_new})
+        while episodes_now() < trained_on + min_new:
+            if clock() >= deadline:
+                log({"event": "follow_end", "reason": "deadline", "spent_usd": round(spent, 2)})
+                return history
+            wait(poll_s)
+
+
 def parse_args() -> tuple[argparse.Namespace, list[str]]:
     p = argparse.ArgumentParser(description="lerobot-train that checkpoints and exits 75 when its dataset grows.")
     p.add_argument("--min-new", type=int, default=20, help="new episodes that stop the training")
