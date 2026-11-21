@@ -57,7 +57,7 @@ def fetch_log(run: str, workdir: Path) -> str:
         return ""
 
 
-def model_card(repo_id: str, run: str, dataset: str, settings: str, published: list[str], eval_losses: dict[int, float], finished: bool) -> str:
+def model_card(repo_id: str, run: str, dataset: str, policy: str, settings: str, published: list[str], eval_losses: dict[int, float], finished: bool) -> str:
     rows = "\n".join(
         f"| `{step}/` | {eval_losses[int(step)]:.4f} |" if int(step) in eval_losses else f"| `{step}/` | n/a |"
         for step in published
@@ -65,7 +65,7 @@ def model_card(repo_id: str, run: str, dataset: str, settings: str, published: l
     return f"""---
 library_name: lerobot
 tags:
-- act
+- {policy.lower()}
 - robotics
 - lerobot
 - so101
@@ -73,9 +73,9 @@ datasets:
 - {dataset}
 ---
 
-# ACT policy, SO-101, striped ball in a bowl of red and blue balls
+# {policy} policy, SO-101, striped ball in a bowl of red and blue balls
 
-ACT trained from scratch with LeRobot 0.7.0 on [`{dataset}`](https://huggingface.co/datasets/{dataset})
+{policy} trained with LeRobot 0.7.0 on [`{dataset}`](https://huggingface.co/datasets/{dataset})
 (80 episodes, 2 cameras `top` and `wrist` at 640x480, 30 fps), run `{run}`.
 {settings}
 Training status: {"finished" if finished else "running, new checkpoints are added automatically"}.
@@ -90,8 +90,8 @@ mean loss on the held-out episodes; with so few episodes differences of a few pe
 ## Use
 
 ```bash
-hf download {repo_id} --include "010000/*" --local-dir act_pick_rb
-lerobot-rollout --policy.path=act_pick_rb/010000 ...   # same robot id, camera names and resolution as the recording
+hf download {repo_id} --include "010000/*" --local-dir pick_rb
+lerobot-rollout --policy.path=pick_rb/010000 ...   # same robot id, camera names and resolution as the recording
 ```
 """
 
@@ -101,6 +101,7 @@ def main() -> None:
     parser.add_argument("--run", default="act_redblue_l40s_b32_38k")
     parser.add_argument("--dataset", default="molnrb/so101_pick_rb_mixed")
     parser.add_argument("--repo-name", default="act_so101_pick_rb_mixed_b32_38k")
+    parser.add_argument("--policy", default="ACT")
     parser.add_argument("--settings", default="Batch 32, lr 2e-5, bf16, 38,000 steps planned, 5% of episodes held out (4 episodes, seed 1000).")
     parser.add_argument("--poll-s", type=int, default=120)
     # the run is capped at 172 min; when the cap stops it, LeRobot never logs "End of training"
@@ -133,7 +134,7 @@ def main() -> None:
         if new or finished:
             api.upload_file(
                 repo_id=repo_id,
-                path_or_fileobj=model_card(repo_id, args.run, args.dataset, args.settings, published, eval_losses, finished).encode(),
+                path_or_fileobj=model_card(repo_id, args.run, args.dataset, args.policy, args.settings, published, eval_losses, finished).encode(),
                 path_in_repo="README.md",
                 commit_message="update model card",
             )
