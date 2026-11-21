@@ -1,9 +1,9 @@
-# Hand tracking test: the gripper follows a hand, 5 cm above it
+# Hand tracking test: the gripper follows a hand, 8 cm above it
 
 For the person at the robot laptop. All commands run in WSL. No ball is needed.
 
 - Hand: about 20 cm above the table.
-- Gripper: hovers at 25 cm (`--hover-height 0.25`).
+- Gripper: hovers at 28 cm, 8 cm above the hand (`--hover-height 0.28`, raised from 0.25 at Balazs's request after T2, 7064702491).
 - Stage 1 checks the whole chain with the arm standing still.
 - Stage 2 moves the arm. **Run stage 2 only after K, the corner touches (card K, `docs/hand-following-table-check.md` sections 2-5), has passed.** Until then, the joint directions in our kinematics are not confirmed on the real arm. A wrong sign moves the arm the wrong way, and the safety limits are computed with the same kinematics.
 
@@ -34,7 +34,7 @@ Terminal 1, the control loop in dry-run. It only prints what it would command:
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/track
-python scripts/handover/handover_loop.py --dry-run --hover-height 0.25 --print-every 15
+python scripts/handover/handover_loop.py --dry-run --hover-height 0.28 --print-every 15
 ```
 
 Terminal 2, the tracker:
@@ -49,7 +49,7 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 Check:
 - Terminal 2 prints `camera: 640x480 at 30 fps, backend V4L2`. Then, twice a second, the hand in robot coordinates, for example `x +0.251 y -0.048 m open palm`.
 - Hold the open palm 20 cm above a point you can measure, for example 25 cm straight ahead of the base's turning axis. x should read about 0.25 and y about 0.00, within about 2 cm. Move the hand 10 cm to the robot's left: y should grow by about 0.10. Note 2-3 readings next to the ruler values.
-- Terminal 1 shows `follow` while the hand is seen, with `tip=(x, y, +0.250)` moving to the hand's x and y. It shows `hold` when the hand disappears, and `home` after 3 s.
+- Terminal 1 shows `follow` while the hand is seen, with `tip=(x, y, +0.280)` moving to the hand's x and y. It shows `hold` when the hand disappears, and `home` after 3 s.
 
 Ctrl+C in both terminals.
 
@@ -82,7 +82,8 @@ Press Ctrl+C in terminal 1 (`read_pose.py` stops; the arm stays limp, keep holdi
 ```bash
 python scripts/handover/handover_loop.py --robot --port /dev/so101_follower \
     --top-camera /dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0 --robot-id mi_follower \
-    --hover-height 0.25 --min-height 0.20 --max-step-m 0.004 --max-step-deg 1.0 --print-every 15
+    --hover-height 0.28 --min-height 0.20 --max-step-m 0.004 --max-step-deg 1.0 --print-every 15 \
+    --celebrate 3 --rest -3.69 -103.43 97.01 -100.26 1.45
 ```
 
 - Once it prints `listening on 127.0.0.1:8766; home=...`, the torque is on and the arm holds itself: let go. Before switching the torque on, it sets each servo's target to where the arm is, so the arm does not jump to an old target.
@@ -100,9 +101,9 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 
 What should happen:
 - No hand: the arm holds still.
-- Open palm at 20 cm: the gripper first rises to 25 cm, then moves over the palm and follows it slowly.
+- Open palm at 20 cm: the gripper first rises to 28 cm, then moves over the palm and follows it slowly.
 - Hand gone: the arm stops, and after 3 s it returns to the start pose.
-- Two open palms under it for 1 s: it opens the gripper. That is the drop; it is harmless without a ball.
+- Two open palms under it for 1 s: it opens the gripper (the drop; harmless without a ball), closes and opens it 3 times fast (`--celebrate 3`), then folds back into the rest pose (`--rest`, the joints Balazs read at rest, 7064702491) and stays there. Start the loop again for the next round.
 
 **Stop: Ctrl+C in terminal 1.** The arm stays where it is, with torque on. If it moves **away from the hand or mirrored** (hand to the left, arm to the right), stop at once and post terminal 1's last lines.
 
@@ -111,5 +112,5 @@ What should happen:
 - Stage 1: the 2-3 readings against the ruler.
 - Stage 2:
   - Does it go to the hand? How far from above the palm centre does the gripper end, in cm, at 3 places?
-  - Is the hand lost while the gripper is above it? The camera looks from the side, so the arm can hide the palm. Terminal 2 then prints `no hand`. If so, try `--hover-height 0.30` (10 cm above a hand at 20 cm).
+  - Is the hand lost while the gripper is above it? The camera looks from the side, so the arm can hide the palm. Terminal 2 then prints `no hand`. If so, try `--hover-height 0.30`.
   - Any `target out of reach` lines.
