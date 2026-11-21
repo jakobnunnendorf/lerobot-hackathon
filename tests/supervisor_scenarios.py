@@ -16,7 +16,7 @@ sys.path[:] = [str(SUPERVISOR)] + [p for p in sys.path if Path(p or ".").resolve
 from commands import Commands
 from fakes import SCENARIOS, FakeArm, Scenario, World, build, pick_effect, release_effect, scripted
 from machine import RealClock, Sensors, Settings, Skills, Supervisor, TransitionLog
-from skills import KEYS, LoadedPolicy, PolicySkill, give_sequence, import_from, pose_of
+from skills import KEYS, LoadedPolicy, PolicySkill, capped, give_sequence, import_from, pose_of
 
 failures: list[str] = []
 
@@ -52,7 +52,7 @@ def fake_scenarios(log_path: str) -> None:
           len(ends) == len(SCENARIOS) and all(e["outcome"] for e in ends))
 
 
-def policy_runner() -> None:
+def policy_runner(checkpoint_cameras=("top", "wrist"), rename=None, n_action_steps=None) -> None:
     import torch
     from lerobot.configs.types import FeatureType, PolicyFeature
     from lerobot.policies.factory import get_policy_class, make_policy_config, make_pre_post_processors
@@ -67,26 +67,28 @@ def policy_runner() -> None:
     config = make_policy_config(
         "act", device="cpu", pretrained_backbone_weights=None,
         input_features={"observation.state": PolicyFeature(type=FeatureType.STATE, shape=(6,)),
-                        "observation.images.top": image, "observation.images.wrist": image},
+                        **{f"observation.images.{cam}": image for cam in checkpoint_cameras}},
         output_features={"action": PolicyFeature(type=FeatureType.ACTION, shape=(6,))})
     stats = {"observation.state": {"mean": torch.zeros(6), "std": torch.ones(6)},
              "action": {"mean": torch.zeros(6), "std": torch.ones(6)},
              **{f"observation.images.{cam}": {"mean": torch.full((3, 1, 1), 0.5), "std": torch.full((3, 1, 1), 0.25)}
-                for cam in ("top", "wrist")}}
+                for cam in checkpoint_cameras}}
     with tempfile.TemporaryDirectory() as checkpoint:
         get_policy_class("act")(config).save_pretrained(checkpoint)
         pre, post = make_pre_post_processors(config, dataset_stats=stats)
         pre.save_pretrained(checkpoint)
         post.save_pretrained(checkpoint)
 
-        loaded = LoadedPolicy(checkpoint, device="cpu")
+        loaded = LoadedPolicy(checkpoint, device="cpu", n_action_steps=n_action_steps, camera_rename=rename)
         skill = PolicySkill("pick", loaded, features, "so101_follower")
         obs = {**{key: 0.0 for key in KEYS},
                "top": np.zeros((height, width, 3), np.uint8), "wrist": np.zeros((height, width, 3), np.uint8)}
         skill.start(obs, {key: 0.0 for key in KEYS}, 0.0)
         actions = [skill.step(obs, i / 30) for i in range(3)]
     ok = all(set(a) == set(KEYS) and all(np.isfinite(list(a.values()))) for a in actions)
-    check("policy runner: checkpoint dir -> LoadedPolicy -> PolicySkill.step gives 6 named joint goals", ok,
+    ok &= n_action_steps is None or loaded.policy.config.n_action_steps == n_action_steps
+    check(f"policy runner: checkpoint cameras {checkpoint_cameras}, rename {rename}, n_action_steps {n_action_steps}"
+          " -> 6 named joint goals", ok,
           f"first action {np.round(list(actions[0].values()), 3).tolist()}")
 
 
@@ -109,6 +111,15 @@ def voice_container() -> None:
     check("voice: link.send -> CommandReceiver -> 'container' with a hand present -> PUT_DOWN",
           sent and states == scenario.expected, f"sent={sent} states={states}")
     commands.voice.close()
+
+
+def speed_cap() -> None:
+    last = {key: 0.0 for key in KEYS}
+    wanted = {**last, "shoulder_pan.pos": 10.0, "elbow_flex.pos": -5.0, "gripper.pos": 40.0}
+    sent = capped(wanted, last, 1.0)
+    check("speed cap: largest arm joint step 1.0 deg, direction kept, gripper not capped",
+          sent["shoulder_pan.pos"] == 1.0 and sent["elbow_flex.pos"] == -0.5 and sent["gripper.pos"] == 40.0
+          and capped(wanted, last, None) == wanted, str(sent))
 
 
 def send_hands(port: int, stop: threading.Event) -> None:
@@ -146,7 +157,7 @@ def give_integration(handover_dir: Path, log_path: str) -> None:
                     put_down=scripted("put_down", world, ["ok"], release_effect(world, "ok")),
                     give=lambda: give_sequence(arm, handover_dir=handover_dir, receiver=receiver, abort=abort,
                                                 timeout_s=settings.give_timeout_s, gripper_open=60.0))
-    sensors = Sensors(hands_present=lambda: bool(receiver.newest_hands()))
+    sensors = Sensors(palms_seen=lambda: len(receiver.newest_hands()) >= 2)
     rest = pose_of(arm.last_sent)
     started = time.monotonic()
     result = Supervisor(arm, skills, sensors, settings, rest, TransitionLog(log_path, echo=False), abort,
@@ -170,8 +181,10 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as work:
         fake_scenarios(f"{work}/fake.jsonl")
         voice_container()
+        speed_cap()
         if not args.skip_policy:
             policy_runner()
+            policy_runner(("camera1", "camera2"), {"top": "camera1", "wrist": "camera2"}, n_action_steps=20)
         handover_dir = Path(args.handover_dir)
         if (handover_dir / "handover_loop.py").exists():
             give_integration(handover_dir, f"{work}/give.jsonl")

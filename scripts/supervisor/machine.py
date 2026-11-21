@@ -39,7 +39,8 @@ class Settings:
     shake_timeout_s: float = 15.0
     put_down_timeout_s: float = 20.0
     move_timeout_s: float = 15.0
-    hold_range: tuple[float, float] = (10.0, 17.0)
+    hold_range: tuple[float, float] = (6.0, 20.0)
+    gripper_hold: float | None = None
     verify_s: float = 0.5
     hand_wait_s: float = 3.0
     frame_every_ticks: int = 2
@@ -52,12 +53,13 @@ class Skills:
     give: Callable[[], Skill] | None = None
     clear_gray: Callable[[], Skill] | None = None
     shake: Callable[[], Skill] | None = None
+    present: Callable[[], Skill] | None = None
 
 
 @dataclass
 class Sensors:
     visible_area: Callable[[np.ndarray], int] | None = None
-    hands_present: Callable[[], bool] = lambda: False
+    palms_seen: Callable[[], bool] = lambda: False
     destination: Callable[[], str | None] = lambda: None
 
 
@@ -171,6 +173,11 @@ class Supervisor:
             self.clock.tick()
         return seen
 
+    def idle_until(self, event: threading.Event) -> None:
+        while not event.is_set():
+            self._observe()
+            self.clock.tick()
+
     def run_skill(self, skill: Skill, timeout_s: float) -> str:
         obs = self._observe()
         start = self.clock.now()
@@ -244,6 +251,8 @@ class Supervisor:
         holding, reading = self.holding()
         details = {"reading": round(reading, 2)}
         if holding:
+            if self.s.gripper_hold is not None:
+                self.arm.send({**self.arm.last_sent, "gripper.pos": self.s.gripper_hold})
             return self._destination(details)
         if self.round.pick_attempts < self.s.max_pick_attempts:
             self.round.after_rest = self._first_state()
@@ -251,15 +260,22 @@ class Supervisor:
         self.round.outcome, self.round.after_rest = "gave_up", State.DONE
         return State.REST, f"not holding after {self.round.pick_attempts} picks, giving up", details
 
+    # The hand decision is made in the present pose, where the tracker sees the hands that GIVE will serve.
     def _destination(self, details: dict):
         wanted = self.sensors.destination()
         details["destination"] = wanted
         if wanted == "container" or self.skills.give is None:
             return State.PUT_DOWN, "holding; put down" if wanted else "holding; no GIVE skill", details
-        seen = self._wait(self.s.hand_wait_s, until=lambda obs: self.sensors.hands_present())
-        if self.sensors.hands_present():
-            return State.GIVE, f"holding, hand seen after {len(seen) / self.s.fps:.1f} s", details
-        return State.PUT_DOWN, f"holding, no hand in {self.s.hand_wait_s} s", details
+        if self.skills.present is not None:
+            details["present"] = self.run_skill(self.skills.present(), self.s.move_timeout_s)
+            if details["present"] == "timeout":
+                return State.ABORT, "arm did not reach the present pose while holding", details
+        if wanted == "hand":
+            return State.GIVE, "holding; voice or key says hand", details
+        seen = self._wait(self.s.hand_wait_s, until=lambda obs: self.sensors.palms_seen())
+        if self.sensors.palms_seen():
+            return State.GIVE, f"holding, two palms seen after {len(seen) / self.s.fps:.1f} s", details
+        return State.PUT_DOWN, f"holding, no two palms in {self.s.hand_wait_s} s", details
 
     def _give(self):
         result = self.run_skill(self.skills.give(), self.s.give_timeout_s)

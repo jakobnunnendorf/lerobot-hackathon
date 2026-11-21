@@ -30,6 +30,14 @@ def import_from(directory: Path, module: str):
     return __import__(module)
 
 
+def capped(action: dict, last_sent: dict, max_step_deg: float | None) -> dict:
+    if max_step_deg is None:
+        return action
+    goal, current = pose_of(action), pose_of(last_sent)
+    arm = step_towards(current[:5], goal[:5], max_step_deg)
+    return action_of(np.concatenate([arm, goal[5:]]))
+
+
 class Skill(Protocol):
     name: str
 
@@ -39,10 +47,13 @@ class Skill(Protocol):
     def result(self) -> str: ...
 
 
+# Done only when the measured arm joints are there too: a lagging or blocked arm must not start the next skill.
+# The gripper is left out, since it reads the ball's width while holding, not its goal.
 class MoveTo:
-    def __init__(self, name: str, target: np.ndarray, max_step_deg: float = 1.5, gripper_step: float = 2.0):
+    def __init__(self, name: str, target: np.ndarray, max_step_deg: float = 1.5, gripper_step: float = 2.0,
+                 arrive_tol_deg: float = 4.0):
         self.name, self.target = name, np.asarray(target, dtype=float)
-        self.max_step_deg, self.gripper_step = max_step_deg, gripper_step
+        self.max_step_deg, self.gripper_step, self.arrive_tol_deg = max_step_deg, gripper_step, arrive_tol_deg
 
     def start(self, obs, last_sent, now):
         self.commanded = pose_of(last_sent)
@@ -54,7 +65,9 @@ class MoveTo:
         return action_of(self.commanded)
 
     def done(self, obs, now):
-        return bool(np.allclose(self.commanded, self.target))
+        measured = pose_of(obs)[:5]
+        return bool(np.allclose(self.commanded, self.target)
+                    and np.abs(measured - self.target[:5]).max() <= self.arrive_tol_deg)
 
     def result(self):
         return "arrived"
@@ -127,7 +140,8 @@ def load_episode_actions(repo_id: str, episode: int, root: str | None = None) ->
 
 
 class LoadedPolicy:
-    def __init__(self, path: str, device: str | None = None):
+    def __init__(self, path: str, device: str | None = None, n_action_steps: int | None = None,
+                 camera_rename: dict[str, str] | None = None):
         import torch
         from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies import get_policy_class, make_pre_post_processors
@@ -135,13 +149,21 @@ class LoadedPolicy:
         config = PreTrainedConfig.from_pretrained(path)
         if device:
             config.device = device
+        if n_action_steps:
+            config.n_action_steps = n_action_steps
         # Same loading as lerobot-rollout's _load_pretrained_policy (0.7.0) without the PEFT branch.
         self.policy = get_policy_class(config.type).from_pretrained(path, config=config)
         # predict_action reads device.type, so it needs a torch.device, not the config's str.
         self.device = torch.device(self.policy.config.device)
         self.pre, self.post = make_pre_post_processors(
             policy_cfg=self.policy.config, pretrained_path=path,
-            preprocessor_overrides={"device_processor": {"device": self.device.type}},
+            preprocessor_overrides={
+                "device_processor": {"device": self.device.type},
+                # SmolVLA checkpoints trained with Kamel's map expect camera1/camera2 for top/wrist.
+                "rename_observations_processor": {"rename_map": {
+                    f"observation.images.{ours}": f"observation.images.{theirs}"
+                    for ours, theirs in (camera_rename or {}).items()}},
+            },
         )
 
     def reset(self) -> None:
@@ -205,6 +227,39 @@ class Settled:
         return now - self.started >= self.min_runtime_s and self.since is not None and now - self.since >= self.hold_s
 
 
+# GIVE without camera calibration or the #13 loop: hold the present pose over a taped spot, open once two
+# palms have been seen for `dwell_s`. Without palms for `lost_s` it gives up still holding.
+class PresentAndDrop:
+    name = "give_present"
+
+    def __init__(self, palms_seen, gripper_open: float, dwell_s: float = 1.0, lost_s: float = 5.0,
+                 gripper_step: float = 4.0):
+        self.palms_seen, self.gripper_open = palms_seen, gripper_open
+        self.dwell_s, self.lost_s, self.gripper_step = dwell_s, lost_s, gripper_step
+
+    def start(self, obs, last_sent, now):
+        self.commanded = pose_of(last_sent)
+        self.seen_since, self.last_seen, self.opening, self.lost = None, now, False, False
+
+    def step(self, obs, now):
+        if self.palms_seen():
+            self.last_seen = now
+            self.seen_since = now if self.seen_since is None else self.seen_since
+        else:
+            self.seen_since = None
+        self.opening |= self.seen_since is not None and now - self.seen_since >= self.dwell_s
+        self.lost = not self.opening and now - self.last_seen >= self.lost_s
+        if self.opening:
+            self.commanded[5:] = step_towards(self.commanded[5:], np.array([self.gripper_open]), self.gripper_step)
+        return action_of(self.commanded)
+
+    def done(self, obs, now):
+        return self.lost or (self.opening and self.commanded[5] == self.gripper_open)
+
+    def result(self):
+        return "hand_lost" if self.lost else "dropped"
+
+
 class TopCameraVisibility:
     def __init__(self, min_area_px: int = 150):
         self.min_area_px = min_area_px
@@ -254,7 +309,7 @@ class GiveSkill:
         self.home = pose_of(last_sent)[:5]
         self._result, self._done = "timeout", False
 
-    # The loop's HOME is the pose GIVE starts from, which give_sequence makes GIVE_START, not the rest pose.
+    # The loop's HOME is the pose GIVE starts from: the present pose, not the rest pose (give_sequence).
     def _on_tick(self, t, decision, commanded, gripper, tip, goal_tip):
         Mode = self.following.Mode
         if self.abort.is_set():
@@ -283,11 +338,14 @@ class GiveSkill:
 
 # The #13 loop moves the tip in clamped Cartesian steps (0.12-0.38 m from the pan axis, 0.08-0.30 m high), so
 # from the folded rest pose (tip 3.4 cm behind the axis) it never gets going: tried in the sim, it held for the
-# whole timeout. GIVE therefore first moves in joint space to a pose inside that workspace; board 7061460387
-# gives this one as tip (0.15, 0, 0.20).
-GIVE_START = (0.0, -55.3, 5.6, 91.8, 0.0)
+# whole timeout. GIVE therefore starts from a present pose inside that workspace; board 7061460387 gives this
+# one as tip (0.15, 0, 0.20).
+PRESENT_POSE = (0.0, -55.3, 5.6, 91.8, 0.0)
 
 
-def give_sequence(arm, give_start=GIVE_START, **give_kwargs) -> Sequence:
-    held = np.concatenate([give_start, [arm.last_sent["gripper.pos"]]])
-    return Sequence("give", [MoveTo("to_give_start", held), GiveSkill(arm, **give_kwargs)])
+def holding_move(name: str, arm, joints) -> MoveTo:
+    return MoveTo(name, np.concatenate([joints, [arm.last_sent["gripper.pos"]]]))
+
+
+def give_sequence(arm, present_pose=PRESENT_POSE, **give_kwargs) -> Sequence:
+    return Sequence("give", [holding_move("to_present", arm, present_pose), GiveSkill(arm, **give_kwargs)])
