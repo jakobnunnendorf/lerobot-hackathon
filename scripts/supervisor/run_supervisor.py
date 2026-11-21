@@ -50,13 +50,22 @@ def camera_source(value: str):
     return int(value) if value.isdigit() else value
 
 
-def make_robot(args):
+def camera_configs(args) -> dict:
     from lerobot.cameras.opencv import OpenCVCameraConfig
-    from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 
     # Camera names and size as in molnrb/act_pick_ball_combined's config (observation.images.top / .wrist, 640x480).
-    cameras = {name: OpenCVCameraConfig(index_or_path=camera_source(source), width=640, height=480, fps=args.fps)
-               for name, source in (("top", args.top_camera), ("wrist", args.wrist_camera))}
+    # MJPG as in PR #6's scripts/so101/common.sh: two uncompressed 640x480/30 fps streams usually do not both fit
+    # on one USB bus (about 147 vs 9 Mbps per camera, research/lerobot-training-feasibility.md on that branch).
+    fourcc = None if args.camera_fourcc.lower() == "none" else args.camera_fourcc
+    return {name: OpenCVCameraConfig(index_or_path=camera_source(source), width=640, height=480, fps=args.fps, fourcc=fourcc)
+            for name, source in (("top", args.top_camera), ("wrist", args.wrist_camera))}
+
+
+def make_robot(args):
+    from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
+
+    cameras = camera_configs(args)
+
     # Torque stays on at exit: the default disconnect switches it off and would drop a held ball.
     return SO101Follower(SO101FollowerConfig(port=args.port, id=args.robot_id, cameras=cameras,
                                              disable_torque_on_disconnect=False))
@@ -69,13 +78,22 @@ def settings_from(args) -> Settings:
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
-                    held_check_colours=tuple(args.held_check_colours))
+                    held_check_colours=tuple(args.held_check_colours),
+                    min_held_area_px={**Settings().min_held_area_px, **dict(args.min_held_area)})
+
+
+def colour_area(value: str) -> tuple[str, int]:
+    colour, _, area = value.partition("=")
+    if colour not in ("striped", "red", "blue") or not area.isdigit():
+        raise argparse.ArgumentTypeError(f"expected striped|red|blue=PX, got {value!r}")
+    return colour, int(area)
 
 
 # Ellipse (centre x, centre y, radius x, radius y) as frame fractions: where the jaws hold the ball in the wrist
-# frame. A GUESS (centre of the frame), not measured: check it on wrist frames with a held ball (#24's calibrate
-# mode) and change --held-check-roi. Outside it the wrist camera sees the room (it faces the ceiling at rest).
-WRIST_HELD_ROI = (0.5, 0.5, 0.25, 0.3)
+# frame at rest, the lower middle (the camera faces the ceiling). From PR #30 (kb/held-ball-wrist-areas.md,
+# board 7063126045): the striped ball's centre at x 0.49-0.62, y 0.64-0.77 over 183 offline detections of
+# molnrb/so101_pick_rb_mixed, checked on overlay frames. The first guess 0.5 0.5 0.25 0.3 saw mostly ceiling.
+WRIST_HELD_ROI = (0.52, 0.72, 0.2, 0.25)
 
 
 def held_ball_area(vision_dir: Path, roi: tuple[float, float, float, float] = WRIST_HELD_ROI):
@@ -108,7 +126,10 @@ def held_check_hook(args):
     if hook is None:
         print(f"WARNING: no #24 colour detector in {args.vision_dir}: held-ball check off, only the gripper band decides "
               "(a red/blue ball reads like the target)", flush=True)
-    elif args.min_held_target_area is None:
+    if hook is not None and "blue" in args.held_check_colours:
+        print("WARNING: blue is not usable on the wrist camera (up to 27,466 px with the target held, "
+              "kb/held-ball-wrist-areas.md): without --min-held-area blue=PX a blue check only logs", flush=True)
+    if hook is not None and args.min_held_target_area is None and "striped" not in dict(args.min_held_area):
         print("WARNING: --min-held-target-area not measured: the held-ball area is logged at every VERIFY_HOLD but "
               "decides nothing. Suggested start from offline data: 120; confirm at the table (wrist frame at rest, "
               "target vs red/blue ball)", flush=True)
@@ -229,7 +250,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
         log.write(event="start", rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy,
                   held_check=sensors.held_ball_area is not None, min_held_target_area_px=args.min_held_target_area,
-                  held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours))
+                  held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours),
+                  min_held_area_px=settings.min_held_area_px, camera_fourcc=args.camera_fourcc)
         print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
@@ -322,13 +344,20 @@ def parse_args() -> argparse.Namespace:
                    help="where #24's colour_detector.py and supervisor_adapter.py live (held-ball check on the wrist frame)")
     p.add_argument("--min-held-target-area", type=int, default=Settings.min_held_target_area_px,
                    help="px of the wanted ball inside --held-check-roi of the wrist frame at rest for the held ball to count "
-                        "as it. Without it the area is only logged. Suggested start: 120 (offline wrist frames of "
-                        "molnrb/so101_pick_rb_mixed, board 7063041111); confirm at the table: target vs red/blue ball held")
+                        "as it (the striped ball's threshold). Without it the area is only logged. Suggested start: 120 "
+                        "(offline wrist frames of molnrb/so101_pick_rb_mixed, kb/held-ball-wrist-areas.md); confirm at the table")
+    p.add_argument("--min-held-area", type=colour_area, nargs="*", default=[], metavar="COLOUR=PX",
+                   help="per-ball thresholds, e.g. red=2000 striped=120 (striped= overrides --min-held-target-area); "
+                        "default red=2000, a candidate: confirm with one red ball held at rest. Blue has none (not usable)")
     p.add_argument("--held-check-roi", type=float, nargs=4, default=WRIST_HELD_ROI, metavar=("CX", "CY", "RX", "RY"),
-                   help="ellipse (frame fractions) of the wrist frame where the jaws hold the ball; a guess, check it")
+                   help="ellipse (frame fractions) of the wrist frame where the jaws hold the ball at rest; "
+                        "default from PR #30's offline measurement (kb/held-ball-wrist-areas.md)")
     p.add_argument("--held-check-colours", nargs="*", default=list(Settings.held_check_colours),
                    choices=("striped", "red", "blue"),
-                   help="balls whose wrist area decides; others are logged only (held_check=untrusted)")
+                   help="balls whose wrist area decides; others are logged only (held_check=untrusted). Add red once "
+                        "confirmed at the table (--held-check-colours striped red); blue is not usable on the wrist camera")
+    p.add_argument("--camera-fourcc", default="MJPG",
+                   help="FOURCC of both cameras (as PR #6); 'none' leaves the format to OpenCV")
     p.add_argument("--no-held-check", action="store_true", help="turn the held-ball check off (gripper band only)")
     p.add_argument("--settle-tol-deg", type=float, default=8.0, help="PICK ends early within this of the rest pose")
     p.add_argument("--gripper-open", type=float, default=60.0)

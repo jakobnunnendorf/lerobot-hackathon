@@ -205,7 +205,8 @@ def build(scenario: Scenario):
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
                       held_ball_area=fake_held_ball_area(world, scenario.held_check),
                       ball_colour=(lambda: world.held_ball) if scenario.colour_sensor else None)
-    held = {"min_held_target_area_px": FAKE_HELD_THRESHOLD_PX} if scenario.held_check != "off" else {}
+    held = ({"min_held_target_area_px": FAKE_HELD_THRESHOLD_PX, "min_held_area_px": {"red": FAKE_HELD_THRESHOLD_PX}}
+            if scenario.held_check != "off" else {})
     settings = Settings(**{**held, **scenario.settings})
     clock = FakeClock(settings.fps, abort, scenario.abort_at_tick)
     return arm, skills, sensors, settings, abort, clock, world
@@ -256,6 +257,10 @@ SCENARIOS = [
     Scenario("held_check_red_trusted_striped_held_in_red_round_is_wrong", [R, P, V, U, R, P, V, U, R, D], "put_down",
              target="red", destination="container", containers=True, colour_pick=True, held_balls=["striped", "red"],
              held_check="on", settings={"held_check_colours": ("striped", "red")}),
+    Scenario("held_check_red_per_colour_threshold_above_area_is_wrong", [R, P, V, U, R, D], "wrong_ball", target="red",
+             destination="container", containers=True, colour_pick=True, held_balls=["red"], held_check="on",
+             settings={"held_check_colours": ("striped", "red"), "min_held_area_px": {"red": 2000},
+                       "max_pick_attempts": 1}),
     Scenario("held_check_blue_untrusted_by_default_logs_only", [R, P, V, U, R, D], "put_down", target="blue",
              destination="container", containers=True, colour_pick=True, held_balls=["striped"], held_check="on"),
     Scenario("held_check_unmeasured_threshold_logs_only", [R, P, V, G, R, D], "given", held_balls=["red"],

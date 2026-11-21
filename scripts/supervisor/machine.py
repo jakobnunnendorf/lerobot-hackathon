@@ -48,12 +48,18 @@ class Settings:
     # frame at rest. None = not measured yet: the area is logged at every VERIFY_HOLD but decides nothing.
     # MEASURE AT THE TABLE: wrist frame at rest holding the striped target vs holding a red or a blue ball
     # (the gripper reads the same for both, median 13.4 vs 12.7), and set it between the two. Suggested start
-    # from offline data (molnrb/so101_pick_rb_mixed wrist frames, board 7063041111): 120.
+    # from offline data inside the default wrist region (kb/held-ball-wrist-areas.md, PR #30): 120 (12.5% of
+    # targets rejected, 4.5% of covering balls accepted). This is the striped ball's threshold.
     min_held_target_area_px: int | None = None
+    # Thresholds of the other balls (and striped, overriding the one above). Red 2000 is a candidate from the same
+    # offline data (<= 529 with the target held, median ~15,000 with a red ball held): confirm with one red ball
+    # held at rest. Blue has none: not usable on the wrist camera (up to 27,466 px inside the region with the
+    # target held, the bluish ceiling).
+    min_held_area_px: dict[str, int] = field(default_factory=lambda: {"red": 2000})
     held_check_frames: int = 5
     # Balls whose wrist-frame area decides. Any other wanted ball is "untrusted": the area is logged, the ball is
-    # accepted as without the check. Only the striped ball was measured on the wrist camera; blue read up to
-    # ~218,000 px on whole wrist frames whatever was held (bluish white balance), red was not measured as a target.
+    # accepted as without the check. Red joins with one flag (--held-check-colours striped red) once confirmed at
+    # the table; blue stays out (see min_held_area_px).
     held_check_colours: tuple[str, ...] = ("striped",)
 
 
@@ -94,6 +100,7 @@ class Sensors:
 
 
 COLOURS = ("red", "blue")
+HELD_BALLS = ("striped", *COLOURS)
 
 
 class Aborted(Exception):
@@ -331,11 +338,14 @@ class Supervisor:
         wanted = self._wanted_ball()
         try:
             frames = [obs["wrist"] for obs in self._wait(self.s.held_check_frames / self.s.fps)][: self.s.held_check_frames]
-            area = int(statistics.median(self.sensors.held_ball_area(frame, wanted) for frame in frames))
+            # Every ball's area is logged, so the table log also measures the thresholds of the balls not asked for.
+            areas = {ball: int(statistics.median(self.sensors.held_ball_area(frame, ball) for frame in frames))
+                     for ball in HELD_BALLS}
         except Exception as error:  # noqa: BLE001 - a failed detector must not end the round
             details.update(held_check="unavailable", held_check_error=repr(error))
             return "unavailable"
-        threshold = self.s.min_held_target_area_px
+        area, threshold = areas[wanted], self.held_threshold(wanted)
+        details["held_areas_px"] = areas
         if wanted not in self.s.held_check_colours:
             verdict = "untrusted"
         elif threshold is None:
@@ -344,6 +354,11 @@ class Supervisor:
             verdict = "target" if area >= threshold else "wrong"
         details.update(held_check=verdict, held_ball=wanted, held_area_px=area, held_threshold_px=threshold)
         return verdict
+
+    def held_threshold(self, ball: str) -> int | None:
+        if ball in self.s.min_held_area_px:
+            return self.s.min_held_area_px[ball]
+        return self.s.min_held_target_area_px if ball == "striped" else None
 
     def _wrong_ball(self, details: dict):
         # Never handed over. Sorted by the colour sensor if there is one, else the generic put-down pose (the

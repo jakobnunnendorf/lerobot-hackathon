@@ -218,6 +218,10 @@ def held_ball_check(log_path: str) -> None:
     checks = verify(run("held_check_red_trusted_striped_held_in_red_round_is_wrong"))
     check("held check: red trusted (--held-check-colours striped red) -> a striped ball in a red round is wrong",
           [e["held_check"] for e in checks] == ["wrong", "target"], str(checks))
+    checks = verify(run("held_check_red_per_colour_threshold_above_area_is_wrong"))
+    check("held check: per-colour threshold (red=2000) judges a red round, every ball's area is logged",
+          [(e["held_check"], e["held_threshold_px"], e["held_areas_px"]) for e in checks]
+          == [("wrong", 2000, {"striped": 0, "red": 900, "blue": 0})], str(checks))
     checks = verify(run("pick_then_give"))
     check("held check: no hook -> held_check off, flow unchanged", [e["held_check"] for e in checks] == ["off"], str(checks))
 
@@ -232,8 +236,9 @@ def vision_adapter(vision_dir: Path) -> None:
     frames = {}
     for name, rgb in (("striped", (200, 200, 40)), ("red", (200, 20, 20)), ("blue", (20, 40, 200))):
         frame = np.full((480, 640, 3), (40, 70, 190), np.uint8)
-        cv2.ellipse(frame, (320, 240), (170, 155), 0, 0, 360, (230, 230, 230), cv2.FILLED)
-        cv2.circle(frame, (320, 240), 80, rgb, cv2.FILLED)
+        # the default region is centred at (0.52, 0.72) of the frame: (333, 346) px, radii 128 x 120 px
+        cv2.ellipse(frame, (333, 346), (140, 132), 0, 0, 360, (230, 230, 230), cv2.FILLED)
+        cv2.circle(frame, (333, 346), 80, rgb, cv2.FILLED)
         frames[name] = frame
     areas = {(held, wanted): area(frames[held], wanted) for held in frames for wanted in frames}
     ok = all((areas[held, wanted] > 10_000) == (held == wanted) for held, wanted in areas)
@@ -243,6 +248,33 @@ def vision_adapter(vision_dir: Path) -> None:
     blue_room = whole_frame(frames["striped"], "blue")
     check("held check: without the region the blue room counts as a blue ball (why the region exists)",
           blue_room > 100_000, f"blue area on the whole frame with the striped ball held: {blue_room}")
+
+
+def robot_flags() -> None:
+    from run_supervisor import WRIST_HELD_ROI, camera_configs, parse_args, settings_from
+
+    def parsed(*flags):
+        saved = sys.argv
+        sys.argv = ["run_supervisor.py", "--fake", "all", "--top-camera", "0", "--wrist-camera", "/dev/video2", *flags]
+        try:
+            return parse_args()
+        finally:
+            sys.argv = saved
+
+    args = parsed()
+    settings, cameras = settings_from(args), camera_configs(args)
+    check("robot defaults: striped judged only, red candidate 2000 kept, PR #30 region, both cameras MJPG",
+          settings.held_check_colours == ("striped",) and settings.min_held_area_px == {"red": 2000}
+          and settings.min_held_target_area_px is None and tuple(args.held_check_roi) == WRIST_HELD_ROI == (0.52, 0.72, 0.2, 0.25)
+          and [c.fourcc for c in cameras.values()] == ["MJPG", "MJPG"] and cameras["wrist"].index_or_path == "/dev/video2",
+          f"{settings.held_check_colours} {settings.min_held_area_px} {[c.fourcc for c in cameras.values()]}")
+    args = parsed("--held-check-colours", "striped", "red", "--min-held-target-area", "120",
+                  "--min-held-area", "red=1500", "--camera-fourcc", "none")
+    settings, cameras = settings_from(args), camera_configs(args)
+    check("one flag adds red; --min-held-area red=1500 overrides the candidate; --camera-fourcc none",
+          settings.held_check_colours == ("striped", "red") and settings.min_held_area_px == {"red": 1500}
+          and settings.min_held_target_area_px == 120 and [c.fourcc for c in cameras.values()] == [None, None],
+          f"{settings.held_check_colours} {settings.min_held_area_px} {[c.fourcc for c in cameras.values()]}")
 
 
 def speed_cap() -> None:
@@ -317,6 +349,7 @@ def main() -> None:
         voice_container()
         round_hygiene(f"{work}/hygiene.jsonl")
         held_ball_check(f"{work}/held.jsonl")
+        robot_flags()
         speed_cap()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
