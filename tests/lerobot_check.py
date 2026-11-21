@@ -39,7 +39,6 @@ batch = {
     "action_is_pad": torch.zeros(B, chunk, dtype=torch.bool, device=device),
 }
 
-# One training step
 policy.train()
 opt = torch.optim.AdamW(policy.parameters(), lr=1e-4)
 t0 = time.perf_counter()
@@ -50,7 +49,6 @@ if device == "cuda":
     torch.cuda.synchronize()
 print(f"train step  loss={loss.item():.3f} ({(time.perf_counter() - t0) * 1e3:.0f} ms)")
 
-# One inference step
 policy.eval()
 policy.reset()
 obs = {k: v[:1] for k, v in batch.items() if k.startswith("observation")}
