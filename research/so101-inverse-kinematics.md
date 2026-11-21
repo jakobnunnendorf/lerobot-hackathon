@@ -2,15 +2,17 @@
 
 Researched 2026-11-21. LeRobot facts are read from the source at tag `v0.7.0` (raw files from GitHub); "docs" means the `docs/source/*.mdx` files at that tag, the built website was not opened. The arm model is `so101_new_calib.urdf` from TheRobotStudio/SO-ARM100 at commit `141aea7`. Everything under "Checked on Tian's laptop" was run (Windows 11, Python 3.12, numpy, ikpy); nothing ran with LeRobot installed or on a robot. **[unverified]** marks what I could not confirm. Hand tracking and camera calibration are covered in `research/hand-tracking-and-camera-calibration.md`, not here.
 
+**Where the code is.** The two files for the loop are in the repo as `scripts/handover/kinematics.py` and `scripts/handover/following.py`. Every other path under `data/kinematics/` (check scripts, their outputs, `fit_offsets.py`, the URDF copy) is on Tian's laptop in the git-ignored `data/` folder. Two things changed after this text was written and are not repeated below: the solver keeps at least 20 degrees of elbow bend, because the steepest tilt alone put the arm at full stretch and made joint angles jump by up to 16 degrees between 8 mm waypoints (`decisions/hand-following-geometry.md`, `tests/handover_kinematics.py`); and the default hover height is 22 cm, not 18 cm.
+
 LeRobot links have the form `https://github.com/huggingface/lerobot/blob/v0.7.0/<path>#L<line>`.
 
 ## Summary
 
-1. Use our closed-form numpy kinematics on every machine. For the team's loop that is `data/kinematics/handover/kinematics.py`. Checked here: it matches ikpy to 3e-16 m, forward(inverse(p)) returns p to 2 µm, one call takes 0.2 ms. LeRobot's own `RobotKinematics` needs `placo`, which has no Windows wheel and is not installed on the robot laptop.
+1. Use our closed-form numpy kinematics on every machine. For the team's loop that is `scripts/handover/kinematics.py`. Checked here: it matches ikpy to 3e-16 m, forward(inverse(p)) returns p to 2 µm, one call takes 0.2 ms. LeRobot's own `RobotKinematics` needs `placo`, which has no Windows wheel and is not installed on the robot laptop.
 2. The URDF's zero is the middle of each joint's range, and so is LeRobot's 0 with `use_degrees=True` (the 0.7.0 default). LeRobot's examples feed its degrees into the URDF unchanged. That holds only if every joint was swept to both end stops at calibration. Check it on the arm (checklist at the end).
 3. **The gripper cannot point straight down at hover height.** It can below about 8 cm. Above that, wrist_flex's ±95° limit and the reach stop it. The steepest reachable tilt is about -86° at 10 cm, -68° at 15 cm, -52° at 20 cm and -36° at 25 cm. Let the solver pick the steepest reachable tilt.
 4. Drive the arm with joint targets from our own 30 Hz loop: low-pass filter plus 1.5 cm dead band on the hand position, 0.15 m/s on the Cartesian goal, the IK, then a per-joint speed limit (45°/s in the team's loop). No `max_relative_target`. The gripper gets a constant command, the value it was closed with, never its measured position.
-5. Drop when two hands are seen and the tip has been within 3 cm of their midpoint for 1 s. Our `kinematics.py` and `following.py` for the team's loop (`data/kinematics/handover/`) ran inside its dry run: follow, hold, home, drop and done came out as intended.
+5. Drop when two hands are seen and the tip has been within 3 cm of their midpoint for 1 s. Our `kinematics.py` and `following.py` for the team's loop (`scripts/handover/`) ran inside its dry run: follow, hold, home, drop and done came out as intended.
 6. Only the arm can settle the joint offsets and signs, where the ball sits in the gripper, the gripper hold value, HOME, and whether the ball falls cleanly from a tilted gripper.
 
 ## Recommended approach
@@ -18,10 +20,10 @@ LeRobot links have the form `https://github.com/huggingface/lerobot/blob/v0.7.0/
 - **Robot laptop, as reported on the team board** (not verified by us): the robot program runs in WSL2 with LeRobot 0.7.0, `use_degrees=True` and calibration id `mi_follower`. The gripper reads about 11-16 (0-100 scale) while it holds the ball. `placo` is not installed there.
   - So its calibration file is `~/.cache/huggingface/lerobot/calibration/robots/so_follower/mi_follower.json` inside WSL (path rule in section 2).
 - **Kinematics:** our numpy code runs on every machine, the WSL robot laptop included, with no extra dependency.
-  - `data/kinematics/handover/kinematics.py` is the version built for the team's loop: `forward_kinematics(joints_deg) -> xyz` and `inverse_kinematics(target_xyz, seed_deg) -> joints | None`, both in LeRobot degrees and the robot frame below.
+  - `scripts/handover/kinematics.py` is the version built for the team's loop: `forward_kinematics(joints_deg) -> xyz` and `inverse_kinematics(target_xyz, seed_deg) -> joints | None`, both in LeRobot degrees and the robot frame below.
   - `data/kinematics/so101_kinematics.py` is the same mathematics with a lower-level interface.
   - LeRobot's placo-based `RobotKinematics` is useful only as a cross-check on a Linux machine where placo installs.
-- **Motion:** the team's loop `scripts/handover/handover_loop.py` (branch `jakobnunnendorf/handover-loop`) imports `kinematics.py` and `following.py`; ours are in `data/kinematics/handover/`. The work is split as follows:
+- **Motion:** the team's loop `scripts/handover/handover_loop.py` (branch `jakobnunnendorf/handover-loop`) imports `kinematics.py` and `following.py`; ours are `scripts/handover/kinematics.py` and `following.py`. The work is split as follows:
   - The loop clamps the workspace (radius 12-33 cm, height ≥ 8 cm), calls the IK with the commanded joints as seed (tolerance 2 cm), limits each joint to 1.5° per tick (45°/s), holds the gripper value until the drop, and sends.
   - `Follower.step(hands, tip_xyz, now)` returns a mode and a Cartesian target that is already filtered, glitch-free, dead-banded, speed-limited to 0.15 m/s and reachable.
   - The hover height is a fixed 18 cm above the table, because z from one camera is too rough to follow (their decision, kept).
@@ -33,7 +35,7 @@ LeRobot links have the form `https://github.com/huggingface/lerobot/blob/v0.7.0/
   2. 30 min, torque off, someone holds the arm: touch 8 to 12 marks with the gripper tip and fit joint offsets (`data/kinematics/fit_offsets.py`).
   3. 1 to 2 h at a desk: feed the tracker's hand positions into the loop with `send_action` replaced by a print, and check the printed targets while a hand moves in front of the camera.
   4. 1 h at the table: first real motion with no ball, half speed (0.08 m/s, 45°/s) and the hand kept away from the arm; then normal limits.
-  5. 30 min: with the ball, test holding during following, then the drop into cupped hands.
+  5. 30 min: with the ball, test holding during following, then the drop onto two flat open palms (cupped hands are not detected, see `research/hand-tracking-and-camera-calibration.md`).
 
   About half a day for one person, mostly integration and tuning. The kinematics itself is done.
 
@@ -286,7 +288,7 @@ Variants (full tables in `data/kinematics/check_output.txt`):
 
 ### Design for following a hand with a person nearby
 
-The numbers are starting values to tune. Items 1-6, 10-12 are in `data/kinematics/handover/following.py` (`FollowSettings`); items 7-8 sit in the team's loop and in `kinematics.inverse_kinematics`. The stand-alone draft `data/kinematics/hand_follow.py` has all of them in one class.
+The numbers are starting values to tune. Items 1-6, 10-12 are in `scripts/handover/following.py` (`FollowSettings`); items 7-8 sit in the team's loop and in `kinematics.inverse_kinematics`. The stand-alone draft `data/kinematics/hand_follow.py` has all of them in one class.
 
 1. **Hover target.** The handover version uses a fixed height: the tip 18 cm above the table, over the mean of the palms. That is the team's choice, because one camera's z is too rough. The draft used palm z + 12 cm, clamped to 8-25 cm.
 2. **Glitch rejection.** A detection more than 15 cm from the filtered target is ignored unless it persists for 5 frames. A tracker that jumps to the wrong hand for a frame or two does not move the arm.
@@ -466,7 +468,7 @@ Nothing below needs a command that moves the arm, except the last items, which a
 8. **The person at the table runs it:**
    - The follower with `send_action` disabled (print only) while someone moves a hand. Check that the printed targets make sense.
    - Then with motion at half speed (`max_speed_m_s=0.08`, `max_joint_speed_deg_s=45`) and no ball.
-   - Then with the ball, and the drop into cupped hands at 10-15 cm hover: does the ball leave the tilted gripper cleanly, and where does it land relative to the hover point?
+   - Then with the ball, and the drop onto two flat open palms (cupped hands are not detected, see `research/hand-tracking-and-camera-calibration.md`) at 10-15 cm hover: does the ball leave the tilted gripper cleanly, and where does it land relative to the hover point?
 
 ## Unverified
 
