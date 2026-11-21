@@ -49,7 +49,7 @@ def wait_for(condition, seconds: float):
 def main() -> None:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as logs:
         robot = subprocess.Popen([sys.executable, "-u", str(ROOT / "scripts/dashboard/fake_robot.py"), "--log-dir", logs,
-                                  "--speed", "6", *PORTS])
+                                  "--speed", "6", "--quiet-pick", "3", *PORTS])
         server = subprocess.Popen([sys.executable, "-u", str(ROOT / "scripts/dashboard/server.py"), "--host", "127.0.0.1",
                                    "--port", "18080", "--log-dir", logs, "--no-speech", *PORTS])
         try:
@@ -78,7 +78,9 @@ def main() -> None:
             call("/api/abort", {})
             aborted = wait_for(lambda: "| 2 | striped -> container | aborted" in call("/api/summary"), 15)
             check("ABORT ends round 2 'aborted'", bool(aborted), call("/api/summary").splitlines()[-3:])
+            sys.path.insert(0, str(ROOT / "scripts/dashboard"))
             no_overwrite(Path(logs))
+            stale_status_keeps_log(Path(logs))
         finally:
             for process in (server, robot):
                 process.terminate()
@@ -108,15 +110,31 @@ def round_video(logs: Path) -> None:
     start = next(datetime.fromisoformat(e["time"]) for e in events if e.get("event") == "round_start" and e["round"] == 1)
     end = next(datetime.fromisoformat(e["time"]) for e in events if e.get("event") == "round_end" and e["round"] == 1)
     first, last = datetime.fromisoformat(rows[0]["time"]), datetime.fromisoformat(rows[-1]["time"])
-    check("round 1 video: top | wrist side by side, one CSV row per frame, frame times on the log's clock",
-          bool(closed) and ok and frame.shape == (512, 1280, 3) and frames == len(rows) > 10
+    split = list(logs.glob(f"{log.stem}_round01_*.mp4"))
+    check("round 1 video, through 3 s without a status in PICK: one file, top | wrist, one CSV row per frame, "
+          "frame times on the log's clock",
+          bool(closed) and ok and frame.shape == (512, 1280, 3) and frames == len(rows) > 10 and not split
           and abs((first - start).total_seconds()) < 1.0 and 0 <= (last - end).total_seconds() < 3.0,
           f"{video.name if video else None}: {frames} frames, {len(rows)} rows, first {(first - start).total_seconds():+.2f} s "
           f"from round_start, last {(last - end).total_seconds():+.2f} s from round_end")
 
 
+def stale_status_keeps_log(logs: Path) -> None:
+    from types import SimpleNamespace
+
+    from server import LogTail
+
+    followed = logs / "exp" / "supervisor.jsonl"
+    followed.parent.mkdir()
+    followed.write_text("")
+    (logs / "chain_29990101_000000.jsonl").write_text("")
+    status = SimpleNamespace(latest={"log_path": str(followed)}, fresh=lambda: False)
+    chosen = LogTail._current_file(SimpleNamespace(status=status, log_dir=logs))
+    check("a status gone quiet still names the log to follow, not the newest chain_*.jsonl (VLA take 1)",
+          chosen == followed, str(chosen))
+
+
 def no_overwrite(logs: Path) -> None:
-    sys.path.insert(0, str(ROOT / "scripts/dashboard"))
     from server import free_stem
 
     stem = logs / "supervisor_round01"
