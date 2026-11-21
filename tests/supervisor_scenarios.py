@@ -231,6 +231,83 @@ def held_ball_check(log_path: str) -> None:
           == [("wrong", 2000, {"striped": 0, "red": 900, "blue": 0})], str(checks))
     checks = verify(run("pick_then_give"))
     check("held check: no hook -> held_check off, flow unchanged", [e["held_check"] for e in checks] == ["off"], str(checks))
+    checks = verify(run("held_check_deep_grasp_unseen_is_kept"))
+    check("held check: every ball 0 px (deep grasp, ball above the region) -> unseen, kept and handed over, not wrong",
+          [(e["target"], e["held_check"], e["held_areas_px"]) for e in checks]
+          == [("GIVE", "unseen", {"striped": 0, "red": 0, "blue": 0})], str(checks))
+    events = run("held_check_red_ball_every_pick")
+    check("held check: a red ball over the floor is still wrong (unseen needs every ball below the floor)",
+          [e["held_check"] for e in verify(events)] == ["wrong"] * 3, str(verify(events)))
+
+
+def wrist_frames(work: str) -> None:
+    from run_supervisor import wrist_frame_saver
+
+    def run(save) -> list[dict]:
+        scenario = next(s for s in SCENARIOS if s.name == "held_check_red_ball_put_down_then_retry")
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        sensors.save_wrist_frame = save
+        log = TransitionLog(f"{work}/frames.jsonl", echo=False)
+        result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(3)
+        log.file.close()
+        with open(f"{work}/frames.jsonl") as lines:
+            events = [json.loads(line) for line in lines]
+        open(f"{work}/frames.jsonl", "w").close()
+        return result.outcome, [e for e in events if e["event"] == "transition" and e["source"] == "VERIFY_HOLD"]
+
+    save = wrist_frame_saver(f"{work}/chain_test.jsonl")
+    outcome, checks = run(save)
+    saved = [Path(e.get("wrist_frame", "")) for e in checks]
+    check("wrist frame: one JPEG per VERIFY_HOLD check next to the log, named by round and pick attempt",
+          outcome == "given" and len(saved) == 2 and all(p.is_file() and p.read_bytes()[:2] == b"\xff\xd8" for p in saved)
+          and [p.name.startswith(f"chain_test_verify_hold_r3_p{n}_") for n, p in enumerate(saved, 1)] == [True, True],
+          f"{outcome} {saved}")
+
+    def broken(frame, name):
+        raise OSError("disk full")
+    outcome, checks = run(broken)
+    check("wrist frame: a failed save is logged, the round carries on",
+          outcome == "given" and all("disk full" in e["wrist_frame_error"] for e in checks), f"{outcome} {checks}")
+    check("wrist frame: no --log -> nothing saved", wrist_frame_saver(None) is None)
+
+
+def free_names() -> None:
+    """Names a run_supervisor.py function reads but nothing binds: a NameError on the arm only (board 7065772934).
+
+    The fake runs never reach run_connected, so this reads the source: every name loaded in a top-level function
+    must be bound in it (arguments, assignments, nested defs, lambdas, comprehensions), at module level or a builtin.
+    """
+    import ast
+    import builtins
+
+    tree = ast.parse((SUPERVISOR / "run_supervisor.py").read_text())
+    module_names = set(dir(builtins))
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            module_names |= {(a.asname or a.name).split(".")[0] for a in node.names}
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            module_names.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            module_names |= {n.id for n in ast.walk(node) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+    problems = {}
+    for function in (n for n in tree.body if isinstance(n, ast.FunctionDef)):
+        bound, loaded = set(), set()
+        for n in ast.walk(function):
+            if isinstance(n, ast.Name):
+                (loaded if isinstance(n.ctx, ast.Load) else bound).add(n.id)
+            elif isinstance(n, ast.arg):
+                bound.add(n.arg)
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bound.add(n.name)
+            elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                bound |= {(a.asname or a.name).split(".")[0] for a in n.names}
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                bound.add(n.name)
+        free = loaded - bound - module_names
+        if free:
+            problems[function.name] = sorted(free)
+    check("run_supervisor.py: no function reads a name it does not define or get passed (run_connected's NameError)",
+          not problems and "run_connected" in {n.name for n in tree.body if isinstance(n, ast.FunctionDef)}, str(problems))
 
 
 def grasp_check_log(log_path: str) -> None:
@@ -548,6 +625,8 @@ def main() -> None:
         round_hygiene(f"{work}/hygiene.jsonl")
         held_ball_check(f"{work}/held.jsonl")
         grasp_check_log(f"{work}/grasp.jsonl")
+        wrist_frames(work)
+        free_names()
         robot_flags()
         speed_cap()
         pick_end_rule()
