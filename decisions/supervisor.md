@@ -38,6 +38,9 @@ REST -> [LOOK, optional] -> PICK -> VERIFY_HOLD -> GIVE (hand) or PUT_DOWN (no h
   - The training rest gripper (17.8) is inside the 6-20 holding band. Without the "left rest" rule, a policy that has not moved yet would end as "returned holding" after 4 s.
 - **A lost hand does not end GIVE (Tian, 2026-11-21).** The loop holds, goes back to the present pose after 5 s (`lost_to_home_s`) and follows the palm again when it reappears. GIVE ends on the drop or its 45 s budget, then REST → PUT_DOWN as before.
   - Rejected: ending GIVE as `hand_lost` the moment the loop goes home (the first version). In T2 on the arm the tracker printed `no hand` in 63 of 157 lines while the gripper hovered over the palm (board 7064755928), because the arm hides the palm from the side camera, so one occlusion would have cancelled the handover.
+- **Speed cap in `demo_chain.sh`: `--max-step-deg 15`, eval_pick's `max_relative_target` (Tian, 2026-11-21).** It only stops a wild jump: from black test frames Tomi's 15K checkpoint asked for a first goal 50+ deg from rest.
+  - Rejected: 3 deg/tick (Jakob's agent, 7065448559). In the 57,183 action frames of `molnrb/so101_pick_rb_mixed` the largest arm-joint step is above 3 deg in 17.3% of ticks, above 5 deg in 7.1%, and above 15 deg in 0.01% (wrist_flex p99 8.9 deg/tick). So 3 slows the policy on a sixth of its ticks, away from training and from the P runs (foil 15K 10/13, board 7065447840), which ran with 15. 1 deg/tick slows 54% of ticks.
+  - GIVE keeps its own 1 deg/tick (`--give-max-step-deg`).
 - **Log:** one JSONL line per transition and one `round_end` line per round with `outcome` (`given`, `put_down`, `gave_up`, `wrong_ball`, `aborted`, `unsupported_target`), `wrong_balls`, pick and clear attempts and the state list, for the H5/H7 counts.
 
 ## Robot ownership
