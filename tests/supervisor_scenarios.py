@@ -495,7 +495,7 @@ def goal_sync_before_connect() -> None:
 
     robot = FakeRobot()
     try:
-        run_supervisor.run_connected(None, robot, None, None, None, False, None)
+        run_supervisor.run_connected(None, robot, None, None, None, False, None, None, None, None)
     except _Stop:
         pass
     check("robot mode: Goal_Position set to the present position before connect() turns torque on (Tian's fix)",
