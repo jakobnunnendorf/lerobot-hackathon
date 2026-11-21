@@ -336,6 +336,8 @@ def prepare_merged() -> None:
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
 
     for repo_id, (old_task, new_task) in PICK_SOURCES.items():
+        if os.path.isdir(dataset_root(repo_id)) and new_task in LeRobotDataset(repo_id, root=dataset_root(repo_id)).meta.tasks.index:
+            continue
         edit = ["lerobot-edit-dataset", f"--repo_id={repo_id}", f"--root={dataset_root(repo_id)}"]
         subprocess.run(
             [*edit, "--operation.type=modify_tasks", f"--operation.task_replacements={json.dumps({old_task: new_task})}"],
@@ -351,6 +353,8 @@ def prepare_merged() -> None:
             "--operation.type=merge",
             f"--operation.repo_ids={json.dumps(list(PICK_SOURCES))}",
             f"--operation.roots={json.dumps([dataset_root(r) for r in PICK_SOURCES])}",
+            # joining AV1 files from different recordings fails on non-monotonic DTS; keep one file per source
+            "--operation.concatenate_videos=false",
             "--push_to_hub=true",
         ],
         check=True,
