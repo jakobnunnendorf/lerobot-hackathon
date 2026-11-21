@@ -6,6 +6,7 @@
 
 - One dig-and-pick ACT policy, `molnrb/act_pick_ball_combined`, for a visible and a buried ball. It ends at the folded rest pose holding the ball. All pick episodes start and end there, not at a HOME above the bowl.
 - Then hand following (MediaPipe tracker, camera calibration, inverse kinematics; #13, #15) with a drop between two flat palms, or PUT DOWN into a container (a taught pose).
+  The handover runs in two parallel versions that are compared: this classical one and a learned ACT policy (`decisions/hand-handover-policy.md`, status open; hands 10-15 cm above the table).
 - Voice picks the destination (#16, merged). The supervisor chains the steps (#17, draft).
 - CLEAR GRAY and the gray hole: no dataset exists. Only wanted if the run counts show the policy cannot dig.
 - SHAKE (handshake): after everything else (Balazs, 7061650334). Colour choice: parked.

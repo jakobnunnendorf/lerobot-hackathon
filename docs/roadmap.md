@@ -22,6 +22,7 @@ The demo is built in this order. Each line is a working demo on its own, so what
 1. PICK with `act_pick_ball_combined` (one dig-and-pick policy for a visible and a buried ball; it ends at the folded rest pose holding the ball), then PUT DOWN into the container.
 2. The supervisor chains PICK, a gripper check (holding band 6-20), and GIVE or PUT DOWN (PR #17, draft).
 3. GIVE by hand following (MediaPipe tracker, camera calibration, inverse kinematics, PRs #13 and #15): the arm follows the hand and drops the ball between two flat palms.
+   Two versions are compared: this classical one and a learned ACT policy (`decisions/hand-handover-policy.md`, status open; hands 10-15 cm above the table).
 4. SHAKE, after everything else (Balazs, 7061650334).
 5. Optional, only if the run counts show the policy cannot dig: a separate CLEAR GRAY skill (one gray ball into the gray hole). No dataset exists for it.
 6. Parked: a pick skill that can be told the ball colour (`ideas/ball-picking-and-handover.md`, "Other target colours").
