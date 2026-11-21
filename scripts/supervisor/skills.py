@@ -213,17 +213,25 @@ class PolicySkill:
         return "settled"
 
 
+# Same rule as scripts/eval/eval_pick.py: only lift, elbow and wrist_flex are tight at the end of every recorded episode
+# (pan and roll vary), and the arm must leave rest first, because the training rest gripper (17.8) is in the holding band.
+SETTLE_JOINTS = [1, 2, 3]
+LEFT_REST_DEG = 25.0
+
+
 class Settled:
     def __init__(self, pose: np.ndarray, gripper_range: tuple[float, float], joint_tol_deg: float, hold_s: float,
                  min_runtime_s: float):
         self.pose, self.gripper_range, self.tol, self.hold_s, self.min_runtime_s = pose, gripper_range, joint_tol_deg, hold_s, min_runtime_s
-        self.started, self.since = None, None
+        self.started, self.since, self.left = None, None, False
 
     def __call__(self, obs: dict, now: float) -> bool:
         self.started = now if self.started is None else self.started
         values = pose_of(obs)
+        off = np.abs(values[SETTLE_JOINTS] - self.pose[SETTLE_JOINTS]).max()
+        self.left = self.left or off > LEFT_REST_DEG
         low, high = self.gripper_range
-        there = np.abs(values[:5] - self.pose[:5]).max() <= self.tol and low <= values[5] <= high
+        there = self.left and off <= self.tol and low <= values[5] <= high
         self.since = (now if self.since is None else self.since) if there else None
         return now - self.started >= self.min_runtime_s and self.since is not None and now - self.since >= self.hold_s
 
@@ -337,8 +345,8 @@ class GiveSkill:
             celebrating = t - self._done_at < 2 * self.settings.celebrate * getattr(self.loop, "CELEBRATE_PHASE_S", 0.0)
             if not celebrating and abs(gripper - self.gripper_open) < 0.5:
                 raise _GiveStopped("dropped")
-        if decision.mode == Mode.HOME:
-            raise _GiveStopped("hand_lost")
+        # A lost hand does not end GIVE: the loop goes back to the present pose and follows the palm again when it
+        # reappears, as on the arm in T2. GIVE ends on the drop or its time budget. See decisions/supervisor.md.
 
     def step(self, obs, now):
         g = self.settings
