@@ -18,6 +18,10 @@ A separate read-only page, `scripts/curation/server.py` on port 8090, over the L
   - If the browser reports no AV1 support or fails to decode, the page falls back to JPEG frames decoded by the server with PyAV, which is slower but works anywhere.
 - **Labels are append-only JSONL with "last line wins".** Nothing in a dataset changes, several people's files can be concatenated, and the history of who changed what stays.
 - **The export is a script, not an action.** The merge writes several GB and deletes nothing, but it should still be a person's deliberate step, and the Hub push even more so. `delete_episodes` renumbers the kept episodes 0..n-1, and `merge` appends the sources in the order given. The script computes each episode's new index from both rules so that `modify_tasks` sets the right sentence.
+- **The merge runs with `--operation.concatenate_videos false`.** Tried on 2026-11-21 with LeRobot 0.7.0, running a generated script end to end in a scratch `HF_LEROBOT_HOME`: `so101_pick_ball` plus `so101_give_hand`, 4 episodes excluded, person and per-class tasks.
+  - **The default merge failed** with "non monotonically increasing dts". `delete_episodes` re-encodes the video files it changes at time base 1/90000, but stream-copies the others at 1/15360, and the stream-copy concat cannot join the two.
+  - **Without concatenation** (one output file per source file), the merge produced 95 episodes. State, action and task matched the spec's mapping for every episode. The first top frame was pixel-identical to its source episode in the 6 sampled.
+  - That run also confirmed both renumbering rules above.
 
 ## Alternatives
 
