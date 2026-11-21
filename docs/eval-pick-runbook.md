@@ -24,7 +24,7 @@ Every run is one row in `~/so101/evals/eval_<date>_<time>.csv` (inside WSL): che
 
 ## Setup (agent, once)
 
-1. In the repo inside WSL, get the two scripts from `main` without leaving the current branch, because `scripts/so101/` lives on PR #6's branch, not on `main`: `git fetch origin && git checkout origin/main -- scripts/eval docs/eval-pick-runbook.md`. The scripts are `scripts/eval/eval_pick.py` and `scripts/eval/eval_pick.sh`.
+1. In the repo inside WSL, get the scripts without leaving the current branch, because `scripts/so101/` lives on PR #6's branch: `git fetch origin && git checkout origin/Space0code/eval-pick-loop -- scripts/eval docs/eval-pick-runbook.md` (after PR #36 is merged, `origin/main` instead). The scripts are `scripts/eval/eval_pick.py` and `scripts/eval/eval_pick.sh`.
 2. It uses `~/.so101.env` and the conda env `lerobot` (LeRobot 0.7.0) as set up for `scripts/so101/` (PR #6). It reads the ports, robot id and camera paths from `SO101_FOLLOWER_PORT`, `SO101_FOLLOWER_ID`, `SO101_CAM_TOP` and `SO101_CAM_WRIST`. Without that file it falls back to the values in `so101.env.example`.
 3. The checkpoint downloads from the Hub on first start (about 200 MB, public, no login).
 4. Check that the devices are there: `ls /dev/so101_follower /dev/v4l/by-id/`. If not, run `attach_usb.sh` (so101-robot skill, known failures). Stop any other program that holds the arm or the cameras (teleop, recording, `run_loop.sh`).
