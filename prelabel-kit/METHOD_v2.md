@@ -24,6 +24,7 @@ This is v1 (`METHOD.md`) plus the fixes from `FAILURES.md`, turned into checks. 
 - home: lift < -80;
 - red hole: pan ≤ -25;
 - blue hole: pan ≥ 20;
+- front hole (foil datasets): lift > 10 at any other pan;
 - bowl: everything else.
 
 v1 also required lift > -5 for the blue hole, which read real blue-hole drops at lift -6 to -12 as bowl releases. A close at a hole zone is ignored only when it comes within 2.5 s after a release there. Otherwise it is a grab at the bowl rim (pan about 20).

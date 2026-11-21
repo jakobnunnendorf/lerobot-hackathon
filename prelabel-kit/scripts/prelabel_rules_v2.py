@@ -24,6 +24,8 @@ def zone(arm):
     # pan alone: blue-hole drops happen at lift -6..-12, which v1's "lift > -5" called bowl (FAILURES.md class 5)
     if pan <= -25: return "red_hole"
     if pan >= 20: return "blue_hole"
+    # buried_ball drops foil far out in front (pan about -12, lift +20..+40); the bowl itself ends near lift -10
+    if lift > 10: return "front_hole"
     return "bowl"
 
 
@@ -115,6 +117,9 @@ def draft(ev):
                 if foil and z != "bowl": c, code = "r", "r_hole"
                 elif z == "red_hole": c, code = "r", "r_hole"
                 elif z == "blue_hole": c, code = "b", "b_hole"
+                elif z == "front_hole":
+                    c, code = "?", "?_hole"
+                    checks.append(dict(kind="drop", t0=rel["t"] - 0.4, t1=rel["t_end"] + 0.4, at=rel["mid_t"], ask=f"release out of the bowl at {rel['mid_t']}: which hole (r/b)?"))
                 else:
                     c, code = "?", "?_slip"
                     checks.append(dict(kind="drop", t0=rel["t"] - 0.4, t1=rel["t_end"] + 0.4, at=rel["mid_t"],
