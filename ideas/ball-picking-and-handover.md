@@ -101,6 +101,52 @@ Read from the LeRobot 0.7.0 source, not yet run (`research/lerobot-multi-skill-r
 - Handshake: the person grips the robot's closed gripper and the arm makes a small slow up-and-down.
 - A team member is the hand. A judge's hand only after it has worked ten times in a row.
 
+## Voice commands (planned add-on)
+
+Added 2026-11-20. Research: `research/voice-commands.md`. Nothing in it was run on our machines.
+
+What the team wants: the robot waits for a wake-up call, the person says which ball to pick and where to put it (a container, a hand), and the robot does it.
+
+- **The destination is cheap.** It only changes which skill the supervisor runs after PICK (GIVE for a hand, PUT DOWN for the container). No retraining.
+- **The ball colour is expensive.** It needs a pick skill that can be told which ball to take. See the next section. Until that exists the only valid target is the striped ball.
+- **One contract.** The voice process sends one JSON line to the supervisor over a local socket, for example `{"target": "striped", "destination": "hand", "transcript": "..."}`. Number keys on the keyboard send the same commands, so the demo never depends on the microphone.
+- **Its own process and environment.** Speech libraries must not touch the robot environment's pinned packages, and the microphone is unreliable inside WSL2.
+
+Proposed stack, in the order to build it:
+
+| Piece | First version | Upgrade |
+| --- | --- | --- |
+| Activation | push-to-talk key; the wake phrase ("hey robot, ...") is checked in the transcript | an always-listening wake word, only if it survives a test in the hall at its loudest |
+| Speech to text | Parakeet TDT 0.6b v3 through `onnx-asr`, on the CPU | faster-whisper `small` with the language forced |
+| Understanding | a synonym table with fuzzy matching, English and Spanish | Claude with a fixed JSON schema, for free phrasing; the table stays as fallback |
+
+- A headset or clip-on microphone matters more than the choice of model. One project measured 5 of 20 wake-word detections in noise against 19 of 20 in a quiet room.
+- Say "container" and "hand". "Ball", "bowl" and "box" are easily confused.
+- The robot does not speak (decided by the team, reported by Tian on 2026-11-21): speech recognition only. The transcript and the parsed command are shown large on a screen instead.
+- The microphone is muted while the arm moves.
+- About three hours for one person for the first version (estimate). Test in the hall on Saturday while it is loud, and freeze with everything else at the feature freeze.
+- A Claude subscription does not include API usage. The two ways to call Claude from a script are in the addendum of the research file.
+
+## Other target colours (stretch)
+
+Added 2026-11-20. Research: `research/multi-colour-targets.md`. Nothing in it was run.
+
+ACT takes no instruction, so a policy trained on the striped ball keeps taking the striped ball. Ways to get a pick skill that can be told the colour, best first:
+
+1. **Mark the commanded ball in the image.** The detector paints the chosen ball one fixed colour and turns everything else grey, in both camera images, in the training data and live. The policy then learns "pick the marked ball" and no longer cares about the real colour. This has the best outside evidence (a mask image gave 89% correct picks where the same information as numbers was ignored), but nobody has shown it with ACT on an SO-101 at our data size. The episodes already recorded can be reused by rewriting them with the marking.
+2. **A colour code as an extra input** (`observation.environment_state`). Cheap to try on the same data, no library change. No evidence that ACT uses it to choose between balls.
+3. **One coloured ball in the bowl at a time.** No new training. The voice command chooses which round is played. It shows voice-to-skill, not choosing among colours, and has to be described that way.
+
+Not planned: SmolVLA or pi0.5 for this, positions as numeric inputs, and a ring drawn around the ball trained only on single-colour data.
+
+What it means for recording now:
+
+- Keep recording as planned: raw camera images, never with anything drawn in, one fixed task sentence per colour.
+- Finish the striped-ball data first. It is the demo.
+- If the stretch is tried: 20-30 episodes per target colour with striped, red and blue balls together in the bowl, the same arrangement recorded with different targets. Avoid plain yellow, plain green and orange balls.
+- First step, no robot needed: write the marking function, run it over 5-10 recorded episodes for both cameras and count the frames where it fails. If the marking does not hold in the top view, drop options 1 and 2.
+- Other coloured balls in the bowl also change CLEAR GRAY, which so far only knows gray balls.
+
 ## Recording notes
 
 - PICK, first batch: 60 episodes as 6 areas of the bowl with 10 each, target on top, ball count fixed, the other balls rearranged and the target turned between episodes. Ten arrangements are kept aside, not recorded, for testing.
@@ -113,4 +159,6 @@ Read from the LeRobot 0.7.0 source, not yet run (`research/lerobot-multi-skill-r
 - Whether any team laptop has clearly more than 8 GB of GPU memory. Only that would reopen pi0.5.
 - Whether the target ball also goes into a hole when no hand is there, or is put down on a fixed spot.
 - Where the hand zone is, and how many gray balls are in the demo bowl.
+- Whether a cloud call to understand the spoken command is allowed under the rule that inference runs on our laptops.
+- Which Claude plan the team has, and so which way of calling Claude is open.
 - Which closed-gripper reading means "holding a ball". Measure on the arm.

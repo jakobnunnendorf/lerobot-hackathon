@@ -16,6 +16,7 @@ Read `ideas/ball-picking-and-handover.md` before writing demo code. The parts th
 - **Skills are separate and short.** PICK and CLEAR GRAY are learned policies. GIVE, PUT DOWN and SHAKE start as replays of one recorded episode each; GIVE becomes a learned policy if time allows. One dataset per skill, each with its own task sentence, all with the same camera names, resolution and `--robot.id`.
 - **Two anchor poses make skills chain.** HOME (above the bowl, gripper open) and CARRY (above the bowl, gripper closed on the target ball). Every demonstration and every replay starts and ends in one of them. CLEAR GRAY goes from HOME to HOME. GIVE and PUT DOWN demonstrations start with the ball already held.
 - **A policy never reports that it is done.** Each skill has a time budget, then the supervisor checks the result (gripper reading, camera).
+- **Voice is an add-on with one contract.** A separate process in its own environment turns speech into one JSON line (`target`, `destination`) sent to the supervisor over a local socket. Keyboard keys send the same commands. The destination only changes which skill runs after PICK. Choosing the ball colour by voice needs a different pick skill and is a stretch goal.
 - **The learned skills are ACT policies, one per skill.** Training runs in the cloud; inference has to run on a team laptop, and the only GPU laptop has 8 GB. pi0.5 was tested there on 2026-11-20 and ran out of memory while loading. See `kb/machines.md`.
 
 ## Coordination (read before doing any work)

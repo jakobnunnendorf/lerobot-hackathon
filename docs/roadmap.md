@@ -22,6 +22,9 @@ The demo is built in this order. Each line is a working demo on its own, so what
 3. GIVE into a hand held over a marked spot, when a hand is detected (a replay first).
 4. CLEAR GRAY when the target ball is not visible: one gray ball into the gray hole, then look again.
 5. SHAKE, and GIVE as a learned skill.
+6. Stretch: a pick skill that can be told the ball colour (`ideas/ball-picking-and-handover.md`, "Other target colours"). Only after steps 1 to 4 work.
+
+Alongside, by one person, without blocking the steps above: the voice command for the destination (hand or container). It ends at the feature freeze like everything else, and the keyboard always sends the same commands.
 
 ## Stop points
 
