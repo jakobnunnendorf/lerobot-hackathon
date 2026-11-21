@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -17,7 +18,7 @@ from commands import Commands
 from grasp_check import requery
 from fakes import SCENARIOS, FakeArm, Scenario, World, build, pick_effect, release_effect, scripted
 from machine import RealClock, Sensors, Settings, Skills, Supervisor, TransitionLog
-from skills import KEYS, GiveSettings, LoadedPolicy, PolicySkill, capped, give_sequence, import_from, pose_of
+from skills import KEYS, GiveSettings, LoadedPolicy, PolicySkill, Settled, capped, give_sequence, import_from, pose_of
 
 failures: list[str] = []
 
@@ -337,10 +338,14 @@ def speed_cap() -> None:
           and capped(wanted, last, None) == wanted, str(sent))
 
 
-def send_hands(port: int, stop: threading.Event) -> None:
-    hands = [{"x": 0.20, "y": 0.03, "z": 0.13, "palm_up": True}, {"x": 0.20, "y": 0.09, "z": 0.13, "palm_up": True}]
+TWO_PALMS = [{"x": 0.20, "y": 0.03, "z": 0.13, "palm_up": True}, {"x": 0.20, "y": 0.09, "z": 0.13, "palm_up": True}]
+
+
+def send_hands(port: int, stop: threading.Event, no_hands_for_s: float = 0.0) -> None:
+    started = time.monotonic()
     with socket.create_connection(("127.0.0.1", port)) as sock:
         while not stop.is_set():
+            hands = TWO_PALMS if time.monotonic() - started >= no_hands_for_s else []
             sock.sendall((json.dumps({"t": time.time(), "hands": hands}) + "\n").encode())
             time.sleep(1 / 30)
 
@@ -401,6 +406,54 @@ def chain_pick_give_rest(handover_dir: Path, log_path: str) -> None:
           and np.all(grips[-5:] >= 30), f"closes after the drop {closes}")
     check("chain: tip never below 0.20 m on the whole round (rest, present pose, follow, fold)",
           tips[:, 2].min() >= 0.20 - 1e-3, f"tip z {tips[:, 2].min():.3f}-{tips[:, 2].max():.3f} m")
+
+
+def give_survives_lost_hand(handover_dir: Path, log_path: str) -> None:
+    hand_socket = import_from(handover_dir, "hand_socket")
+    kinematics = import_from(handover_dir, "kinematics")
+    lost_to_home_s = import_from(handover_dir, "following").FollowSettings.lost_to_home_s
+    port, no_hands_for_s = 18768, 14.0
+    receiver = hand_socket.HandReceiver("127.0.0.1", port)
+    stop = threading.Event()
+    hands_from = time.time() + no_hands_for_s
+    threading.Thread(target=send_hands, args=(port, stop, no_hands_for_s), daemon=True).start()
+
+    abort, world = threading.Event(), World(hand=True)
+    arm = TipRecorder(world, abort, kinematics, TABLE_REST)
+    settings = Settings()
+    skills = Skills(pick=scripted("pick", world, ["ok"], pick_effect(world), ticks=10),
+                    put_down=scripted("put_down", world, ["ok"], release_effect(world, "ok")),
+                    give=lambda: give_sequence(arm, handover_dir=handover_dir, receiver=receiver, abort=abort,
+                                                timeout_s=settings.give_timeout_s, gripper_open=60.0,
+                                                settings=GiveSettings()))
+    sensors = Sensors(palms_seen=lambda: len(receiver.newest_hands()) >= 2, destination=lambda: "hand")
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), TransitionLog(log_path, echo=False),
+                        abort, RealClock(settings.fps)).run_round(97)
+    stop.set()
+    events = [json.loads(line) for line in Path(log_path).read_text().splitlines()]
+    give_start = next(e for e in events if e["event"] == "transition" and e["target"] == "GIVE")
+    give_end = next(e for e in events if e["event"] == "transition" and e["source"] == "GIVE")
+    no_hand_in_give = hands_from - datetime.fromisoformat(give_start["time"]).timestamp()
+    check("GIVE: no hand for longer than lost_to_home_s, then two palms -> dropped, not hand_lost",
+          result.outcome == "given" and give_end["skill"] == "dropped" and no_hand_in_give > lost_to_home_s + 1.0,
+          f"no hand for {no_hand_in_give:.1f} s inside GIVE (lost_to_home_s {lost_to_home_s}); GIVE {give_end['skill']}; "
+          f"{' -> '.join(s.value for s in result.states)}")
+
+
+def pick_end_rule() -> None:
+    rest = np.array([-5.6, -102.8, 96.6, -100.1, -5.2, 30.0])
+    never_left = np.array([*rest[:5], 17.8])
+    settled = Settled(rest, (6.0, 20.0), 8.0, 1.0, 3.0)
+    early = [i / 30 for i in range(300) if settled(dict(zip(KEYS, never_left)), i / 30)]
+    check("PICK end: an arm that never left rest does not count as back holding (training rest gripper 17.8 is in the band)",
+          not early, f"ended at {early[0]:.1f} s" if early else "")
+    away = np.array([*rest[:2], rest[2] - 40.0, *rest[3:5], 40.0])
+    back_off_pan_roll = np.array([rest[0] + 15.0, *rest[1:4], rest[4] - 15.0, 13.0])
+    settled = Settled(rest, (6.0, 20.0), 8.0, 1.0, 3.0)
+    poses = [away] * 30 + [back_off_pan_roll] * 120
+    ended = next((i / 30 for i, pose in enumerate(poses) if settled(dict(zip(KEYS, pose)), i / 30)), None)
+    check("PICK end: back at rest holding with pan and roll 15 deg off -> ends at the 3 s minimum",
+          ended is not None and abs(ended - 3.0) < 0.05, f"ended at {ended} s")
 
 
 class FakeBus:
@@ -488,7 +541,8 @@ def main() -> None:
     p.add_argument("--vision-dir", default=str(SUPERVISOR.parent / "vision"),
                    help="directory with #24's colour_detector.py and supervisor_adapter.py; that test is skipped if missing")
     args = p.parse_args()
-    with tempfile.TemporaryDirectory() as work:
+    # ignore_cleanup_errors: on Windows the transition logs are still open when the folder is removed.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         fake_scenarios(f"{work}/fake.jsonl")
         voice_container()
         round_hygiene(f"{work}/hygiene.jsonl")
@@ -496,6 +550,7 @@ def main() -> None:
         grasp_check_log(f"{work}/grasp.jsonl")
         robot_flags()
         speed_cap()
+        pick_end_rule()
         goal_sync_before_connect()
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
@@ -509,6 +564,7 @@ def main() -> None:
         if (handover_dir / "handover_loop.py").exists():
             give_integration(handover_dir, f"{work}/give.jsonl")
             chain_pick_give_rest(handover_dir, f"{work}/chain.jsonl")
+            give_survives_lost_hand(handover_dir, f"{work}/lost.jsonl")
         else:
             print(f"SKIP  GIVE integration: no handover_loop.py in {handover_dir}")
     print("FAIL" if failures else "PASS")
