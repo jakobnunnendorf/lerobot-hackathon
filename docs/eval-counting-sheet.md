@@ -13,7 +13,7 @@ One row per run, filled in by the person at the table. Counts decide the roadmap
 
 ## PICK runs
 
-| # | Ball at start: visible / partly / hidden | Result: success / fail / aborted | Failure mode (never started, missed ball, grabbed gray, stopped, dropped, camera timeout, other) | Stutter (pauses in the motion: none / some / bad) | Gripper reading at end | Seconds |
+| # | Ball at start: visible / partly / hidden | Result: success / fail / aborted | Failure mode (never started, hovered but never closed, closed on a neighbouring ball, missed ball, grabbed gray, stopped, dropped, camera timeout, other) | Stutter (pauses in the motion: none / some / bad) | Gripper reading at end | Seconds |
 | --- | --- | --- | --- | --- | --- | --- |
 
 - Success = ball held at the end. A gripper reading of about 6-20 means holding, near 1 means a missed grasp, up to about 38 means open jaws (145 episodes, board 7061759444). A foil ball is not measured yet.
@@ -21,6 +21,10 @@ One row per run, filled in by the person at the table. Counts decide the roadmap
 - Aborted = the run was stopped by a person or a camera timeout, not by the policy.
 - Count visible, partly visible and hidden separately: 17 of the 45 "buried" training episodes start partly visible (board 7061088625), so dataset names are not labels.
 - Tally at the bottom: successes out of tries for each of the three start states.
+
+## Checkpoint comparison
+
+Held-out action error was flat from 5K to 15K steps on the red/blue run while training error kept falling (board 7064912974, 4 held-out layouts, offline). So compare an early and a late checkpoint on the same 10 layouts (for example `--step 005000` against the 15K one, about 15 min per checkpoint) and count on the arm; do not pick by loss.
 
 ## n_action_steps comparison (only if time allows, 10 runs each)
 
