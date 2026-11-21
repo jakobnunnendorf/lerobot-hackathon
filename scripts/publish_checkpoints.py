@@ -19,7 +19,10 @@ def modal(*args: str) -> str:
 
 
 def remote_steps(run: str) -> list[str]:
-    listing = modal("volume", "ls", VOLUME, f"outputs/{run}/checkpoints")
+    try:
+        listing = modal("volume", "ls", VOLUME, f"outputs/{run}/checkpoints")
+    except subprocess.CalledProcessError:
+        return []
     return sorted(Path(line).name for line in listing.split() if re.fullmatch(r".*/\d{6}", line))
 
 
