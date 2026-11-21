@@ -14,6 +14,7 @@ SUPERVISOR = Path(__file__).resolve().parents[1] / "scripts" / "supervisor"
 sys.path[:] = [str(SUPERVISOR)] + [p for p in sys.path if Path(p or ".").resolve() != Path(__file__).resolve().parent]
 
 from commands import Commands
+from grasp_check import requery
 from fakes import SCENARIOS, FakeArm, Scenario, World, build, pick_effect, release_effect, scripted
 from machine import RealClock, Sensors, Settings, Skills, Supervisor, TransitionLog
 from skills import KEYS, GiveSettings, LoadedPolicy, PolicySkill, capped, give_sequence, import_from, pose_of
@@ -85,6 +86,11 @@ def policy_runner(checkpoint_cameras=("top", "wrist"), rename=None, n_action_ste
                "top": np.zeros((height, width, 3), np.uint8), "wrist": np.zeros((height, width, 3), np.uint8)}
         skill.start(obs, {key: 0.0 for key in KEYS}, 0.0)
         actions = [skill.step(obs, i / 30) for i in range(3)]
+        queued = len(loaded.policy._action_queue)
+        requery(skill)
+        cleared = len(loaded.policy._action_queue)
+    check(f"grasp check re-query empties ACT's queued chunk (n_action_steps {n_action_steps})",
+          queued == loaded.policy.config.n_action_steps - 3 and cleared == 0, f"queued {queued} -> {cleared}")
     ok = all(set(a) == set(KEYS) and all(np.isfinite(list(a.values()))) for a in actions)
     ok &= n_action_steps is None or loaded.policy.config.n_action_steps == n_action_steps
     check(f"policy runner: checkpoint cameras {checkpoint_cameras}, rename {rename}, n_action_steps {n_action_steps}"
@@ -226,6 +232,45 @@ def held_ball_check(log_path: str) -> None:
     check("held check: no hook -> held_check off, flow unchanged", [e["held_check"] for e in checks] == ["off"], str(checks))
 
 
+def grasp_check_log(log_path: str) -> None:
+    def run(name: str):
+        scenario = next(s for s in SCENARIOS if s.name == name)
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        log = TransitionLog(log_path, echo=False)
+        Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+        log.file.close()
+        events = [json.loads(line) for line in open(log_path)]
+        open(log_path, "w").close()
+        return [e for e in events if e["event"] == "grasp_check"], world, events
+
+    checks, world, _ = run("grasp_check_ball_continues")
+    check("grasp check (a): ball held -> one 'held' check logged (reading, goal, error), policy re-queried, carried on",
+          [c["verdict"] for c in checks] == ["held"] and checks[0]["reading"] == 13.0 and checks[0]["goal"] == 1.0
+          and checks[0]["error"] == 12.0 and world.queries == 1, str(checks))
+    checks, world, events = run("grasp_check_nothing_requery_then_ball")
+    picks = [e["reason"] for e in events if e["event"] == "transition" and e["source"] == "PICK"]
+    check("grasp check (b): closed on nothing -> miss (reading 0.5, not in band), opened and backed off, PICK again at once",
+          [(c["verdict"], c["in_band"], c.get("back_off")) for c in checks] == [("miss", False, True), ("held", True, None)]
+          and checks[0]["pick_attempt"] == 1 and checks[1]["pick_attempt"] == 2
+          and "grasp check miss, re-query" in picks[0], f"{checks} {picks}")
+    checks, _, _ = run("grasp_check_tips_slip_in_settle_is_miss")
+    check("grasp check (c): tips grasp in the band at first, slips during the settle -> miss",
+          checks[0]["verdict"] == "miss" and checks[0]["first_reading"] == 13.0 and checks[0]["reading"] == 0.5, str(checks[0]))
+    checks, _, _ = run("grasp_check_slip_during_lift_is_miss")
+    check("grasp check: held at the check, slips during the lift -> watch miss, opened in place",
+          [(c["phase"], c["verdict"]) for c in checks] == [("settle", "held"), ("watch", "miss"), ("settle", "held")]
+          and checks[1]["back_off"] is False, str(checks))
+    checks, _, events = run("grasp_check_misses_hit_pick_limit")
+    end = next(e for e in events if e["event"] == "round_end")
+    check("grasp check (d): 3 misses -> pick limit, VERIFY_HOLD not holding, gave_up at rest",
+          [c["verdict"] for c in checks] == ["miss"] * 3 and end["outcome"] == "gave_up" and end["pick_attempts"] == 3, str(end))
+    checks, _, _ = run("grasp_check_too_high_miss_before_reading")
+    check("grasp check: close with the tip above --grasp-max-tip-height -> miss before reading the gripper",
+          [(c["phase"], c.get("reason")) for c in checks] == [("trigger", "too_high")] * 3, str(checks[0]))
+    checks, _, _ = run("grasp_check_off_old_flow_carries_empty")
+    check("grasp check off -> nothing logged, an empty close is only caught at VERIFY_HOLD", checks == [])
+
+
 def vision_adapter(vision_dir: Path) -> None:
     import cv2
     from run_supervisor import held_ball_area
@@ -263,6 +308,12 @@ def robot_flags() -> None:
 
     args = parsed()
     settings, cameras = settings_from(args), camera_configs(args)
+    grasp = settings.grasp_check
+    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, load logged only, "
+          "tip height off); --no-grasp-check turns it off",
+          grasp is not None and (grasp.trigger, grasp.settle_s, grasp.min_error, grasp.hold_range, grasp.min_load,
+                                 grasp.max_tip_height) == (10.0, 0.4, 3.0, (6.0, 20.0), None, None)
+          and settings_from(parsed("--no-grasp-check")).grasp_check is None, str(grasp))
     check("robot defaults: striped judged only, red candidate 2000 kept, PR #30 region, both cameras MJPG",
           settings.held_check_colours == ("striped",) and settings.min_held_area_px == {"red": 2000}
           and settings.min_held_target_area_px is None and tuple(args.held_check_roi) == WRIST_HELD_ROI == (0.52, 0.72, 0.2, 0.25)
@@ -442,6 +493,7 @@ def main() -> None:
         voice_container()
         round_hygiene(f"{work}/hygiene.jsonl")
         held_ball_check(f"{work}/held.jsonl")
+        grasp_check_log(f"{work}/grasp.jsonl")
         robot_flags()
         speed_cap()
         goal_sync_before_connect()

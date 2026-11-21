@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from enum import Enum
 
 import numpy as np
+from grasp_check import GraspChecked, GraspCheckSettings
 from skills import MoveTo, Skill
 
 
@@ -61,6 +62,9 @@ class Settings:
     # accepted as without the check. Red joins with one flag (--held-check-colours striped red) once confirmed at
     # the table; blue stays out (see min_held_area_px).
     held_check_colours: tuple[str, ...] = ("striped",)
+    # Grasp check inside PICK (skills.GraspChecked): pause when the policy closes, read the gripper, re-query on a
+    # miss. None = off (PICK runs to its end and only VERIFY_HOLD judges, the old behaviour).
+    grasp_check: GraspCheckSettings | None = None
 
 
 @dataclass
@@ -95,6 +99,10 @@ class Sensors:
     # (scripts/vision/supervisor_adapter.py) when it is there. An error or a missing wrist frame counts as
     # "unavailable": the ball is accepted as before and the log says held_check=unavailable.
     held_ball_area: Callable[[np.ndarray, str], int] | None = None
+    # Grasp check: |Present_Load| of the gripper servo (logged; decides only with min_load) and the tip height (m)
+    # of 5 commanded joints (only with max_tip_height). None: not available.
+    gripper_load: Callable[[], float | None] | None = None
+    tip_height: Callable[[np.ndarray], float] | None = None
     # Called when a round ends, whatever the outcome: clears the one-round command (destination, target).
     finish_round: Callable[[], None] = lambda: None
 
@@ -300,8 +308,17 @@ class Supervisor:
     def _pick(self):
         self.round.pick_attempts += 1
         skill = self.skills.pick_colour(self.round.target) if self.round.target in COLOURS else self.skills.pick()
+        if self.s.grasp_check is not None:
+            skill = GraspChecked(skill, self.s.grasp_check, self.s.fps, self.sensors.gripper_load, self.sensors.tip_height)
+            attempt = self.round.pick_attempts
+            skill.on_check = lambda record: self.log.write(event="grasp_check", round=self.round.number,
+                                                           pick_attempt=attempt, **record)
         result = self.run_skill(skill, self.s.pick_timeout_s)
-        return State.VERIFY_HOLD, f"pick attempt {self.round.pick_attempts}: {result}", {"skill": result}
+        details = {"skill": result}
+        if result == "grasp_miss" and self.round.pick_attempts < self.s.max_pick_attempts:
+            # Jaws closed on nothing (or the ball slipped): opened and backed off already, re-query from here.
+            return State.PICK, f"pick attempt {self.round.pick_attempts}: grasp check miss, re-query", details
+        return State.VERIFY_HOLD, f"pick attempt {self.round.pick_attempts}: {result}", details
 
     def _verify_hold(self):
         holding, reading = self.holding()

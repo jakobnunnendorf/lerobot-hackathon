@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from machine import Sensors, Settings, Skills
+from grasp_check import GraspCheckSettings
 from skills import PRESENT_POSE, PresentAndDrop, action_of, holding_move, pose_of
 
 DRY_RUN_REST = np.array([0.0, 20.0, 60.0, 90.0, 0.0, 30.0])
@@ -38,6 +39,12 @@ class World:
     held_balls: list[str] = field(default_factory=lambda: ["striped"])
     held_ball: str | None = None
     violations: list[str] = field(default_factory=list)
+    # Grasp physics for FakeGraspPick, one outcome per close (the last repeats): "ball" (held), "nothing" (empty),
+    # "tips" (held, slips out after 6 ticks, during the settle), "late_slip" (slips after 25 ticks, during the lift).
+    # Empty list: off (the scripted picks set `holding` themselves).
+    grasps: list[str] = field(default_factory=list)
+    slip_in: int | None = None
+    queries: int = 0
 
 
 class FakeArm:
@@ -48,6 +55,10 @@ class FakeArm:
         self.sends_after_abort = 0
 
     def observe(self) -> dict:
+        if self.world.slip_in is not None:
+            self.world.slip_in -= 1
+            if self.world.slip_in <= 0:
+                self.world.holding, self.world.held_ball, self.world.slip_in = False, None, None
         goal = pose_of(self.last_sent)
         if self.world.blocked_at is not None:
             goal[:5] = self.world.blocked_at
@@ -60,6 +71,12 @@ class FakeArm:
         if self.abort.is_set():
             self.sends_after_abort += 1
         gripper = action["gripper.pos"]
+        closing = gripper < 10 <= self.last_sent["gripper.pos"]
+        if self.world.grasps and closing and not self.world.holding:
+            outcome = self.world.grasps.pop(0) if len(self.world.grasps) > 1 else self.world.grasps[0]
+            if outcome != "nothing":
+                self.world.holding, self.world.held_ball = True, self.world.held_balls[0]
+                self.world.slip_in = {"tips": 6, "late_slip": 25}.get(outcome)
         if self.world.holding and gripper > self.world.hold_goal + 0.5:
             if self.world.release_ok:
                 self.world.holding = False
@@ -86,6 +103,37 @@ class ScriptedSkill:
 
     def result(self):
         return self.outcome
+
+
+# A pick policy as the grasp check sees it: approach with the gripper open, close (crossing 10), lift back. One
+# instance per PICK attempt; requery() counts the re-queries the grasp check asks for.
+class FakeGraspPick:
+    name = "pick"
+    CLOSE = (30.0, 20.0, 12.0, 1.0)
+
+    def __init__(self, world: World, ticks: int = 60):
+        self.world, self.ticks = world, ticks
+
+    def start(self, obs, last_sent, now):
+        self.count, self.base = 0, pose_of(last_sent)
+
+    def step(self, obs, now):
+        self.count += 1
+        pose = self.base.copy()
+        down = min(self.count, 20) - max(self.count - 25, 0) * 20 / (self.ticks - 25)
+        pose[1] += 0.5 * down
+        k = self.count - 20
+        pose[5] = 40.0 if k < 0 else self.CLOSE[min(k, len(self.CLOSE) - 1)]
+        return action_of(pose)
+
+    def done(self, obs, now):
+        return self.count >= self.ticks
+
+    def result(self):
+        return "ok"
+
+    def requery(self):
+        self.world.queries += 1
 
 
 def scripted(name: str, world: World, outcomes: list[str], effect, ticks: int = 30):
@@ -167,6 +215,9 @@ class Scenario:
     # Held-ball check: "off" (no hook), "on" (fake wrist detector, threshold 300 px), "unavailable" (hook raises).
     held_check: str = "off"
     colour_sensor: bool = False
+    # Grasp check: outcomes per close (World.grasps); non-empty = FakeGraspPick as PICK and the grasp check on.
+    grasps: list[str] = field(default_factory=list)
+    tip_z: float | None = None
 
 
 FAKE_HELD_AREA_PX, FAKE_HELD_THRESHOLD_PX = 900, 300
@@ -186,11 +237,13 @@ def fake_held_ball_area(world: World, mode: str):
 def build(scenario: Scenario):
     abort = threading.Event()
     world = World(buried=scenario.buried, hand=scenario.hand, destination=scenario.destination,
-                  block_after_pick=scenario.block_after_pick, held_balls=list(scenario.held_balls))
+                  block_after_pick=scenario.block_after_pick, held_balls=list(scenario.held_balls),
+                  grasps=list(scenario.grasps))
     arm = FakeArm(world, abort)
     containers = {c: scripted("put_down_" + c, world, ["ok"], release_effect(world, "ok")) for c in ("red", "blue")}
     skills = Skills(
-        pick=scripted("pick", world, scenario.picks, pick_effect(world), ticks=60),
+        pick=(lambda: FakeGraspPick(world)) if scenario.grasps
+        else scripted("pick", world, scenario.picks, pick_effect(world), ticks=60),
         put_down=scripted("put_down", world, scenario.put_downs, release_effect(world, "ok")),
         give=(lambda: Releasing(PresentAndDrop(lambda: world.hand, 60.0), world)) if scenario.give_mode == "present"
         else scripted("give", world, scenario.gives, release_effect(world, "dropped")),
@@ -204,10 +257,12 @@ def build(scenario: Scenario):
     sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
                       held_ball_area=fake_held_ball_area(world, scenario.held_check),
-                      ball_colour=(lambda: world.held_ball) if scenario.colour_sensor else None)
+                      ball_colour=(lambda: world.held_ball) if scenario.colour_sensor else None,
+                      tip_height=(lambda joints: scenario.tip_z) if scenario.tip_z is not None else None)
     held = ({"min_held_target_area_px": FAKE_HELD_THRESHOLD_PX, "min_held_area_px": {"red": FAKE_HELD_THRESHOLD_PX}}
             if scenario.held_check != "off" else {})
-    settings = Settings(**{**held, **scenario.settings})
+    grasp = {"grasp_check": GraspCheckSettings()} if scenario.grasps else {}
+    settings = Settings(**{**held, **grasp, **scenario.settings})
     clock = FakeClock(settings.fps, abort, scenario.abort_at_tick)
     return arm, skills, sensors, settings, abort, clock, world
 
@@ -265,6 +320,16 @@ SCENARIOS = [
              destination="container", containers=True, colour_pick=True, held_balls=["striped"], held_check="on"),
     Scenario("held_check_unmeasured_threshold_logs_only", [R, P, V, G, R, D], "given", held_balls=["red"],
              held_check="on", settings={"min_held_target_area_px": None}),
+    # Grasp check inside PICK (GraspChecked): pause at the close, read the gripper, re-query at once on a miss.
+    Scenario("grasp_check_ball_continues", [R, P, V, G, R, D], "given", grasps=["ball"]),
+    Scenario("grasp_check_nothing_requery_then_ball", [R, P, P, V, G, R, D], "given", grasps=["nothing", "ball"]),
+    Scenario("grasp_check_tips_slip_in_settle_is_miss", [R, P, P, V, G, R, D], "given", grasps=["tips", "ball"]),
+    Scenario("grasp_check_slip_during_lift_is_miss", [R, P, P, V, G, R, D], "given", grasps=["late_slip", "ball"]),
+    Scenario("grasp_check_misses_hit_pick_limit", [R, P, P, P, V, R, D], "gave_up", grasps=["nothing"]),
+    Scenario("grasp_check_too_high_miss_before_reading", [R, P, P, P, V, R, D], "gave_up", grasps=["nothing"],
+             tip_z=0.30, settings={"grasp_check": GraspCheckSettings(max_tip_height=0.16)}),
+    Scenario("grasp_check_off_old_flow_carries_empty", [R, P, V, R, P, V, G, R, D], "given", grasps=["nothing", "ball"],
+             settings={"grasp_check": None}),
     Scenario("held_check_detector_unavailable_accepts", [R, P, V, G, R, D], "given", held_balls=["red"],
              held_check="unavailable"),
 ]

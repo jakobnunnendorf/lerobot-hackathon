@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from commands import Commands
+from grasp_check import GraspCheckSettings
 from machine import Aborted, Sensors, Settings, Skills, Supervisor, TransitionLog
 from skills import (
     PRESENT_POSE,
@@ -40,6 +41,11 @@ class RobotArm:
     def observe(self) -> dict:
         self.last_obs = self.robot.get_observation()
         return self.last_obs
+
+    # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
+    # Feetech docs; LeRobot 0.7.0's bus reads any register through rustypot, unnormalised). Not read on the arm yet.
+    def gripper_load(self) -> float:
+        return float(self.robot.bus.sync_read("Present_Load", "gripper")["gripper"])
 
     def send(self, action: dict) -> None:
         action = capped(action, self.last_sent, self.max_step_deg)
@@ -80,7 +86,12 @@ def settings_from(args) -> Settings:
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
                     held_check_colours=tuple(args.held_check_colours),
-                    min_held_area_px={**Settings().min_held_area_px, **dict(args.min_held_area)})
+                    min_held_area_px={**Settings().min_held_area_px, **dict(args.min_held_area)},
+                    grasp_check=None if args.no_grasp_check else GraspCheckSettings(
+                        trigger=args.grasp_trigger, armed_above=args.grasp_armed_above, close_goal=args.grasp_close_goal,
+                        settle_s=args.grasp_settle, min_error=args.grasp_min_error, hold_range=tuple(args.hold_range),
+                        min_load=args.grasp_min_load, backoff_s=args.grasp_backoff,
+                        max_tip_height=args.grasp_max_tip_height))
 
 
 def colour_area(value: str) -> tuple[str, int]:
@@ -265,7 +276,13 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
             # pick_colour: HOOK for the colour pick (branch jakobnunnendorf/colour-pick). Until it is plugged in, a
             # round that asks for "red" or "blue" is refused before the arm moves.
         )
-        sensors = Sensors(palms_seen=palms_seen, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
+        tip_height = None
+        if (handover_dir / "kinematics.py").exists():
+            kinematics = import_from(handover_dir, "kinematics")
+            tip_height = lambda joints: float(kinematics.forward_kinematics(np.asarray(joints))[2])  # noqa: E731
+        elif args.grasp_max_tip_height is not None:
+            sys.exit(f"--grasp-max-tip-height needs #13's kinematics.py in {handover_dir}")
+        sensors = Sensors(palms_seen=palms_seen, gripper_load=arm.gripper_load, tip_height=tip_height, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
                           destination=commands.destination,
                           target=commands.target, finish_round=commands.clear, held_ball_area=held_check_hook(args))
         supervisor = Supervisor(arm, skills, sensors, settings, rest, log, commands.abort, frame_writer=frame_writer,
@@ -274,7 +291,9 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy,
                   held_check=sensors.held_ball_area is not None, min_held_target_area_px=args.min_held_target_area,
                   held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours),
-                  min_held_area_px=settings.min_held_area_px, camera_fourcc=args.camera_fourcc)
+                  min_held_area_px=settings.min_held_area_px, camera_fourcc=args.camera_fourcc,
+                  grasp_check=None if settings.grasp_check is None else vars(settings.grasp_check),
+                  n_action_steps=pick_policy.policy.config.n_action_steps)
         print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
@@ -398,6 +417,25 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gripper-open", type=float, default=60.0)
     p.add_argument("--gripper-hold", type=float,
                    help="gripper goal while holding; default: keep the pick policy's last goal")
+    g = GraspCheckSettings()
+    p.add_argument("--no-grasp-check", action="store_true",
+                   help="turn the grasp check off: PICK runs its whole chunk after a close, only VERIFY_HOLD judges")
+    p.add_argument("--grasp-trigger", type=float, default=g.trigger,
+                   help="grasp check: a commanded gripper falling below this pauses the pick (teleop closes: 0.3-9.2)")
+    p.add_argument("--grasp-armed-above", type=float, default=g.armed_above,
+                   help="grasp check: armed once the policy opened above this in the pick (78 of 80 rb_mixed episodes)")
+    p.add_argument("--grasp-close-goal", type=float, default=g.close_goal,
+                   help="grasp check: gripper goal while checking (teleop holds: leader median 1.1)")
+    p.add_argument("--grasp-settle", type=float, default=g.settle_s, help="grasp check: seconds still before reading")
+    p.add_argument("--grasp-min-error", type=float, default=g.min_error,
+                   help="grasp check: reading minus goal for a ball stalling the jaw (held closes: p1 5.5, median 12.4)")
+    p.add_argument("--grasp-min-load", type=float, default=g.min_load,
+                   help="grasp check: |Present_Load| of the gripper servo for a hold; default: logged only (not measured)")
+    p.add_argument("--grasp-backoff", type=float, default=g.backoff_s,
+                   help="grasp check: on a miss, back the arm off along the commanded path of this many seconds")
+    p.add_argument("--grasp-max-tip-height", type=float, default=g.max_tip_height,
+                   help="grasp check: a close with the FK tip above this (m) is a miss at once; off by default "
+                        "(model tip z at holding closes 0.02-0.16 m, empty closes overlap)")
     p.add_argument("--max-step-deg", type=float, help="speed cap: largest arm joint change per tick, all skills")
     return p.parse_args()
 
