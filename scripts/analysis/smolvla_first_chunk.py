@@ -1,4 +1,4 @@
-"""Open-loop check: at the moment a demo starts heading for its first ball, does the SmolVLA's predicted
+"""Open-loop check: as a demo leaves its start pose, reaches its first ball and grasps it, does the SmolVLA's predicted
 chunk head for the covering ball (as the demo does) or for the striped ball underneath?
 
 Runs on the CPU, one forward pass per (episode, query time, seed). Episodes need step labels and locally
@@ -61,8 +61,16 @@ class Episode:
         return decode_video_frames(file, [timestamp], tolerance_s=1 / FPS / 2, backend="pyav")[0]
 
 
+def departure_time(ep: Episode, degrees: float = 10.0) -> float:
+    moved = np.linalg.norm(ep.states[:, ARM_JOINTS] - ep.states[0, ARM_JOINTS], axis=1) > degrees
+    return float(np.argmax(moved)) / FPS
+
+
 def query_times(ep: Episode) -> dict[str, float]:
+    # Jakob's "target" label lands when the gripper is already over the chosen ball, so "departure"
+    # (the arm has just left the start pose) is the moment the clear-or-pick choice is still open.
     return {
+        "departure": departure_time(ep),
         "first_target": ep.first_time({"r_target", "b_target", "s_target"}),
         "first_grab": ep.first_time({"r_grab", "b_grab", "s_grab"}),
     }
@@ -95,6 +103,7 @@ def main() -> None:
     parser.add_argument("--labels", type=Path, required=True)
     parser.add_argument("--episodes", type=int, nargs="+", required=True)
     parser.add_argument("--seeds", type=int, default=2)
+    parser.add_argument("--queries", nargs="+", default=["departure", "first_target", "first_grab"])
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--dump-inputs", type=Path)
     args = parser.parse_args()
@@ -120,6 +129,8 @@ def main() -> None:
             ep = Episode(args.dataset_root, index, labels[index])
             poses = reference_poses(ep)
             for name, t in query_times(ep).items():
+                if name not in args.queries:
+                    continue
                 images = {c: ep.image(c, t) for c in CAMERAS}
                 if args.dump_inputs:
                     args.dump_inputs.mkdir(parents=True, exist_ok=True)
