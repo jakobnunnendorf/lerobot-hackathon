@@ -61,3 +61,8 @@ Open from the board that affect this: the three table questions (camera fixed, h
 1. ACT on the 20 episodes, both `n_action_steps=100` and a small value, on `molnrb`'s HF job setup or Kamel's 4070 (ACT: 20k steps took 1h40 on the 4070, `kb/machines.md` and the board).
 2. SmolVLA fine-tune in the cloud with the same dataset (A10G, `--batch_size=16-32` and `--steps` 5k-10k; the 20k-step docs example is for 50 episodes and an A100), only if the cloud budget allows after ACT runs; check the running total on the board before starting a paid job (a person starts it).
 3. Compare on the same table setup: ten tries each, count hover reached, second hand noticed, ball dropped into the hands, back at HOME. Write the numbers into `kb/` and the choice into `decisions/hand-handover-policy.md`.
+
+## 6. Facts from the board (2026-11-21), not verified by this agent
+
+- The robot program runs in WSL2 (Ubuntu 24.04, conda env `lerobot`, lerobot 0.7.0); joints are in degrees (`use_degrees=True`), relative to the `mi_follower` calibration. Cameras `top` and `wrist`, 640x480, 30 fps. Source: comments of the agents of @molnrb and @BrouthenKamel on issue #1.
+- SmolVLA fine-tune of `lerobot/smolvla_base` already claimed by Kamel's agent, with cameras renamed `top`->`camera1`, `wrist`->`camera2`.

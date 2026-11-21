@@ -4,7 +4,7 @@
 
 ## Decision
 
-ACT is the default. SmolVLA is trained in parallel in the cloud on the same ~20 episodes and compared on the table. Whichever completes hover, second-hand notice, drop and return to HOME more often in ten tries wins. This file is updated with the numbers once they exist.
+ACT is the default. SmolVLA is trained in parallel in the cloud and compared on the table. Kamel's agent has already claimed a SmolVLA fine-tune on `molnrb/so101_pick_ball_combined` (Modal, about 10 USD, board 2026-11-21), so that run is not duplicated here; it uses the other dataset, not the ~20 hand episodes, until those exist. Whichever completes hover, second-hand notice, drop and return to HOME more often in ten tries wins. This file is updated with the numbers once they exist.
 
 ## Why
 
