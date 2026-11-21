@@ -52,6 +52,34 @@ REDBLUE_AUGMENTATION_V2 = json.dumps(
 
 VOL = "/vol"
 
+# The source datasets said "blue ball"; the target is a striped green and yellow ball. Edited copies
+# live on the Volume, the molnrb repos are never touched.
+PICK_SOURCES = {
+    "molnrb/so101_pick_ball": (
+        "Pick up the ball and put it in the box",
+        "Pick up the aluminium ball and put it in the box",
+    ),
+    "molnrb/so101_pick_blue_ball": (
+        "Pick up the blue ball from the bowl and return to the start position",
+        "Pick up the striped green and yellow ball from the bowl and return to the start position",
+    ),
+    "molnrb/so101_pick_buried_ball": (
+        "Find the buried blue ball in the bowl, uncover it, pick it up and return to the start position",
+        "Find the buried striped green and yellow ball in the bowl, uncover it, pick it up and return to the start position",
+    ),
+    "molnrb/so101_pick_rb_mixed": (
+        "Pick up the striped ball from the bowl of red and blue balls, uncovering it first if it is buried, and return to the start position",
+        "Pick up the striped green and yellow ball from the bowl of red and blue balls, uncovering it first if it is buried, and return to the start position",
+    ),
+}
+MERGED_DATASET = "brouthen/so101_pick_striped_all"
+PRETRAIN_RUN = "act_pretrain_all_h100_50k"
+
+
+def dataset_root(repo_id: str) -> str:
+    return f"{VOL}/datasets/{repo_id.split('/')[-1]}"
+
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -105,6 +133,34 @@ RECIPES = {
             "--eval_steps=1000",
         ],
         "schedule_follows_steps": True,
+    },
+    # LeRobot ACT defaults (batch 8, lr 1e-5, chunk 100, fp32, no augmentation). eval_split 0.1 holds
+    # out the last 10% of each task, so pretrain and fine-tune hold out the same 12 red/blue episodes.
+    "act_pretrain_all": {
+        "dataset": MERGED_DATASET,
+        "root": dataset_root(MERGED_DATASET),
+        "frames": 180134,
+        "batch_size": 8,
+        "mixed_precision": "no",
+        "prefetch_models": [],
+        "args": ["--policy.type=act", "--dataset.eval_split=0.1", "--seed=1000", "--eval_steps=5000"],
+        "schedule_follows_steps": False,
+    },
+    # not --resume: the normaliser switches to the red/blue stats
+    "act_finetune_rb": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "root": dataset_root("molnrb/so101_pick_rb_mixed"),
+        "frames": 71301,
+        "batch_size": 8,
+        "mixed_precision": "no",
+        "prefetch_models": [],
+        "args": [
+            f"--policy.path={VOL}/outputs/{PRETRAIN_RUN}/checkpoints/050000/pretrained_model",
+            "--dataset.eval_split=0.1",
+            "--seed=1000",
+            "--eval_steps=2000",
+        ],
+        "schedule_follows_steps": False,
     },
     # act_redblue held-out loss went flat after 10k steps while train loss kept falling; this run
     # targets that gap. See decisions/act-redblue-generalisation.md.
@@ -170,10 +226,12 @@ def train_command(recipe: str, run_name: str, steps: int, batch_size: int, save_
     command = [
         "lerobot-train",
         f"--dataset.repo_id={r['dataset']}",
+        *([f"--dataset.root={r['root']}"] if r.get("root") else []),
         *r["args"],
         "--policy.device=cuda",
         "--policy.push_to_hub=false",
-        "--accelerator.mixed_precision=bf16",
+        # "no" is the default; passing it would be parsed as the boolean False
+        *([f"--accelerator.mixed_precision={r.get('mixed_precision', 'bf16')}"] if r.get("mixed_precision", "bf16") != "no" else []),
         f"--batch_size={batch_size}",
         f"--steps={steps}",
         f"--num_workers={int(CPU) - 2}",
@@ -265,6 +323,43 @@ def prepare(recipe: str = "act_redblue") -> None:
     ds = LeRobotDataset(RECIPES[recipe]["dataset"])
     print(f"dataset ready: {ds.num_episodes} episodes, {ds.num_frames} frames", flush=True)
     volume.commit()
+
+
+@app.function(
+    cpu=8.0,
+    memory=32 * 1024,
+    volumes={VOL: volume},
+    secrets=[modal.Secret.from_name("huggingface")],
+    timeout=90 * 60,
+)
+def prepare_merged() -> None:
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    for repo_id, (old_task, new_task) in PICK_SOURCES.items():
+        edit = ["lerobot-edit-dataset", f"--repo_id={repo_id}", f"--root={dataset_root(repo_id)}"]
+        subprocess.run(
+            [*edit, "--operation.type=modify_tasks", f"--operation.task_replacements={json.dumps({old_task: new_task})}"],
+            check=True,
+        )
+    volume.commit()
+    shutil.rmtree(dataset_root(MERGED_DATASET), ignore_errors=True)
+    subprocess.run(
+        [
+            "lerobot-edit-dataset",
+            f"--new_repo_id={MERGED_DATASET}",
+            f"--new_root={dataset_root(MERGED_DATASET)}",
+            "--operation.type=merge",
+            f"--operation.repo_ids={json.dumps(list(PICK_SOURCES))}",
+            f"--operation.roots={json.dumps([dataset_root(r) for r in PICK_SOURCES])}",
+            "--push_to_hub=true",
+        ],
+        check=True,
+    )
+    volume.commit()
+    merged = LeRobotDataset(MERGED_DATASET, root=dataset_root(MERGED_DATASET))
+    print(f"merged: {merged.num_episodes} episodes, {merged.num_frames} frames", flush=True)
+    for task in merged.meta.tasks.index:
+        print(f"  task: {task}", flush=True)
 
 
 @app.function(cpu=CPU, memory=MEMORY, volumes={VOL: volume}, gpu="L40S", timeout=30 * 60)
