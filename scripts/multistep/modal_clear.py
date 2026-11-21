@@ -1,6 +1,7 @@
 """Fine-tune one ACT per clearing colour on Modal: cut rb_mixed into segments, check them, train.
 
-    py -3.12 -m modal run --detach scripts/multistep/modal_clear.py --colours red,blue --steps 8000 --max-minutes 35
+    py -3.12 -m modal run scripts/multistep/modal_clear.py::check
+    py -3.12 -m modal run --detach scripts/multistep/modal_clear.py::main --colours red,blue --steps 8000 --max-minutes 35
     py -3.12 -m modal volume get lerobot-multistep outputs/act_clear_red_8k/checkpoints/008000/pretrained_model act_clear_red
 """
 
@@ -125,6 +126,19 @@ def train_colour(colour: str, steps: int, max_minutes: float, run_name: str) -> 
         "minutes": round((time.time() - start) / 60, 1),
         "checkpoints": sorted(p.name for p in checkpoints.iterdir()) if checkpoints.is_dir() else [],
     }
+
+
+@app.function(cpu=8.0, memory=16 * 1024, volumes={VOL: volume}, timeout=30 * 60)
+def check_colour(colour: str) -> str:
+    build_and_check(colour)
+    return f"{colour}: built and checked"
+
+
+@app.local_entrypoint()
+def check(colours: str = "red,blue") -> None:
+    print("CPU only, about 0.15 USD: downloads rb_mixed, builds and checks each colour's dataset, no training")
+    for result in check_colour.map(colours.split(",")):
+        print(result)
 
 
 @app.local_entrypoint()
