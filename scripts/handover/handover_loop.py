@@ -16,6 +16,8 @@ ARM_KEYS = [f"{joint}.pos" for joint in ARM_JOINTS]
 DRY_RUN_START_DEG = np.array([0.0, -55.3, 5.6, 91.8, 0.0])
 FRAME_EVERY_TICKS = 2
 DRY_RUN_GRIPPER = 13.0
+CELEBRATE_PHASE_S = 0.3
+CELEBRATE_CLOSED = 5.0
 
 
 @dataclass
@@ -23,7 +25,8 @@ class Limits:
     max_step_deg: float = 1.5
     gripper_step: float = 4.0
     max_step_m: float = 0.008
-    min_height: float = 0.08
+    # Every target at least 20 cm above the table, as in the command run on the arm (docs/hand-tracking-test.md, 2b).
+    min_height: float = 0.20
     max_height: float = 0.30
     min_radius: float = 0.12
     max_radius: float = 0.38
@@ -126,26 +129,47 @@ class Mover:
         return (self.home, True) if homing else (commanded, False)
 
 
+def celebration_gripper(seconds_since_done: float, cycles: int, gripper_open: float) -> float | None:
+    phase = int(seconds_since_done / CELEBRATE_PHASE_S)
+    if phase >= 2 * cycles:
+        return None
+    return CELEBRATE_CLOSED if phase % 2 == 0 else gripper_open
+
+
 def run(arm, receiver: HandReceiver, follower: Follower, home: np.ndarray, gripper_hold: float,
-        gripper_open: float, lim: Limits, fps: int, duration_s: float | None, on_tick, frame_writer=None) -> None:
+        gripper_open: float, lim: Limits, fps: int, duration_s: float | None, on_tick, frame_writer=None,
+        rest: np.ndarray | None = None, celebrate_cycles: int = 0) -> None:
     commanded, _ = arm.read()
     mover = Mover(home, lim)
     gripper_cmd = gripper_hold
     start = time.monotonic()
-    tick_start, last_warning, tick = start, 0.0, 0
+    tick_start, last_warning, tick, done_since = start, 0.0, 0, None
     while duration_s is None or tick_start - start < duration_s:
         measured, gripper_measured = arm.read()
         tip = forward_kinematics(measured)
         decision = follower.step(receiver.newest_hands(), tip, tick_start)
+        if decision.mode is Mode.DONE and done_since is None:
+            done_since = tick_start
 
         goal, reachable = mover.goal(decision, commanded)
         if not reachable and tick_start - last_warning > 1.0:
             print(f"target out of reach, holding: {np.round(decision.target_xyz, 3).tolist()}", flush=True)
             last_warning = tick_start
-        commanded = guarded_step(commanded, goal, lim)
+        celebrating = None if done_since is None else celebration_gripper(tick_start - done_since, celebrate_cycles, gripper_open)
+        if celebrating is not None:
+            goal = commanded
+        elif done_since is not None and rest is not None:
+            # A plain joint move from hover height to the folded rest pose rises all the way in the model (dry check
+            # over the whole hand zone), so no Cartesian waypoints are needed.
+            goal = rest
+        to_rest = done_since is not None and rest is not None and celebrating is None
+        commanded = step_towards(commanded, goal, lim.max_step_deg) if to_rest else guarded_step(commanded, goal, lim)
         # Until the drop, the holding value is sent every tick, so a lost hand or a solver failure never loosens the grip.
         released = decision.mode in (Mode.DROP, Mode.DONE)
-        gripper_cmd = step_towards(np.array(gripper_cmd), np.array(gripper_open), lim.gripper_step).item() if released else gripper_hold
+        if celebrating is not None:
+            gripper_cmd = celebrating
+        else:
+            gripper_cmd = step_towards(np.array(gripper_cmd), np.array(gripper_open), lim.gripper_step).item() if released else gripper_hold
         arm.send(commanded, gripper_cmd)
         on_tick(tick_start - start, decision, commanded, gripper_cmd, forward_kinematics(commanded), forward_kinematics(goal))
         if frame_writer is not None and tick % FRAME_EVERY_TICKS == 0:
@@ -241,6 +265,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--home", type=float, nargs=5, help="HOME joints in degrees; default: the pose at start")
     p.add_argument("--gripper-hold", type=float, help="default: the gripper goal at start (robot) or 13 (dry run)")
     p.add_argument("--gripper-open", type=float, default=60.0)
+    p.add_argument("--rest", type=float, nargs=5,
+                   help="after the drop, go to these joints (degrees), e.g. the folded rest pose -3.69 -103.43 97.01 -100.26 1.45 "
+                        "(Balazs's reading, board 7064702491); default: stay at home")
+    p.add_argument("--celebrate", type=int, default=0, help="fast close-open cycles of the gripper right after the drop")
     p.add_argument("--hover-height", type=float, default=FollowSettings.hover_height)
     p.add_argument("--lost-to-home", type=float, default=FollowSettings.lost_to_home_s)
     p.add_argument("--drop-radius", type=float, default=FollowSettings.drop_radius)
@@ -288,7 +316,7 @@ def main() -> None:
 
     try:
         run(arm, receiver, follower, home, gripper_hold, args.gripper_open, lim, args.fps, args.duration, reporter,
-            frame_writer)
+            frame_writer, np.array(args.rest) if args.rest else None, args.celebrate)
     except KeyboardInterrupt:
         pass
     finally:
