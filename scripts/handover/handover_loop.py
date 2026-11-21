@@ -205,6 +205,11 @@ def connect_robot(port: str, robot_id: str, top_camera: str):
     cameras = {"top": OpenCVCameraConfig(index_or_path=camera, width=640, height=480, fps=30, fourcc="MJPG")}
     # Torque stays on at exit: the default disconnect switches it off and would drop a held ball.
     robot = SO101Follower(SO101FollowerConfig(port=port, id=robot_id, cameras=cameras, disable_torque_on_disconnect=False))
+    # The servos drive to their stored goal the moment connect() switches torque on (LeRobot 0.7.0 does not sync it).
+    # After the arm was moved by hand with torque off that goal is stale, so it becomes the present position first.
+    robot.bus.connect()
+    robot.bus.sync_write("Goal_Position", robot.bus.sync_read("Present_Position", normalize=False), normalize=False)
+    robot.bus.disconnect(disable_torque=False)
     robot.connect()
     kinematics.JOINT_LIMITS_DEG.update(kinematics.joint_limits_from_calibration(robot.calibration_fpath))
     return robot

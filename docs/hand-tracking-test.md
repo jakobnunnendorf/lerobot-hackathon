@@ -53,20 +53,41 @@ Check:
 
 Ctrl+C in both terminals.
 
-## 2. Stage 2: the arm follows (only after K has passed)
+## 2. Stage 2: the arm follows
 
-One person stands at the arm with a hand on its power switch. No ball, nothing else within reach. Put the arm in its usual rest pose first: the pose at start is where it returns when the hand is lost.
+K has passed after a fix: the joint signs are right, and the zero offsets fitted from Balazs's corner touches are now in `scripts/handover/kinematics.py` on this branch (board 7064451117). The corners now come out 4-11 mm from the ruler. That holds at table height. 2a checks hover height.
 
-Terminal 1, the control loop. It owns the top camera and shares the frames with the tracker:
+One person stands at the arm with a hand on its power switch. No ball, nothing else within reach.
+
+### 2a. Two-minute check of the arm model at hover height (torque off)
+
+Terminal 1:
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/track
-python scripts/handover/handover_loop.py --robot --port /dev/so101_follower \
-    --top-camera /dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0 --robot-id mi_follower \
-    --hover-height 0.25 --max-step-m 0.004 --max-step-deg 1.0 --print-every 15
+git pull                                    # brings the fitted offsets
+python scripts/handover/read_pose.py --port /dev/so101_follower --robot-id mi_follower
 ```
 
+It switches torque off: hold the arm. It prints the joints and `jaw tip (m) x= y= z=` twice a second.
+
+1. Let the arm rest in its folded rest pose. Measure the height of the fixed jaw's end above the table with a ruler, and note it next to the printed `z`.
+2. Hold the fixed jaw's end about **25 cm above** a point you can measure, for example 25 cm straight ahead of the base's turning axis. Compare the printed `x`, `y` and `z` with the ruler. **Within about 3 cm: go on.** If z is more than 3 cm off, stop and post both readings.
+3. **Keep holding the arm in that raised pose** and go straight to 2b. The pose at start is where the arm returns when the hand is lost. Starting raised keeps every move at hover height, away from the bowl.
+
+### 2b. Start the loop with the arm held raised
+
+Press Ctrl+C in terminal 1 (`read_pose.py` stops; the arm stays limp, keep holding it), then start the control loop in the same terminal. It owns the top camera and shares the frames with the tracker:
+
+```bash
+python scripts/handover/handover_loop.py --robot --port /dev/so101_follower \
+    --top-camera /dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0 --robot-id mi_follower \
+    --hover-height 0.25 --min-height 0.20 --max-step-m 0.004 --max-step-deg 1.0 --print-every 15
+```
+
+- Once it prints `listening on 127.0.0.1:8766; home=...`, the torque is on and the arm holds itself: let go. Before switching the torque on, it sets each servo's target to where the arm is, so the arm does not jump to an old target.
 - It must connect without a calibration. If it asks `Press ENTER to use provided calibration file ...`, press ENTER. If it starts a calibration procedure, press Ctrl+C and post here.
+- `--min-height 0.20` keeps every target at least 20 cm above the table.
 - `--max-step-m 0.004 --max-step-deg 1.0` halves the speed for the first runs, to about 12 cm/s. Leave both out once it behaves.
 
 Terminal 2, the tracker, reading the loop's frames (no `--camera`):
