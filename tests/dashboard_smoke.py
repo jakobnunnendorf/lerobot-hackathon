@@ -69,6 +69,7 @@ def main() -> None:
                   busy["reason"])
             given = wait_for(lambda: "| 1 | striped -> hand | given" in call("/api/summary"), 30)
             check("round 1 ends 'given' and shows in the summary", bool(given))
+            round_video(Path(logs))
             call("/api/result", {"round": 1, "result": "success", "note": "smoke"})
             rows = call("/api/results")
             check("result row saved", rows and rows[0]["result"] == "success" and rows[0]["outcome"] == "given", str(rows))
@@ -83,6 +84,34 @@ def main() -> None:
                 process.wait(timeout=10)
     print("FAIL" if failures else "PASS")
     sys.exit(1 if failures else 0)
+
+
+def round_video(logs: Path) -> None:
+    import csv
+    from datetime import datetime
+
+    import cv2
+
+    log = next(p for p in logs.glob("chain_*.jsonl") if not p.name.endswith(".ticks.jsonl"))
+    video = wait_for(lambda: next(logs.glob(f"{log.stem}_round01.mp4"), None), 10)
+    times = log.with_name(f"{log.stem}_round01.frames.csv")
+    closed = wait_for(lambda: times.exists() and cv2.VideoCapture(str(video)).get(cv2.CAP_PROP_FRAME_COUNT) > 0, 10)
+    time.sleep(0.5)
+    capture = cv2.VideoCapture(str(video))
+    ok, frame = capture.read()
+    frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    capture.release()
+    with open(times, newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    events = [json.loads(line) for line in log.read_text().splitlines()]
+    start = next(datetime.fromisoformat(e["time"]) for e in events if e.get("event") == "round_start" and e["round"] == 1)
+    end = next(datetime.fromisoformat(e["time"]) for e in events if e.get("event") == "round_end" and e["round"] == 1)
+    first, last = datetime.fromisoformat(rows[0]["time"]), datetime.fromisoformat(rows[-1]["time"])
+    check("round 1 video: top | wrist side by side, one CSV row per frame, frame times on the log's clock",
+          bool(closed) and ok and frame.shape == (512, 1280, 3) and frames == len(rows) > 10
+          and abs((first - start).total_seconds()) < 1.0 and 0 <= (last - end).total_seconds() < 3.0,
+          f"{video.name if video else None}: {frames} frames, {len(rows)} rows, first {(first - start).total_seconds():+.2f} s "
+          f"from round_start, last {(last - end).total_seconds():+.2f} s from round_end")
 
 
 def _try(function):

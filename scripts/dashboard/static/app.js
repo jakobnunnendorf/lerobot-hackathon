@@ -243,6 +243,8 @@ function renderLive() {
   $("badge-speech").textContent = `Speech: ${state.speech}`;
   $("badge-speech").className = `badge debug ${state.speech === "ready" ? "on" : state.speech.startsWith("failed") ? "off" : ""}`;
   $("badge-log").textContent = `Log: ${state.log || "none"}`;
+  $("badge-rec").textContent = state.recording ? `● REC ${state.recording}` : "Video: between rounds";
+  $("badge-rec").className = `badge debug ${state.recording ? "rec" : ""}`;
 
   const band = s.hold_range || [6, 20];
   $("hold-band").style.left = `${band[0]}%`;
@@ -361,6 +363,7 @@ function connect() {
     state.statusAge = data.status_age;
     state.log = data.log;
     state.speech = data.speech;
+    state.recording = data.recording;
     if (Date.now() - renderedAt > 200) { render(); renderedAt = Date.now(); }
   };
   source.onerror = () => { $("badge-robot").textContent = "Dashboard server unreachable"; $("badge-robot").className = "badge off"; };

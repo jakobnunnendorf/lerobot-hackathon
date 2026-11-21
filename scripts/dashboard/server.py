@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cv2
@@ -37,6 +37,9 @@ MIN_VOICE_S = 0.3
 SILENCE_PEAK = 0.01
 VOICE_PAD_S = 0.5
 COMMAND_SETTLE_S = 3.0
+VIDEO_FPS = 15
+VIDEO_TAIL_S = 2.0
+VIDEO_BAR_PX = 32  # under the frames, not over them: the wrist frame's bottom edge shows the held ball
 RESULTS = ("success", "wrong_ball", "empty", "dropped", "still_digging", "never_started", "other")
 DEFAULT_AVAILABLE = {"targets": ["striped"], "destinations": ["hand", "container"]}
 
@@ -131,10 +134,13 @@ class Camera:
     def __init__(self, block: str, label: str):
         self.block, self.label = block, label
         self.jpeg, self.live, self.version = placeholder(label), False, 0
+        self.frame, self.captured_at = None, None
         threading.Thread(target=self._run, daemon=True).start()
 
     def _set(self, jpeg: bytes, live: bool) -> None:
         self.jpeg, self.live, self.version = jpeg, live, self.version + 1
+        if not live:
+            self.frame, self.captured_at = None, None
 
     def _run(self) -> None:
         reader, last_new = None, 0.0
@@ -151,6 +157,7 @@ class Camera:
             if got is not None:
                 last_new = time.monotonic()
                 frame = cv2.cvtColor(got[0], cv2.COLOR_RGB2BGR)
+                self.frame, self.captured_at = frame, wall_time(got[1])
                 ok, encoded = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 if ok:
                     self._set(encoded.tobytes(), True)
@@ -160,6 +167,86 @@ class Camera:
                 self._set(placeholder(self.label), False)
                 continue
             time.sleep(1 / CAMERA_FPS)
+
+
+# The writers stamp frames with perf_counter_ns, which is the system-wide monotonic clock on Linux and Windows, so the
+# capture time converts to the wall clock the supervisor's logs use.
+def wall_time(captured_ns: int) -> float:
+    return time.time() - (time.perf_counter_ns() - captured_ns) / 1e9
+
+
+def log_stamp(seconds: float) -> str:
+    return datetime.fromtimestamp(seconds, UTC).isoformat(timespec="milliseconds")
+
+
+def active_round(events: list[dict]) -> tuple[int | None, str]:
+    number, state = None, "idle"
+    for event in events:
+        kind = event.get("event")
+        if kind == "round_start":
+            number, state = event["round"], "REST"
+        elif kind == "transition" and event.get("round") == number:
+            state = event["target"]
+        elif kind == "round_end" and event.get("round") == number:
+            number, state = None, "idle"
+    return number, state
+
+
+class RoundVideo:
+    def __init__(self, stem: Path, fps: int):
+        self.path = stem.with_name(stem.name + ".mp4")
+        self.writer = cv2.VideoWriter(str(self.path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (2 * 640, 480 + VIDEO_BAR_PX))
+        self.times = open(stem.with_name(stem.name + ".frames.csv"), "w", newline="", encoding="utf-8")
+        self.rows = csv.writer(self.times)
+        self.rows.writerow(["frame", "time", "top_time", "wrist_time", "round", "state"])
+        self.count = 0
+
+    def write(self, cameras: dict, number: int, state: str) -> None:
+        panels = [camera.frame if camera.frame is not None else blank(camera.label) for camera in cameras.values()]
+        stamps = [camera.captured_at for camera in cameras.values()]
+        shown = next((t for t in stamps if t is not None), time.time())
+        image = np.vstack([np.hstack(panels), np.zeros((VIDEO_BAR_PX, 2 * 640, 3), np.uint8)])
+        cv2.putText(image, f"{log_stamp(shown)[11:23]} UTC   round {number}   {state}", (10, 480 + 23),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        self.writer.write(image)
+        self.rows.writerow([self.count, log_stamp(shown), *[log_stamp(t) if t else "" for t in stamps], number, state])
+        self.count += 1
+
+    def close(self) -> None:
+        self.writer.release()
+        self.times.close()
+
+
+def blank(label: str) -> np.ndarray:
+    image = np.zeros((480, 640, 3), np.uint8)
+    cv2.putText(image, f"no {label} frame", (220, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (120, 120, 120), 2)
+    return image
+
+
+# One video per round next to the event log (<log stem>_roundNN.mp4): top | wrist, stamped with the capture time on
+# the log's clock, plus <...>.frames.csv with every frame's times, to line the video up with the event and tick logs.
+class RoundRecorder:
+    def __init__(self, log: LogTail, cameras: dict, fps: int):
+        self.log, self.cameras, self.fps = log, cameras, fps
+        self.recording: str | None = None
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self) -> None:
+        video, recorded, tail_until, next_at = None, None, None, time.monotonic()
+        while True:
+            number, state = active_round(self.log.snapshot())
+            if video is not None and number != recorded:
+                tail_until = tail_until or time.monotonic() + VIDEO_TAIL_S
+                if number is not None or time.monotonic() >= tail_until:
+                    video.close()
+                    video, self.recording = None, None
+            if video is None and number is not None and self.log.path is not None:
+                video = RoundVideo(self.log.path.with_name(f"{self.log.path.stem}_round{number:02d}"), self.fps)
+                recorded, tail_until, self.recording = number, None, video.path.name
+            if video is not None:
+                video.write(self.cameras, recorded, state if number == recorded else "after round")
+            next_at = max(next_at + 1 / self.fps, time.monotonic())
+            time.sleep(max(next_at - time.monotonic(), 0.0))
 
 
 def placeholder(label: str) -> bytes:
@@ -247,6 +334,7 @@ def build_app(args) -> FastAPI:
     status = StatusListener(args.status_port)
     log = LogTail(Path(args.log_dir).expanduser(), status)
     cameras = {"top": Camera(args.top_shm, "top"), "wrist": Camera(args.wrist_shm, "wrist")}
+    recorder = None if args.no_video else RoundRecorder(log, cameras, args.video_fps)
     voice_model = Speech(args.speech) if not args.no_speech else None
     results = Results(Path(args.log_dir).expanduser())
     app = FastAPI()
@@ -321,6 +409,7 @@ def build_app(args) -> FastAPI:
                 message = {"status": status.latest if status.received_at else None, "status_age": status.age(),
                            "log": log.path.name if log.path else None, "reset": new_generation != generation,
                            "events": new, "cameras": {name: camera.live for name, camera in cameras.items()},
+                           "recording": recorder.recording if recorder else None,
                            "speech": "ready" if voice_model and voice_model.transcribe else
                            (f"failed: {voice_model.error}" if voice_model and voice_model.error else
                             "off" if voice_model is None else "loading")}
@@ -393,6 +482,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
     p.add_argument("--speech", default="parakeet-en", choices=sorted(speech.BACKENDS))
     p.add_argument("--no-speech", action="store_true", help="skip loading the speech model (typed chat still works)")
+    p.add_argument("--no-video", action="store_true", help="do not record a video of each round next to the log")
+    p.add_argument("--video-fps", type=int, default=VIDEO_FPS)
     return p.parse_args()
 
 

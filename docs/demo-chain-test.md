@@ -93,6 +93,13 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 
 Terminal 3, the dashboard: `python scripts/dashboard/server.py` (env `dashboard`), page at http://localhost:8080. The header must say `Robot program: running`.
 
+What lands in `~/so101/demo/` per start of `demo_chain.sh`:
+- `chain_<time>.jsonl`: the events (transitions, grasp checks, round results).
+- `chain_<time>.ticks.jsonl`: one line per control tick (policy action, command, goal sent, measured joints, gripper load).
+- `chain_<time>_roundNN.mp4` + `.frames.csv`: both cameras for each round, written by the dashboard. The header shows `● REC` while it records. **Keep the dashboard running during rounds**, or there is no video.
+
+Push them to `molnrb/arm-logs` after the session, as for exp1.
+
 Start a round with the **Striped → ✋** tile, the chat, or 🎤 "give me the ball". `h` + Enter in terminal 1 still works. The dashboard refuses a new command while a round runs. Expect:
 
 1. **Rest**: a small move into the rest pose, gripper 30.

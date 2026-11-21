@@ -44,6 +44,7 @@ h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacin
 .badge.on { background: rgba(52, 199, 123, 0.18); color: var(--ok); }
 .badge.off { background: rgba(239, 76, 76, 0.15); color: var(--bad); }
 .badge.fake { background: rgba(240, 180, 41, 0.18); color: var(--warn); }
+.badge.rec { background: rgba(239, 76, 76, 0.15); color: var(--bad); }
 
 .header-actions { display: flex; align-items: center; gap: 14px; }
 .toggle { color: var(--muted); font-size: 13px; cursor: pointer; user-select: none; }
