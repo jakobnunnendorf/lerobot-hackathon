@@ -49,9 +49,12 @@ def record_args(name: str, task: str, episodes: int, episode_s: int, env) -> lis
     root = lerobot_home() / repo
     camera = "{type: opencv, index_or_path: %s, width: 640, height: 480, fps: 30, fourcc: MJPG, backend: 200}"
     cameras = f"{{ top: {camera % env['SO101_CAM_TOP']}, wrist: {camera % env['SO101_CAM_WRIST']} }}"
+    # As record.sh since PR #51: usbip garbles single packets, and LeRobot's 2 read retries ended sessions hourly.
+    retries = env.get("SO101_READ_RETRIES", "10")
     return ["--robot.type=so101_follower", f"--robot.port={env['SO101_FOLLOWER_PORT']}",
             f"--robot.id={env['SO101_FOLLOWER_ID']}", "--teleop.type=so101_leader",
             f"--teleop.port={env['SO101_LEADER_PORT']}", f"--teleop.id={env['SO101_LEADER_ID']}",
+            f"--robot.num_read_retries={retries}", f"--teleop.num_read_retries={retries}",
             f"--robot.cameras={cameras}", "--display_data=false", f"--dataset.repo_id={repo}",
             f"--dataset.root={root}", "--dataset.no_stamp=true", f"--dataset.single_task={task}",
             f"--dataset.num_episodes={episodes}", f"--dataset.episode_time_s={episode_s}",

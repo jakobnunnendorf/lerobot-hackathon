@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 import time
 from dataclasses import replace
@@ -137,7 +138,7 @@ def make_robot(args):
 
     # Torque stays on at exit: the default disconnect switches it off and would drop a held ball.
     return SO101Follower(SO101FollowerConfig(port=args.port, id=args.robot_id, cameras=cameras,
-                                             disable_torque_on_disconnect=False))
+                                             disable_torque_on_disconnect=False, num_read_retries=args.read_retries))
 
 
 def settings_from(args) -> Settings:
@@ -471,6 +472,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--top-camera")
     p.add_argument("--wrist-camera")
     p.add_argument("--robot-id", default="mi_follower")
+    p.add_argument("--read-retries", type=int, default=int(os.environ.get("SO101_READ_RETRIES", 10)),
+                   help="motor read retries; usbip garbles single packets and LeRobot's default of 2 ended recording "
+                        "sessions several times an hour (PR #51)")
     p.add_argument("--device", help="policy device; default: the checkpoint's, falling back as LeRobot does")
     p.add_argument("--pick-policy", default=DEFAULT_PICK)
     p.add_argument("--n-action-steps", type=int, help="override the pick checkpoint's n_action_steps (ACT: 100)")

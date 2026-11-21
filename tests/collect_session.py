@@ -55,7 +55,8 @@ def arguments(home: Path) -> None:
                 "--teleop.id=mi_leader", cameras, "--dataset.repo_id=molnrb/so101_test", "--dataset.no_stamp=true",
                 "--dataset.single_task=Pick up the striped ball", "--dataset.num_episodes=5",
                 "--dataset.episode_time_s=120", "--dataset.reset_time_s=3600", "--dataset.fps=30",
-                "--dataset.streaming_encoding=true", "--dataset.encoder_threads=2", "--dataset.push_to_hub=false"}
+                "--dataset.streaming_encoding=true", "--dataset.encoder_threads=2", "--dataset.push_to_hub=false",
+                "--robot.num_read_retries=10", "--teleop.num_read_retries=10"}
     check("arguments as record.sh: same cameras, ids and dataset settings; --resume once the dataset exists",
           expected <= set(fresh) and "--resume=false" in fresh and "--resume=true" in again
           and record_session.episodes_in(home / "molnrb" / "so101_test") == 7, str(sorted(expected - set(fresh))))
