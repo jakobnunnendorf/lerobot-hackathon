@@ -45,8 +45,17 @@ scripts/voice/.venv/Scripts/python scripts/voice/listen.py
 3. A box shows `HEARD 'Hey bot, give it to me.'` and `>>> HAND  (striped ball)`, then `sent {...}`.
 4. Terminal 1 prints the same JSON line.
 5. Same with "Hey bot, put it in the container": `>>> CONTAINER`.
+6. "Hey bot, hand me the red ball" shows `>>> HAND  (red ball)`. Naming no colour means the striped ball; naming two colours is refused.
 
 Say "hey bot" first, then the command, in one breath. A recording stops by itself after 8 s.
+
+## Try it without the robot: what it hears and how it scores
+
+```bash
+scripts/voice/.venv/Scripts/python scripts/voice/listen.py --dry-run
+```
+
+Press Enter, speak, press Enter. Under the transcript it prints a score from 0 to 1 for the wake phrase and for each action (`hand`: pick the ball and give it to a hand; `container`: pick it and put it in the container), and which ball colour was named. Nothing is sent, so no robot program is needed. The scores are text similarity between the transcript and the phrase table in `scripts/voice/commands.py`, not probabilities: a command needs 0.80 for the wake phrase and for one action, and a lead of 0.10 over the other action. `--dry-run` also works with `--wav` and with the keys 1 and 2.
 
 ## When something goes wrong
 
