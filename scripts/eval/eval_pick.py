@@ -194,6 +194,16 @@ def make_robot() -> SO101Follower:
     )
 
 
+def sync_goal_to_present(bus) -> None:
+    # connect() switches torque on without writing a goal, so each servo drives to its last stored goal: after `q`
+    # (torque off, arm limp) or teleop that goal is stale and the arm jumps. Same fix as scripts/handover/handover_loop.py.
+    bus.connect()
+    try:
+        bus.sync_write("Goal_Position", bus.sync_read("Present_Position", normalize=False), normalize=False)
+    finally:
+        bus.disconnect(disable_torque=False)
+
+
 def joints(robot: SO101Follower) -> dict:
     obs = robot.get_observation()
     return {k: obs[k] for k in HOME}
@@ -324,6 +334,7 @@ def main() -> None:
               "gripper_end", "left_home", "late_ticks_pct", "start_state", "result"]
     rows: list = []
 
+    sync_goal_to_present(robot.bus)
     robot.connect()
     try:
         # The first inference initialises CUDA and takes seconds; do it before the first timed run.
