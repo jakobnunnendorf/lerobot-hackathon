@@ -195,6 +195,20 @@ def plot(rows: list, path: str) -> None:
     fig.savefig(path, dpi=100)
 
 
+def sync_goal_to_present(bus) -> None:
+    """Set every servo's Goal_Position to its Present_Position, raw steps, without touching the torque.
+
+    LeRobot 0.7.0's connect() switches the torque on in configure() without writing a goal first, so each servo drives
+    to whatever goal it last stored. After the arm was moved by hand with the torque off that goal is stale and the arm
+    jumps. Run this on a bus of its own before robot.connect(). Idea and fix from Tian (TianK003/hand-tracking-test).
+    """
+    bus.connect()
+    try:
+        bus.sync_write("Goal_Position", bus.sync_read("Present_Position", normalize=False), normalize=False)
+    finally:
+        bus.disconnect(disable_torque=False)
+
+
 def connect_robot(port: str, robot_id: str, top_camera: str):
     from lerobot.cameras.opencv import OpenCVCameraConfig
     from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
@@ -205,6 +219,7 @@ def connect_robot(port: str, robot_id: str, top_camera: str):
     cameras = {"top": OpenCVCameraConfig(index_or_path=camera, width=640, height=480, fps=30, fourcc="MJPG")}
     # Torque stays on at exit: the default disconnect switches it off and would drop a held ball.
     robot = SO101Follower(SO101FollowerConfig(port=port, id=robot_id, cameras=cameras, disable_torque_on_disconnect=False))
+    sync_goal_to_present(robot.bus)
     robot.connect()
     kinematics.JOINT_LIMITS_DEG.update(kinematics.joint_limits_from_calibration(robot.calibration_fpath))
     return robot
