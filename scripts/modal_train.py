@@ -36,6 +36,20 @@ REDBLUE_AUGMENTATION = json.dumps(
     }
 )
 
+REDBLUE_ACT_ARGS = [
+    # 2e-5 at batch 32 instead of ACT's 1e-5 at batch 8: a cautious step below linear scaling.
+    "--policy.optimizer_lr=2e-5",
+    "--policy.optimizer_lr_backbone=2e-5",
+    "--dataset.image_transforms.enable=true",
+    f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION}",
+    # Same split and seed as the stopped local batch-8 run, so eval losses compare.
+    "--dataset.eval_split=0.05",
+    "--seed=1000",
+    "--eval_steps=5000",
+]
+
+FOIL_CHECKPOINT = "molnrb/act_pick_ball_combined"
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -54,18 +68,16 @@ RECIPES = {
         "frames": 57183,
         "batch_size": 32,
         "prefetch_models": [],
-        "args": [
-            "--policy.type=act",
-            # 2e-5 at batch 32 instead of ACT's 1e-5 at batch 8: a cautious step below linear scaling.
-            "--policy.optimizer_lr=2e-5",
-            "--policy.optimizer_lr_backbone=2e-5",
-            "--dataset.image_transforms.enable=true",
-            f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION}",
-            # Same split and seed as the stopped local batch-8 run, so eval losses compare.
-            "--dataset.eval_split=0.05",
-            "--seed=1000",
-            "--eval_steps=5000",
-        ],
+        "args": ["--policy.type=act", *REDBLUE_ACT_ARGS],
+        "schedule_follows_steps": False,
+    },
+    # Same as act_redblue except the start: the foil-scene policy's weights. See decisions/act-redblue-init.md.
+    "act_redblue_from_foil": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 32,
+        "prefetch_models": [FOIL_CHECKPOINT],
+        "args": [f"--policy.path={FOIL_CHECKPOINT}", *REDBLUE_ACT_ARGS],
         "schedule_follows_steps": False,
     },
 }
