@@ -759,6 +759,57 @@ def camera_stall() -> None:
     check("camera stall: a camera silent past the limit still raises, so the round ends in ABORT", raised)
 
 
+def hold_needs_load(log_path: str) -> None:
+    def run(load: str, **settings):
+        scenario = Scenario("pick_then_give", [], "", load=load, settings=settings)
+        arm, skills, sensors, settings_, abort, clock, world = build(scenario)
+        log = TransitionLog(log_path, echo=False)
+        result = Supervisor(arm, skills, sensors, settings_, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+        log.file.close()
+        events = [json.loads(line) for line in open(log_path)]
+        open(log_path, "w").close()
+        return result, events
+
+    empty = lambda: 30.0  # noqa: E731
+    result, events = run("physics")
+    holds = [e for e in events if e["event"] == "transition" and e["source"] == "VERIFY_HOLD"]
+    check("hold rule, grasp check off: a squeezed ball (load 480) still counts as held, the load is logged",
+          result.outcome == "given" and holds[0].get("load") == 480 and holds[0].get("min_load") == 200.0, str(holds[0]))
+
+    scenario = Scenario("pick_then_give", [], "", picks=["ok", "ok", "ok"])
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    sensors.gripper_load = empty
+    log = TransitionLog(log_path, echo=False)
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+    log.file.close()
+    events = [json.loads(line) for line in open(log_path)]
+    open(log_path, "w").close()
+    states = [s.value for s in result.states]
+    check("hold rule, grasp check off: reading in the band but load 30 (VLA 5K take 2) -> not held, re-pick, "
+          "gave_up after 3 picks, no REST <-> VERIFY_HOLD loop",
+          result.outcome == "gave_up" and result.pick_attempts == 3 and states.count("VERIFY_HOLD") == 3,
+          " -> ".join(states))
+
+
+def abort_details(log_path: str) -> None:
+    scenario = Scenario("pick_then_give", [], "")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+
+    def broken_palms():
+        raise TimeoutError("OpenCVCamera(top) latest frame is too old: 519.0 ms (max allowed: 500 ms).")
+
+    sensors.palms_seen = broken_palms
+    log = TransitionLog(log_path, echo=False)
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+    log.file.close()
+    events = [json.loads(line) for line in open(log_path)]
+    to_abort = next(e for e in events if e["event"] == "transition" and e["target"] == "ABORT")
+    check("ABORT on an error logs the error, where it was raised, the state, gripper reading and load",
+          result.outcome == "aborted" and to_abort["source"] == "VERIFY_HOLD" and "519.0 ms" in to_abort["error"]
+          and "broken_palms" in to_abort["error_at"] and to_abort["load"] == 480 and to_abort["gripper"] is not None
+          and to_abort["pick_attempts"] == 1, str(to_abort))
+
+
 def pick_end_rule() -> None:
     rest = np.array([-5.6, -102.8, 96.6, -100.1, -5.2, 30.0])
     never_left = np.array([*rest[:5], 17.8])
@@ -867,6 +918,8 @@ def main() -> None:
         fake_scenarios(f"{work}/fake.jsonl")
         voice_container()
         round_hygiene(f"{work}/hygiene.jsonl")
+        hold_needs_load(f"{work}/load.jsonl")
+        abort_details(f"{work}/abort_details.jsonl")
         held_ball_check(f"{work}/held.jsonl")
         grasp_check_log(f"{work}/grasp.jsonl")
         wrist_frames(work)

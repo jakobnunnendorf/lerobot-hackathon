@@ -2,13 +2,15 @@ import json
 import statistics
 import threading
 import time
+import traceback
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
+from pathlib import Path
 
 import numpy as np
-from grasp_check import GraspChecked, GraspCheckSettings
+from grasp_check import GraspChecked, GraspCheckSettings, load_magnitude
 from skills import MoveTo, Skill
 
 
@@ -70,6 +72,10 @@ class Settings:
     # Grasp check inside PICK (skills.GraspChecked): pause when the policy closes, read the gripper, re-query on a
     # miss. None = off (PICK runs to its end and only VERIFY_HOLD judges, the old behaviour).
     grasp_check: GraspCheckSettings | None = None
+    # With the grasp check off, "holding" also needs |Present_Load| >= this (the grasp check's min_load). The band
+    # alone counted an empty gripper at the policy's half-closed goal as a hold (VLA 5K take 2: reading 15, load 32;
+    # board 7067314601). Empty reads 28-44, a squeezed ball 440-500. None: the band alone, as before.
+    hold_min_load: float | None = 200.0
 
 
 @dataclass
@@ -176,6 +182,7 @@ class Supervisor:
         self.log, self.abort = log, abort
         self.clock = clock or RealClock(settings.fps)
         self.frame_writer, self.ticks, self.on_tick = frame_writer, 0, on_tick
+        self.hold_load: float | None = None
         self.handlers = {State.REST: self._rest, State.LOOK: self._look, State.CLEAR_GRAY: self._clear_gray,
                          State.PICK: self._pick, State.VERIFY_HOLD: self._verify_hold, State.GIVE: self._give,
                          State.SHAKE: self._shake, State.PUT_DOWN: self._put_down}
@@ -202,7 +209,7 @@ class Supervisor:
             except Aborted:
                 state, reason, details = State.ABORT, "abort requested", {}
             except Exception as error:  # noqa: BLE001 - any skill crash ends in the safe ABORT state
-                state, reason, details = State.ABORT, f"error: {error!r}", {}
+                state, reason, details = State.ABORT, f"error: {error!r}", self._error_details(error)
             self._transition(self.round.states[-1], state, reason, **details)
         self.round.states.append(state)
         if state == State.ABORT:
@@ -212,6 +219,12 @@ class Supervisor:
                        wrong_balls=self.round.wrong_balls, duration_s=round(self.clock.now() - self.round.started, 2),
                        states=[s.value for s in self.round.states])
         return self.round
+
+    # The state's own details are lost when it raises (VLA 5K take 2: the held-check verdict), so log what is known.
+    def _error_details(self, error: Exception) -> dict:
+        frame = traceback.extract_tb(error.__traceback__)[-1]
+        return {"error": repr(error), "error_at": f"{Path(frame.filename).name}:{frame.lineno} {frame.name}",
+                "load": self._gripper_load(), "hold_load": self.hold_load, "pick_attempts": self.round.pick_attempts}
 
     def _first_state(self) -> State:
         return State.LOOK if self.s.look or self.s.clear_gray else State.PICK
@@ -267,7 +280,24 @@ class Supervisor:
         readings = [float(obs["gripper.pos"]) for obs in self._wait(self.s.verify_s)]
         reading = statistics.median(readings)
         low, high = self.s.hold_range
-        return low <= reading <= high, reading
+        self.hold_load = None
+        return low <= reading <= high and self._squeezing(), reading
+
+    # Every caller shares this rule: with it only in VERIFY_HOLD, REST would see a hold again and loop back to it.
+    def _squeezing(self) -> bool:
+        if self.s.grasp_check is not None or self.s.hold_min_load is None or self.sensors.gripper_load is None:
+            return True
+        try:
+            self.hold_load = statistics.median(load_magnitude(self.sensors.gripper_load()) for _ in range(3))
+        except Exception:  # noqa: BLE001 - an unreadable load leaves the band alone, as in the grasp check
+            return True
+        return self.hold_load >= self.s.hold_min_load
+
+    def _gripper_load(self) -> float | None:
+        try:
+            return load_magnitude(self.sensors.gripper_load()) if self.sensors.gripper_load else None
+        except Exception:  # noqa: BLE001 - best effort, only logged
+            return None
 
     def _held_gripper(self) -> float:
         return float(self.arm.last_sent["gripper.pos"])
@@ -339,6 +369,8 @@ class Supervisor:
     def _verify_hold(self):
         holding, reading = self.holding()
         details = {"reading": round(reading, 2)}
+        if self.hold_load is not None:
+            details["load"], details["min_load"] = round(self.hold_load), self.s.hold_min_load
         if holding:
             if self.s.gripper_hold is not None:
                 self.arm.send({**self.arm.last_sent, "gripper.pos": self.s.gripper_hold})

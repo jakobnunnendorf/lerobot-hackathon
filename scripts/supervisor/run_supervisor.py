@@ -146,6 +146,7 @@ def settings_from(args) -> Settings:
                     pick_timeout_s=args.pick_timeout, clear_timeout_s=args.clear_timeout,
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
+                    hold_min_load=args.hold_min_load,
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
                     held_check_colours=tuple(args.held_check_colours), held_unseen_floor_px=args.held_unseen_floor,
                     min_held_area_px={**Settings().min_held_area_px, **dict(args.min_held_area)},
@@ -519,6 +520,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--give-timeout", type=float, default=Settings.give_timeout_s)
     p.add_argument("--put-down-timeout", type=float, default=Settings.put_down_timeout_s)
     p.add_argument("--hold-range", type=float, nargs=2, default=Settings.hold_range)
+    p.add_argument("--hold-min-load", type=float, default=Settings.hold_min_load,
+                   help="with --no-grasp-check, a hold also needs |Present_Load| >= this (empty 28-44, ball 440-500); 0: band only")
     p.add_argument("--hand-wait", type=float, default=Settings.hand_wait_s)
     p.add_argument("--min-visible-area", type=int, default=Settings.min_visible_area_px)
     p.add_argument("--vision-dir", default=str(SCRIPTS / "vision"),
