@@ -212,6 +212,12 @@ def held_ball_check(log_path: str) -> None:
     checks = verify(run("held_check_unmeasured_threshold_logs_only"))
     check("held check: no threshold yet -> the area is logged, the ball is accepted",
           [(e["target"], e["held_check"], e["held_area_px"]) for e in checks] == [("GIVE", "unmeasured", 0)], str(checks))
+    checks = verify(run("held_check_blue_untrusted_by_default_logs_only"))
+    check("held check: blue is not trusted on the wrist camera by default -> logged as untrusted, not judged",
+          [(e["held_check"], e["held_ball"], e["held_area_px"]) for e in checks] == [("untrusted", "blue", 0)], str(checks))
+    checks = verify(run("held_check_red_trusted_striped_held_in_red_round_is_wrong"))
+    check("held check: red trusted (--held-check-colours striped red) -> a striped ball in a red round is wrong",
+          [e["held_check"] for e in checks] == ["wrong", "target"], str(checks))
     checks = verify(run("pick_then_give"))
     check("held check: no hook -> held_check off, flow unchanged", [e["held_check"] for e in checks] == ["off"], str(checks))
 
@@ -221,16 +227,22 @@ def vision_adapter(vision_dir: Path) -> None:
     from run_supervisor import held_ball_area
 
     area = held_ball_area(vision_dir)
-    # A 640x480 wrist frame with one ball close to the camera, larger than any ball in the top camera's bowl.
+    # A 640x480 wrist frame: one ball held in the centre, larger than any ball in the top camera's bowl, and a
+    # bluish room around it (the wrist camera faces the ceiling at rest), outside the held-ball region.
     frames = {}
     for name, rgb in (("striped", (200, 200, 40)), ("red", (200, 20, 20)), ("blue", (20, 40, 200))):
-        frame = np.full((480, 640, 3), 230, np.uint8)
-        cv2.circle(frame, (320, 300), 90, rgb, cv2.FILLED)
+        frame = np.full((480, 640, 3), (40, 70, 190), np.uint8)
+        cv2.ellipse(frame, (320, 240), (170, 155), 0, 0, 360, (230, 230, 230), cv2.FILLED)
+        cv2.circle(frame, (320, 240), 80, rgb, cv2.FILLED)
         frames[name] = frame
     areas = {(held, wanted): area(frames[held], wanted) for held in frames for wanted in frames}
     ok = all((areas[held, wanted] > 10_000) == (held == wanted) for held, wanted in areas)
-    check("held check wired to #24's ColourVisibility: each ball found only as itself in a wrist frame, no bowl ROI",
-          ok, str({f"{h}->{w}": a for (h, w), a in areas.items()}))
+    check("held check wired to #24's ColourVisibility: each held ball found only as itself, the blue room outside the "
+          "held-ball region ignored", ok, str({f"{h}->{w}": a for (h, w), a in areas.items()}))
+    whole_frame = held_ball_area(vision_dir, (0.5, 0.5, 2.0, 2.0))
+    blue_room = whole_frame(frames["striped"], "blue")
+    check("held check: without the region the blue room counts as a blue ball (why the region exists)",
+          blue_room > 100_000, f"blue area on the whole frame with the striped ball held: {blue_room}")
 
 
 def speed_cap() -> None:

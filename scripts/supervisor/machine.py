@@ -47,9 +47,14 @@ class Settings:
     # Held-ball check (Sensors.held_ball_area): the wanted ball must cover at least this many px of the wrist
     # frame at rest. None = not measured yet: the area is logged at every VERIFY_HOLD but decides nothing.
     # MEASURE AT THE TABLE: wrist frame at rest holding the striped target vs holding a red or a blue ball
-    # (the gripper reads the same for both, median 13.4 vs 12.7), and set it between the two.
+    # (the gripper reads the same for both, median 13.4 vs 12.7), and set it between the two. Suggested start
+    # from offline data (molnrb/so101_pick_rb_mixed wrist frames, board 7063041111): 120.
     min_held_target_area_px: int | None = None
     held_check_frames: int = 5
+    # Balls whose wrist-frame area decides. Any other wanted ball is "untrusted": the area is logged, the ball is
+    # accepted as without the check. Only the striped ball was measured on the wrist camera; blue read up to
+    # ~218,000 px on whole wrist frames whatever was held (bluish white balance), red was not measured as a target.
+    held_check_colours: tuple[str, ...] = ("striped",)
 
 
 @dataclass
@@ -314,7 +319,8 @@ class Supervisor:
 
     # The gripper reads the same for the striped target and a red/blue ball, so the wrist camera decides.
     # Verdicts: off (no hook), unavailable (hook failed: accept), unmeasured (no threshold: log only, accept),
-    # target, wrong, timeout (could not settle at rest).
+    # untrusted (this ball's wrist detection is not trusted: log only, accept), target, wrong, timeout (could not
+    # settle at rest).
     def _check_held_ball(self, details: dict) -> str:
         if self.sensors.held_ball_area is None:
             details["held_check"] = "off"
@@ -330,7 +336,12 @@ class Supervisor:
             details.update(held_check="unavailable", held_check_error=repr(error))
             return "unavailable"
         threshold = self.s.min_held_target_area_px
-        verdict = "unmeasured" if threshold is None else "target" if area >= threshold else "wrong"
+        if wanted not in self.s.held_check_colours:
+            verdict = "untrusted"
+        elif threshold is None:
+            verdict = "unmeasured"
+        else:
+            verdict = "target" if area >= threshold else "wrong"
         details.update(held_check=verdict, held_ball=wanted, held_area_px=area, held_threshold_px=threshold)
         return verdict
 

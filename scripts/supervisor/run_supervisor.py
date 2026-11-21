@@ -68,22 +68,30 @@ def settings_from(args) -> Settings:
                     pick_timeout_s=args.pick_timeout, clear_timeout_s=args.clear_timeout,
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
-                    min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area)
+                    min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
+                    held_check_colours=tuple(args.held_check_colours))
 
 
-def held_ball_area(vision_dir: Path):
+# Ellipse (centre x, centre y, radius x, radius y) as frame fractions: where the jaws hold the ball in the wrist
+# frame. A GUESS (centre of the frame), not measured: check it on wrist frames with a held ball (#24's calibrate
+# mode) and change --held-check-roi. Outside it the wrist camera sees the room (it faces the ceiling at rest).
+WRIST_HELD_ROI = (0.5, 0.5, 0.25, 0.3)
+
+
+def held_ball_area(vision_dir: Path, roi: tuple[float, float, float, float] = WRIST_HELD_ROI):
     """#24's detector (branch jakobnunnendorf/colour-pick) as Sensors.held_ball_area; None if its files are not here.
 
-    Without a merge: --vision-dir <colour-pick worktree>/scripts/vision. The wrist camera sees the held ball close
-    and anywhere in the frame, so the top camera's bowl ROI and the ball size limit are dropped.
+    Without a merge: --vision-dir <colour-pick worktree>/scripts/vision. The top camera's bowl ROI is replaced by
+    `roi`, the region of the wrist frame where the jaws hold the ball, and the ball size limit is dropped (the
+    held ball is close). Without the region blue read up to ~218,000 px on whole wrist frames (board 7063041111).
     """
     if not (vision_dir / "supervisor_adapter.py").exists():
         return None
     detector_module = import_from(vision_dir, "colour_detector")
     adapter = import_from(vision_dir, "supervisor_adapter")
     base = detector_module.load_detector()
-    specs = tuple(replace(spec, use_roi=False, max_area=sys.maxsize) for spec in base.specs)
-    visibility = adapter.ColourVisibility(detector_module.ColourDetector(specs, roi=None))
+    specs = tuple(replace(spec, use_roi=True, max_area=sys.maxsize) for spec in base.specs)
+    visibility = adapter.ColourVisibility(detector_module.ColourDetector(specs, roi=tuple(roi)))
 
     def area(wrist_frame: np.ndarray, wanted: str) -> int:
         if not visibility.set_target(wanted):
@@ -96,13 +104,14 @@ def held_check_hook(args):
     if args.no_held_check:
         print("WARNING: --no-held-check: only the gripper band decides, a red/blue ball reads like the target", flush=True)
         return None
-    hook = held_ball_area(Path(args.vision_dir))
+    hook = held_ball_area(Path(args.vision_dir), tuple(args.held_check_roi))
     if hook is None:
         print(f"WARNING: no #24 colour detector in {args.vision_dir}: held-ball check off, only the gripper band decides "
               "(a red/blue ball reads like the target)", flush=True)
     elif args.min_held_target_area is None:
         print("WARNING: --min-held-target-area not measured: the held-ball area is logged at every VERIFY_HOLD but "
-              "decides nothing. Measure it at the table (wrist frame at rest, target vs red/blue ball)", flush=True)
+              "decides nothing. Suggested start from offline data: 120; confirm at the table (wrist frame at rest, "
+              "target vs red/blue ball)", flush=True)
     return hook
 
 
@@ -219,7 +228,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                                 on_tick=commands.poll_voice)
         log.write(event="start", rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy,
-                  held_check=sensors.held_ball_area is not None, min_held_target_area_px=args.min_held_target_area)
+                  held_check=sensors.held_ball_area is not None, min_held_target_area_px=args.min_held_target_area,
+                  held_check_roi=list(args.held_check_roi), held_check_colours=list(args.held_check_colours))
         print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
@@ -311,8 +321,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--vision-dir", default=str(SCRIPTS / "vision"),
                    help="where #24's colour_detector.py and supervisor_adapter.py live (held-ball check on the wrist frame)")
     p.add_argument("--min-held-target-area", type=int, default=Settings.min_held_target_area_px,
-                   help="px of the wanted ball in the wrist frame at rest for the held ball to count as it; "
-                        "NOT MEASURED YET: without it the area is only logged. Measure at the table: target vs red/blue ball held")
+                   help="px of the wanted ball inside --held-check-roi of the wrist frame at rest for the held ball to count "
+                        "as it. Without it the area is only logged. Suggested start: 120 (offline wrist frames of "
+                        "molnrb/so101_pick_rb_mixed, board 7063041111); confirm at the table: target vs red/blue ball held")
+    p.add_argument("--held-check-roi", type=float, nargs=4, default=WRIST_HELD_ROI, metavar=("CX", "CY", "RX", "RY"),
+                   help="ellipse (frame fractions) of the wrist frame where the jaws hold the ball; a guess, check it")
+    p.add_argument("--held-check-colours", nargs="*", default=list(Settings.held_check_colours),
+                   choices=("striped", "red", "blue"),
+                   help="balls whose wrist area decides; others are logged only (held_check=untrusted)")
     p.add_argument("--no-held-check", action="store_true", help="turn the held-ball check off (gripper band only)")
     p.add_argument("--settle-tol-deg", type=float, default=8.0, help="PICK ends early within this of the rest pose")
     p.add_argument("--gripper-open", type=float, default=60.0)
