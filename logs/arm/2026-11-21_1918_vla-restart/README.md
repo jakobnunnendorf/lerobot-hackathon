@@ -25,5 +25,7 @@ Board 7067107016 (restart) and 7067279539, 7067280812 (push everything). Both ta
 "The arm picked a blue ball right next to the striped ball and put it in the blue hole. It went back to the start pose, then slowly approached the bowl again with the blue ball still in the gripper, and froze."
 The logs for take 2 do not show a put-down or a blue hole. They show one pick that timed out with the gripper at 15.3, the arm standing still in VERIFY_HOLD for 13 s, and the camera-timeout abort. Which take Jakob watched is not in the logs.
 
-## Table notes
-_Balazs's notes (first approach, each grasp, deliberate or accidental, outcome) are still missing for both takes._
+## Table notes (Balazs, in his words, relayed by the session)
+- **Take 1: "a success, it picked up the striped ball."** The log agrees that it ended holding something (gripper 11.4) and put it down, but the wrist check read all 0 and so could not confirm which ball.
+- **Take 2: "not successful, it tried but couldn't grab the ball and then stopped."** This matches the log: pick 1 timed out with no hold, then the program aborted on the top-camera timeout.
+- Not noted for either take: what the first approach went for, and whether grasps were deliberate or accidental. Both takes used layout 1, with 5K.
