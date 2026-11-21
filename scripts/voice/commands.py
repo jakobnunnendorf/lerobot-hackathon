@@ -3,18 +3,6 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
-WAKE_PHRASE = "hey bot"
-# measured mis-hearings that fuzzy matching misses; ordinary sentence starts heard in its place ("people", "paper",
-# "they bought") stay out, or any first word would pass. See decisions/voice-commands.md.
-WAKE_VARIANTS = {
-    "hey bot", "heybot", "hey robot",
-    "hey bud", "hey bosch", "hey bach", "hey buck", "hey pop", "hey von", "hey vaughn", "hey vaugh", "hey vod",
-    "hey fox", "hey folks", "hey books", "hey bye",
-    "a bot", "k bot", "pay bot", "paybot", "paypot", "pay bought", "paybought", "paybook", "pay box", "paybox",
-    "play bot", "playbot", "haybot", "haybox", "heybox", "baybot", "peabot",
-}
-WAKE_CUTOFF = 80
-
 DEFAULT_TARGET = "striped"
 # Whole words, not fuzzy: a three-letter word such as "red" scores 100 inside "tired" or "hundred".
 TARGETS = {
@@ -42,15 +30,14 @@ class Command:
     source: str
 
 
+# No wake phrase: Enter already marks the words as meant for the robot, and "hey bot" was misheard too often
+# when tried live. See decisions/voice-commands.md.
 def parse(transcript: str) -> Command | None:
-    rest = strip_wake_phrase(normalise(transcript).split())
-    if rest is None:
-        return None
-    text = " ".join(rest)
-    destination = best_match(text, DESTINATIONS)
+    words = normalise(transcript).split()
+    destination = best_match(" ".join(words), DESTINATIONS)
     if destination is None:
         return None
-    target = named_target(rest)
+    target = named_target(words)
     if target is None:
         return None
     return Command(target, destination, transcript.strip(), "voice")
@@ -58,19 +45,16 @@ def parse(transcript: str) -> Command | None:
 
 @dataclass(frozen=True)
 class Scores:
-    wake: float
     destinations: dict[str, float]
     colours: tuple[str, ...]
 
 
 def scores(transcript: str) -> Scores:
     words = normalise(transcript).split()
-    wake, length = max((wake_score(" ".join(words[:n])), n) for n in (1, 2, 3))
-    rest = words[length:] if wake >= WAKE_CUTOFF else words
-    text = " ".join(rest)
+    text = " ".join(words)
     destinations = {key: max(similarity(p, text) for p in phrases) / 100 for key, phrases in DESTINATIONS.items()}
-    colours = tuple(target for target, colour_words in TARGETS.items() if colour_words & set(rest))
-    return Scores(wake / 100, destinations, colours)
+    colours = tuple(target for target, colour_words in TARGETS.items() if colour_words & set(words))
+    return Scores(destinations, colours)
 
 
 def from_key(key: str) -> Command | None:
@@ -81,8 +65,9 @@ def from_key(key: str) -> Command | None:
 
 
 def rejection_reason(transcript: str) -> str:
-    if strip_wake_phrase(normalise(transcript).split()) is None:
-        return f'no "{WAKE_PHRASE}" at the start'
+    words = normalise(transcript).split()
+    if best_match(" ".join(words), DESTINATIONS) is not None and named_target(words) is None:
+        return "more than one ball colour named"
     return "no single command recognised"
 
 
@@ -97,15 +82,6 @@ def named_target(words: list[str]) -> str | None:
 
 def normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "")).strip()
-
-
-def strip_wake_phrase(words: list[str]) -> list[str] | None:
-    score, length = max((wake_score(" ".join(words[:n])), n) for n in (1, 2, 3))
-    return words[length:] if score >= WAKE_CUTOFF else None
-
-
-def wake_score(head: str) -> float:
-    return 100 if head in WAKE_VARIANTS else fuzz.ratio(head, WAKE_PHRASE)
 
 
 def best_match(text: str, table: dict[str, tuple[str, ...]]) -> str | None:
