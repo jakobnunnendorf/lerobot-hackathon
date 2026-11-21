@@ -37,15 +37,23 @@ def load_magnitude(value):
 # so101_pick_ball's empty end closes) read p1 10.9, median 12.9; 217 of 218 pass the rule. All 78 closes reading
 # below 4 (empty: 0.4-3.9) fail it, and so do 13 closes resting at 6-8 with the jaw at its goal (error < 3), which
 # the band alone would call holding. After the settle the reading moved by <0.02/frame (p95).
-# A miss opens the gripper, backs the arm off along the commanded path of the last backoff_s before the close and
+# A miss opens the gripper, backs the arm off along the measured path of the last backoff_s before the close and
 # ends the skill as "grasp_miss": the supervisor re-runs PICK at once (a fresh policy query), within the pick limit.
+# Hold and back-off use the measured arm, not the policy's raw action (exp1 R3, 2026-11-21): with --max-step-deg 1.0
+# the raw target ran far ahead of the arm, below the table, the release never arrived within 4 deg and the arm stood
+# still until the 40 s PICK timeout. The release also gives up after backoff_timeout_s ("release_timeout", then
+# grasp_miss with backoff_timeout: true).
 # A hold re-queries the policy and keeps watching: a ball that slips out of the tips later (median of watch_frames
 # readings below hold_low while the policy still commands closed) is a miss too, opened in place.
 # Lock after a hold (calibration run 2026-11-21, molnrb/arm-logs 4e20743, r1 and r6): ACT later re-opened on the held
 # ball, as its demos end, and closed again on nothing, which the check judged a fresh miss. With lock_after_hold the
 # gripper sent is min(policy, lock goal) for the rest of the pick (lock goal: lock_goal_for), a policy command
-# >= trigger is logged as "release_blocked" (at most once a second) and the slip watch keeps running. Unlocked, a re-open is logged as
+# >= trigger is logged as "release_blocked" (at most once a second, with the gripper load and the count of blocked
+# commands since the last line) and the slip watch keeps running. Unlocked, a re-open is logged as
 # "release" and the trigger re-arms only after the command is >= armed_above again.
+# Policy release while locked (exp1, the red/blue sorter carried held balls to their hole and commanded open): the
+# policy never settles at rest then, so once it has commanded open above the lock for open_intent_s in all, the pick
+# ends as "released_while_locked" (logged "released_locked") and the supervisor takes the arm to rest, still locked.
 @dataclass
 class GraspCheckSettings:
     trigger: float = 10.0          # a commanded gripper falling below this = "the policy closes"
@@ -65,6 +73,8 @@ class GraspCheckSettings:
     lock_after_hold: bool = True
     lock_margin: float = 4.0       # lock goal = held reading - this (see lock_goal_for)
     release_log_interval_s: float = 1.0
+    backoff_timeout_s: float = 3.0       # a miss's open + back-off that has not arrived by then ends the pick anyway
+    open_intent_s: float | None = 1.5    # locked: open commands for this long in all end the pick; None = never
     # "Too high": a close commanded with the tip (FK of the commanded joints, #13's kinematics) above this is a miss
     # before the gripper is read. None = off: on the datasets the model's tip z at a holding close is 0.019-0.156 m
     # (p95 0.11) and empty closes overlap it (median 0.07), so it can only catch closes far above the bowl.
@@ -87,10 +97,11 @@ class GraspChecked:
         self.widest = float(last_sent["gripper.pos"])
         self.last_gripper = self.widest
         self.history = deque(maxlen=max(int(self.s.backoff_s * self.fps), 1))
-        self.history.append(pose_of(last_sent))
+        self.history.append(pose_of(obs))
         self.watch = deque(maxlen=self.s.watch_frames)
         self.load_failed = False
         self.last_release_log = None
+        self.blocked_count, self.open_s, self.released_locked, self.backoff_timed_out = 0, 0.0, False, False
 
     def _open_goal(self) -> float:
         return self.s.open_goal if self.s.open_goal is not None else max(self.widest, self.s.trigger + 10.0)
@@ -109,6 +120,11 @@ class GraspChecked:
         if self.phase == "settle":
             return self._settle(obs, now)
         if self.phase == "release":
+            if now - self.release_start >= self.s.backoff_timeout_s:
+                self.backoff_timed_out = True
+                self._record({"phase": "release_timeout", "backoff_timeout": True,
+                              "release_s": round(now - self.release_start, 2), "part": self.release.parts[self.release.index].name})
+                return None
             action = self.release.step(obs, now)
             self.release_sent = action or self.release_sent
             return action
@@ -119,11 +135,19 @@ class GraspChecked:
         if self.watching:
             self.watch.append(float(obs["gripper.pos"]))
             if self.s.lock_after_hold:
-                if gripper >= self.s.trigger and (self.last_release_log is None
-                                                  or now - self.last_release_log >= self.s.release_log_interval_s):
-                    self.last_release_log = now
-                    self._record({"phase": "release_blocked", "command": round(gripper, 2), "sent": round(self.lock_goal, 2),
-                                  "reading": round(float(obs["gripper.pos"]), 2)})
+                if gripper >= self.s.trigger:
+                    self.blocked_count += 1
+                    self.open_s += 1.0 / self.fps
+                    if self.last_release_log is None or now - self.last_release_log >= self.s.release_log_interval_s:
+                        self.last_release_log = now
+                        self._record({"phase": "release_blocked", "command": round(gripper, 2),
+                                      "sent": round(self.lock_goal, 2), "reading": round(float(obs["gripper.pos"]), 2),
+                                      "load": self._load(), "count": self.blocked_count})
+                        self.blocked_count = 0
+                    if self.s.open_intent_s is not None and self.open_s >= self.s.open_intent_s - 1e-9:
+                        self.released_locked = True
+                        self._record({"phase": "released_locked", "open_s": round(self.open_s, 2),
+                                      "sent": round(self.lock_goal, 2), "reading": round(float(obs["gripper.pos"]), 2)})
                 gripper = min(gripper, self.lock_goal)
                 action = {**action, "gripper.pos": gripper}
             elif gripper >= self.s.trigger:
@@ -139,17 +163,18 @@ class GraspChecked:
         self.last_gripper = gripper
         if closing:
             self.goal = min(gripper, self.s.close_goal)
-            self.hold_pose = np.concatenate([pose_of(action)[:5], [self.goal]])
+            # Hold the arm where it is measured: the raw action can be far ahead of a speed-capped arm.
+            self.hold_pose = np.concatenate([pose_of(obs)[:5], [self.goal]])
             self.back_pose = self.history[0].copy()
             self.phase, self.settle_start, self.readings, self.loads = "settle", now, [], []
             self.command_at_trigger = gripper
-            self.tip_z = float(self.tip_height(self.hold_pose[:5])) if self.tip_height else None
+            self.tip_z = float(self.tip_height(pose_of(action)[:5])) if self.tip_height else None
             if self.s.max_tip_height is not None and self.tip_z is not None and self.tip_z > self.s.max_tip_height:
                 return self._miss(obs, now, {"phase": "trigger", "reason": "too_high", "tip_z": round(self.tip_z, 3),
                                              "max_tip_height": self.s.max_tip_height,
                                              "command_at_trigger": round(gripper, 2)}, back_off=True)
             return action_of(self.hold_pose)
-        self.history.append(pose_of(action))
+        self.history.append(pose_of(obs))
         return action
 
     # Lock goal after a hold: lock_margin below the held reading (less stall current than squeezing at close_goal:
@@ -212,7 +237,7 @@ class GraspChecked:
             parts.append(MoveTo("grasp_back_off", np.concatenate([self.back_pose[:5], [self._open_goal()]])))
         self.release, self.release_sent = Sequence("grasp_release", parts), action_of(held)
         self.release.start(obs, action_of(held), now)
-        self.phase = "release"
+        self.phase, self.release_start = "release", now
         return self.step(obs, now)
 
     def _record(self, record: dict) -> None:
@@ -221,8 +246,10 @@ class GraspChecked:
 
     def done(self, obs, now):
         if self.phase == "release":
-            return self.release.done(obs, now)
-        return self.phase == "run" and self.inner.done(obs, now)
+            return self.backoff_timed_out or self.release.done(obs, now)
+        return self.phase == "run" and (self.released_locked or self.inner.done(obs, now))
 
     def result(self):
-        return "grasp_miss" if self.missed else self.inner.result()
+        if self.missed:
+            return "grasp_miss"
+        return "released_while_locked" if self.released_locked else self.inner.result()
