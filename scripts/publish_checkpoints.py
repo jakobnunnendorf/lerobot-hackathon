@@ -27,8 +27,13 @@ def fetch_checkpoint(run: str, step: str, workdir: Path) -> Path | None:
     target = workdir / step
     shutil.rmtree(target, ignore_errors=True)
     target.mkdir(parents=True)
-    modal("volume", "get", "--force", VOLUME, f"outputs/{run}/checkpoints/{step}/pretrained_model", str(target))
-    model_dir = target / "pretrained_model"
+    # EMA runs save the averaged weights separately; held-out loss is measured on those, so publish them
+    try:
+        modal("volume", "get", "--force", VOLUME, f"outputs/{run}/checkpoints/{step}/pretrained_model_ema", str(target))
+        model_dir = target / "pretrained_model_ema"
+    except subprocess.CalledProcessError:
+        modal("volume", "get", "--force", VOLUME, f"outputs/{run}/checkpoints/{step}/pretrained_model", str(target))
+        model_dir = target / "pretrained_model"
     if not all((model_dir / name).exists() for name in REQUIRED_FILES):
         return None
     try:
@@ -49,7 +54,7 @@ def fetch_log(run: str, workdir: Path) -> str:
         return ""
 
 
-def model_card(repo_id: str, run: str, dataset: str, published: list[str], eval_losses: dict[int, float], finished: bool) -> str:
+def model_card(repo_id: str, run: str, dataset: str, settings: str, published: list[str], eval_losses: dict[int, float], finished: bool) -> str:
     rows = "\n".join(
         f"| `{step}/` | {eval_losses[int(step)]:.4f} |" if int(step) in eval_losses else f"| `{step}/` | n/a |"
         for step in published
@@ -69,11 +74,11 @@ datasets:
 
 ACT trained from scratch with LeRobot 0.7.0 on [`{dataset}`](https://huggingface.co/datasets/{dataset})
 (80 episodes, 2 cameras `top` and `wrist` at 640x480, 30 fps), run `{run}`.
-Batch 32, lr 2e-5, bf16, 38,000 steps planned, 5% of episodes held out (4 episodes, seed 1000).
+{settings}
 Training status: {"finished" if finished else "running, new checkpoints are added automatically"}.
 
 Each folder is one checkpoint and is a complete `pretrained_model` directory. Held-out loss is the
-mean loss on the 4 unseen episodes; with so few episodes differences of a few percent are noise.
+mean loss on the held-out episodes; with so few episodes differences of a few percent are noise.
 
 | checkpoint | held-out loss |
 |---|---|
@@ -93,6 +98,7 @@ def main() -> None:
     parser.add_argument("--run", default="act_redblue_l40s_b32_38k")
     parser.add_argument("--dataset", default="molnrb/so101_pick_rb_mixed")
     parser.add_argument("--repo-name", default="act_so101_pick_rb_mixed_b32_38k")
+    parser.add_argument("--settings", default="Batch 32, lr 2e-5, bf16, 38,000 steps planned, 5% of episodes held out (4 episodes, seed 1000).")
     parser.add_argument("--poll-s", type=int, default=120)
     # the run is capped at 172 min; when the cap stops it, LeRobot never logs "End of training"
     parser.add_argument("--max-hours", type=float, default=3.5)
@@ -124,7 +130,7 @@ def main() -> None:
         if new or finished:
             api.upload_file(
                 repo_id=repo_id,
-                path_or_fileobj=model_card(repo_id, args.run, args.dataset, published, eval_losses, finished).encode(),
+                path_or_fileobj=model_card(repo_id, args.run, args.dataset, args.settings, published, eval_losses, finished).encode(),
                 path_in_repo="README.md",
                 commit_message="update model card",
             )

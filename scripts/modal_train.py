@@ -36,6 +36,20 @@ REDBLUE_AUGMENTATION = json.dumps(
     }
 )
 
+REDBLUE_AUGMENTATION_V2 = json.dumps(
+    {
+        "brightness": {"type": "ColorJitter", "kwargs": {"brightness": [0.7, 1.3]}},
+        "contrast": {"type": "ColorJitter", "kwargs": {"contrast": [0.7, 1.3]}},
+        "sharpness": {"type": "SharpnessJitter", "kwargs": {"sharpness": [0.5, 1.5]}},
+        "affine": {"type": "RandomAffine", "kwargs": {"degrees": [-10.0, 10.0], "translate": [0.1, 0.1]}},
+        "shadow": {"type": "RandomShadow", "kwargs": {}},
+        "patch_brightness": {"type": "GaussianPatchBrightness", "kwargs": {}},
+        "dropout": {"type": "CoarseDropout", "kwargs": {}},
+        "noise": {"type": "GaussianNoise", "kwargs": {}},
+        "blur": {"type": "MotionBlur", "kwargs": {}},
+    }
+)
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -65,6 +79,33 @@ RECIPES = {
             "--dataset.eval_split=0.05",
             "--seed=1000",
             "--eval_steps=5000",
+        ],
+        "schedule_follows_steps": False,
+    },
+    # act_redblue held-out loss went flat after 10k steps while train loss kept falling; this run
+    # targets that gap. See decisions/act-redblue-generalisation.md.
+    "act_redblue_v2": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 32,
+        "prefetch_models": [],
+        "args": [
+            "--policy.type=act",
+            "--policy.chunk_size=50",
+            "--policy.n_action_steps=25",
+            "--policy.dropout=0.2",
+            "--policy.optimizer_lr=2e-5",
+            "--policy.optimizer_lr_backbone=2e-5",
+            "--ema.type=constant",
+            "--ema.decay=0.999",
+            "--dataset.image_transforms.enable=true",
+            # GPU backend: nine transform types would make the CPU data loader the bottleneck.
+            "--dataset.image_transforms.backend=gpu",
+            "--dataset.image_transforms.max_num_transforms=4",
+            f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION_V2}",
+            "--dataset.eval_split=0.1",
+            "--seed=1000",
+            "--eval_steps=2000",
         ],
         "schedule_follows_steps": False,
     },
