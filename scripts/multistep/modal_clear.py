@@ -14,6 +14,8 @@ from pathlib import Path
 import modal
 
 HERE = Path(__file__).resolve().parent
+# The container imports this file again from /root, which has no parents[1]; the local paths are only read locally.
+REPO = HERE.parents[1] if modal.is_local() else HERE
 SOURCE_REPO = "molnrb/so101_pick_rb_mixed"
 # The revision segments.csv and the joint check were verified against (201 episodes).
 SOURCE_REVISION = "8d36c36c357e7ae6a78b3a844ef3caa1093d7c59"
@@ -51,7 +53,7 @@ image = (
     .env({"HF_HOME": f"{VOL}/hf", "TOKENIZERS_PARALLELISM": "false"})
     .add_local_file(HERE / "build_segment_dataset.py", "/root/multistep/build_segment_dataset.py")
     .add_local_file(HERE / "check_segment_dataset.py", "/root/multistep/check_segment_dataset.py")
-    .add_local_file(HERE.parents[1] / "research" / "label-patterns" / "segments.csv", "/root/multistep/segments.csv")
+    .add_local_file(REPO / "research" / "label-patterns" / "segments.csv", "/root/multistep/segments.csv")
 )
 app = modal.App("lerobot-multistep", image=image)
 
