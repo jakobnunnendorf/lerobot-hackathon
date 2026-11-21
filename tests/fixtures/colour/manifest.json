@@ -1,0 +1,109 @@
+[
+ {
+  "file": "bowl_e48_t00.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 48,
+  "seconds_into_episode": 0.0,
+  "crop_xyxy": [
+   250,
+   70,
+   550,
+   300
+  ],
+  "expect": {
+   "striped": true
+  }
+ },
+ {
+  "file": "bowl_e98_t04.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 98,
+  "seconds_into_episode": 4.0,
+  "crop_xyxy": [
+   250,
+   70,
+   550,
+   300
+  ],
+  "expect": {
+   "striped": true
+  }
+ },
+ {
+  "file": "bowl_e96_t00.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 96,
+  "seconds_into_episode": 0.0,
+  "crop_xyxy": [
+   250,
+   70,
+   550,
+   300
+  ],
+  "expect": {
+   "striped": true
+  }
+ },
+ {
+  "file": "bowl_e48_t14.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 48,
+  "seconds_into_episode": 14.0,
+  "crop_xyxy": [
+   250,
+   70,
+   550,
+   300
+  ],
+  "expect": {
+   "striped": false
+  }
+ },
+ {
+  "file": "bowl_e99_t10.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 99,
+  "seconds_into_episode": 10.0,
+  "crop_xyxy": [
+   250,
+   70,
+   550,
+   300
+  ],
+  "expect": {
+   "striped": false
+  }
+ },
+ {
+  "file": "bowl_e69_t10.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 69,
+  "seconds_into_episode": 10.0,
+  "crop_xyxy": [
+   250,
+   70,
+   550,
+   300
+  ],
+  "expect": {
+   "striped": false
+  }
+ },
+ {
+  "file": "tape_e69_t00.0.png",
+  "dataset": "molnrb/so101_pick_blue_ball",
+  "episode": 69,
+  "seconds_into_episode": 0.0,
+  "crop_xyxy": [
+   330,
+   340,
+   490,
+   480
+  ],
+  "expect": {
+   "blue_container": true,
+   "blue": false
+  },
+  "note": "blue tape roll as a stand-in for a blue container; the old data has no blue ball or container"
+ }
+]
