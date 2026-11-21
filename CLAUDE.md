@@ -49,6 +49,8 @@ uv run python tests/lerobot_check.py     # builds an ACT policy, one train step 
 
 There is no pytest suite, linter or build step. The files in `tests/` are standalone smoke scripts; run the one you need with `uv run python tests/<file>.py`.
 
+**Before any training run, dataset build, hold-out split or architecture choice**: load the `so101-data` skill (`.claude/skills/so101-data/SKILL.md`) and take the data distribution into account. It lists what is in the striped-ball data (label codes, event sequences, the partly-covered blind-grab trap, scenario blocks) and the curation defaults per architecture. The full reference is `research/DATASET_GUIDE.md`.
+
 **Hands-on robot work** (teleop, recording, checking or uploading a dataset, training, running a model on the arm, fixing the arm, cameras or USB): load the `so101-robot` skill (`.claude/skills/so101-robot/SKILL.md`) first and use `scripts/so101/`. It holds the working commands for our setup and the fixes for every failure seen so far.
 
 Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-port`, `lerobot-calibrate`, `lerobot-teleoperate`, `lerobot-record`, `lerobot-train`). `README.md` has the full SO-101 invocations. Its examples use macOS port names (`/dev/tty.usbmodem...`); on Windows the ports are `COMx`.
