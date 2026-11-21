@@ -32,8 +32,12 @@ echo ""
 export SO101_WAIT_START=1 SO101_BANNERS=1
 NOISE="Svt\[|SVT \[|asm level|^-{20,}|moov atom|Map: |^[ {]+'|py:[0-9]+ \{'|Streaming encoding|Text-to-speech|Cadence|ticks|loop-body|^ +(observe|process_obs|teleop|send|record|telemetry) |pacing headroom|effective cadence|Control loop is running slower|tqdm.py|warnings.warn"
 
+# The arms sit behind usbip, which garbles or drops single packets ("Parsing error" / Timeout)
+# often enough that lerobot's default of 2 read retries ends a session several times an hour.
+RETRIES="${SO101_READ_RETRIES:-10}"
 # reset_time_s=3600: the pause between episodes ends on SPACE, not on a timer.
 lerobot-record "${FOLLOWER_ARGS[@]}" "${LEADER_ARGS[@]}" \
+  --robot.num_read_retries="$RETRIES" --teleop.num_read_retries="$RETRIES" \
   --robot.cameras="$CAMERAS" \
   --display_data=true \
   --dataset.repo_id="$REPO" \
