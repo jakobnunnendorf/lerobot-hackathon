@@ -24,7 +24,8 @@ def forward_kinematics(joints_deg: np.ndarray) -> np.ndarray:
 def inverse_kinematics(target_xyz: np.ndarray, seed_deg: np.ndarray) -> np.ndarray | None:
     x, y, z = target_xyz
     pan, reach = np.arctan2(y, x), np.hypot(x, y)
-    for approach in np.radians(np.arange(180, 85, -5)):
+    seed_approach = np.sum(seed_deg[1:4])
+    for approach in np.radians(sorted(np.arange(90.0, 181.0, 2.5), key=lambda a: abs(a - seed_approach))):
         planar = _two_link(reach - WRIST_TO_TIP * np.sin(approach), z - SHOULDER_HEIGHT - WRIST_TO_TIP * np.cos(approach))
         if planar is not None:
             lift, elbow = planar

@@ -24,7 +24,7 @@ class Decision:
 
 @dataclass
 class FollowSettings:
-    hover_height: float = 0.18
+    hover_height: float = 0.22
     lost_to_home_s: float = 3.0
     drop_radius: float = 0.03
     drop_dwell_s: float = 1.0
@@ -49,7 +49,8 @@ class Follower:
         self.lost_since = None
 
         point = np.mean(hands, axis=0)
-        # z from one camera is too rough to follow, so the tip hovers at a fixed height above the table.
+        # Fixed height above the table, never the hand's z: one camera cannot measure it, and hands held
+        # higher than ~15 cm are out of reach for a hover (board comment 7061302163).
         target = np.array([point[0], point[1], self.s.hover_height])
 
         over = len(hands) >= 2 and np.hypot(*(tip_xyz[:2] - point[:2])) <= self.s.drop_radius

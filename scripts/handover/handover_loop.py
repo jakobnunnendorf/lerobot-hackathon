@@ -21,9 +21,11 @@ DRY_RUN_GRIPPER = 13.0
 class Limits:
     max_step_deg: float = 1.5
     gripper_step: float = 4.0
+    max_step_m: float = 0.008
     min_height: float = 0.08
+    max_height: float = 0.30
     min_radius: float = 0.12
-    max_radius: float = 0.33
+    max_radius: float = 0.38
     ik_tolerance: float = 0.02
 
 
@@ -31,11 +33,13 @@ def clamp_workspace(xyz: np.ndarray, lim: Limits) -> np.ndarray:
     radius = np.hypot(xyz[0], xyz[1])
     direction = xyz[:2] / radius if radius > 1e-6 else np.array([1.0, 0.0])
     radius = np.clip(radius, lim.min_radius, lim.max_radius)
-    return np.array([*(direction * radius), max(xyz[2], lim.min_height)])
+    return np.array([*(direction * radius), np.clip(xyz[2], lim.min_height, lim.max_height)])
 
 
 def step_towards(current: np.ndarray, goal: np.ndarray, max_step: float) -> np.ndarray:
-    return current + np.clip(goal - current, -max_step, max_step)
+    delta = goal - current
+    largest = np.abs(delta).max(initial=0.0)
+    return current + (delta if largest <= max_step else delta * max_step / largest)
 
 
 def solve_reachable(target: np.ndarray, seed: np.ndarray, lim: Limits) -> np.ndarray | None:
@@ -68,27 +72,55 @@ class RobotArm:
         self.robot.send_action({**dict(zip(ARM_KEYS, joints_deg.tolist())), "gripper.pos": gripper})
 
 
-def arm_goal(decision: Decision, commanded: np.ndarray, home: np.ndarray, lim: Limits) -> np.ndarray:
-    if decision.mode is Mode.FOLLOW:
-        solved = solve_reachable(clamp_workspace(decision.target_xyz, lim), commanded, lim)
-        return commanded if solved is None else solved
-    if decision.mode in (Mode.HOME, Mode.DONE):
-        return home
-    return commanded
+def unreachable_hover_points(hover_height: float, lim: Limits) -> list[tuple[float, float]]:
+    seed = np.zeros(len(ARM_JOINTS))
+    return [(r, deg) for r in (0.15, 0.20, 0.25, 0.30, 0.35) for deg in (-45, 0, 45)
+            if solve_reachable(np.array([r * np.cos(np.radians(deg)), r * np.sin(np.radians(deg)), hover_height]), seed, lim) is None]
+
+
+# The arm moves along a straight tip line in short Cartesian waypoints, each clamped to the workspace:
+# stepping the joints straight to the goal let the tip dip 4 cm below the hover height between targets (dry run).
+class Mover:
+    def __init__(self, home: np.ndarray, lim: Limits):
+        self.home, self.lim = home, lim
+        self.homing_in_joints = False
+
+    def goal(self, decision: Decision, commanded: np.ndarray) -> tuple[np.ndarray, bool]:
+        homing = decision.mode in (Mode.HOME, Mode.DONE)
+        self.homing_in_joints &= homing
+        if decision.mode in (Mode.HOLD, Mode.DROP) or self.homing_in_joints:
+            return (self.home if self.homing_in_joints else commanded), True
+        tip = forward_kinematics(commanded)
+        goal_xyz = forward_kinematics(self.home) if homing else clamp_workspace(decision.target_xyz, self.lim)
+        # Latched: the last centimetre to the exact HOME joints flipped back and forth between two IK branches.
+        if homing and np.linalg.norm(goal_xyz - tip) < 0.01:
+            self.homing_in_joints = True
+            return self.home, True
+        waypoint = clamp_workspace(tip + step_towards(np.zeros(3), goal_xyz - tip, self.lim.max_step_m), self.lim)
+        solved = solve_reachable(waypoint, commanded, self.lim)
+        if solved is not None:
+            return solved, True
+        # HOME must always be reachable, even if the straight line is not; a stuck follow target just holds.
+        return (self.home, True) if homing else (commanded, False)
 
 
 def run(arm, receiver: HandReceiver, follower: Follower, home: np.ndarray, gripper_hold: float,
         gripper_open: float, lim: Limits, fps: int, duration_s: float | None, on_tick) -> None:
     commanded, _ = arm.read()
+    mover = Mover(home, lim)
     gripper_cmd = gripper_hold
     start = time.monotonic()
-    tick_start = start
+    tick_start, last_warning = start, 0.0
     while duration_s is None or tick_start - start < duration_s:
         measured, gripper_measured = arm.read()
         tip = forward_kinematics(measured)
         decision = follower.step(receiver.newest_hands(), tip, tick_start)
 
-        commanded = step_towards(commanded, arm_goal(decision, commanded, home, lim), lim.max_step_deg)
+        goal, reachable = mover.goal(decision, commanded)
+        if not reachable and tick_start - last_warning > 1.0:
+            print(f"target out of reach, holding: {np.round(decision.target_xyz, 3).tolist()}", flush=True)
+            last_warning = tick_start
+        commanded = step_towards(commanded, goal, lim.max_step_deg)
         # Until the drop, the holding value is sent every tick, so a lost hand or a solver failure never loosens the grip.
         released = decision.mode in (Mode.DROP, Mode.DONE)
         gripper_cmd = step_towards(np.array(gripper_cmd), np.array(gripper_open), lim.gripper_step).item() if released else gripper_hold
@@ -163,7 +195,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--drop-radius", type=float, default=FollowSettings.drop_radius)
     p.add_argument("--drop-dwell", type=float, default=FollowSettings.drop_dwell_s)
     p.add_argument("--max-step-deg", type=float, default=Limits.max_step_deg)
+    p.add_argument("--max-step-m", type=float, default=Limits.max_step_m)
     p.add_argument("--min-height", type=float, default=Limits.min_height)
+    p.add_argument("--max-height", type=float, default=Limits.max_height)
     p.add_argument("--min-radius", type=float, default=Limits.min_radius)
     p.add_argument("--max-radius", type=float, default=Limits.max_radius)
     p.add_argument("--print-every", type=int, default=15)
@@ -181,7 +215,10 @@ def main() -> None:
 
     host, port = args.listen.rsplit(":", 1)
     receiver = HandReceiver(host, int(port))
-    lim = Limits(args.max_step_deg, Limits.gripper_step, args.min_height, args.min_radius, args.max_radius)
+    lim = Limits(args.max_step_deg, Limits.gripper_step, args.max_step_m, args.min_height, args.max_height,
+                 args.min_radius, args.max_radius)
+    if missing := unreachable_hover_points(args.hover_height, lim):
+        print(f"WARNING: hover height {args.hover_height} m not reachable at (radius m, pan deg) {missing}", flush=True)
     follower = Follower(FollowSettings(args.hover_height, args.lost_to_home, args.drop_radius, args.drop_dwell))
     reporter = Reporter(args.print_every, args.csv)
 

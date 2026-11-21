@@ -18,7 +18,7 @@ def scenario(t: float) -> list[dict]:
 
 
 def hand(x: float, y: float) -> dict:
-    return {"x": round(x, 4), "y": round(y, 4), "z": 0.12, "palm_up": True, "score": 0.9}
+    return {"x": round(x, 4), "y": round(y, 4), "z": 0.13, "palm_up": True, "score": 0.9}
 
 
 def main() -> None:
