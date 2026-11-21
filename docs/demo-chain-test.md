@@ -136,6 +136,16 @@ Use these if the step misbehaves:
 
 With terminals 1 and 2 running and the arm at rest: in the PowerShell listener press Enter, say "give me the ball" (or "put it in my hand"), press Enter. The round starts by itself. Keys `1` + Enter in the listener, or `h` + Enter in terminal 1, do the same.
 
+**Wrong-ball check: on from round 3.** The from-foil policy's misses at the table were all wrong balls (3 of 13, board 7065447840). Without the check, the chain hands a red or blue ball over. Rounds 1-2 only log. After round 2, stop the robot program (Ctrl+C) and print what the wrist camera saw at each VERIFY_HOLD:
+
+```bash
+python -c "import json,glob; f=sorted(glob.glob('$HOME/so101/demo/chain_*.jsonl'))[-1]; [print(e['held_check'], e['held_areas_px']) for e in map(json.loads, open(f)) if 'held_areas_px' in e]"
+```
+
+- If the striped ball read above 120 each time it was really held, restart with `bash scripts/supervisor/demo_chain.sh --step 015000 --min-held-target-area 120`.
+- From then on a held ball below 120 is put down and picked again; it is never handed over.
+- If a real striped hold read below 120, post the numbers and keep it logging only. 120 comes from offline data (PR #30) and is not confirmed on the arm.
+
 Run 5 rounds:
 - 2 with the striped ball visible;
 - 2 half covered;
