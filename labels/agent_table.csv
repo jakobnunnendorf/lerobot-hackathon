@@ -1,0 +1,298 @@
+dataset,episode_index,verdict,scene,confidence,label_source,reason,length_s,final_gripper,max_open_before_final_close,n_closes,regrasps,clears,put_backs,unreleased,end_d_max,idle_longest_s
+so101_pick_blue_ball,0,KEEP,foil_visible,medium,look_part2,"Single clean grasp, ends holding striped; end pan 17 off start is mild",16.7,14.9,21.3,1,0,0,0,0,16.5,1.7
+so101_pick_blue_ball,1,KEEP,foil_visible,auto,stage1,,12.8,14.2,23.3,1,0,0,0,0,18.3,0.8
+so101_pick_blue_ball,2,KEEP,foil_visible,auto,stage1,,12.3,12.6,30.3,1,0,0,0,0,17.3,0.0
+so101_pick_blue_ball,3,KEEP,foil_visible,auto,stage1,,15.8,13.5,23.5,1,0,0,0,0,6.1,0.6
+so101_pick_blue_ball,4,KEEP,foil_visible,auto,stage1,,14.1,12.0,18.7,1,0,0,0,0,5.8,0.1
+so101_pick_blue_ball,5,KEEP,foil_visible,auto,stage1,,20.0,13.8,22.3,1,0,0,0,0,13.6,1.1
+so101_pick_blue_ball,6,KEEP,foil_visible,auto,stage1,,11.5,14.1,61.5,1,0,0,0,0,10.1,0.4
+so101_pick_blue_ball,7,KEEP,foil_visible,auto,stage1,,15.6,12.9,27.8,1,0,0,0,0,21.7,1.6
+so101_pick_blue_ball,8,KEEP,foil_visible,auto,stage1,,14.4,12.5,20.4,1,0,0,0,0,16.0,0.5
+so101_pick_blue_ball,9,KEEP,foil_visible,auto,stage1,,17.6,12.9,20.9,1,0,0,0,0,0.9,0.2
+so101_pick_blue_ball,10,KEEP,foil_visible,auto,stage1,,14.4,14.1,20.3,2,1,0,0,0,9.9,0.1
+so101_pick_blue_ball,11,KEEP,foil_visible,auto,stage1,,13.0,12.7,20.9,1,0,0,0,0,11.5,0.8
+so101_pick_blue_ball,12,KEEP,foil_visible,medium,look_part2,"Single clean grasp, ends holding striped; pan/wrist offset mild",14.4,12.6,25.3,1,0,0,0,0,28.0,1.1
+so101_pick_blue_ball,13,KEEP,foil_visible,medium,look_part2,"At most 1 regrasp, ends holding striped",13.4,12.0,26.6,1,0,0,0,0,20.4,0.3
+so101_pick_blue_ball,14,KEEP,foil_visible,auto,stage1,,13.5,11.6,21.6,1,0,0,0,0,5.5,0.0
+so101_pick_blue_ball,15,KEEP,foil_visible,auto,stage1,,9.8,12.4,16.3,1,0,0,0,0,13.1,0.4
+so101_pick_blue_ball,16,KEEP,foil_visible,auto,stage1,,13.9,11.5,22.4,1,0,0,0,0,27.8,0.0
+so101_pick_blue_ball,17,KEEP,foil_visible,auto,stage1,,13.5,12.8,20.9,1,0,0,0,0,14.8,0.0
+so101_pick_blue_ball,18,KEEP,foil_visible,auto,stage1,,11.3,12.6,18.7,1,0,0,0,0,13.3,0.7
+so101_pick_blue_ball,19,KEEP,foil_visible,auto,stage1,,20.0,12.6,29.8,2,1,0,0,0,5.1,0.3
+so101_pick_blue_ball,20,KEEP,foil_visible,medium,look_part2,Gripper reading 12.5 is a normal hold; ends holding striped; stage-1 'open at end' flag is wrong,14.6,12.5,,0,0,0,0,0,6.8,1.0
+so101_pick_blue_ball,21,KEEP,foil_visible,auto,stage1,,9.4,14.9,23.5,1,0,0,0,0,8.8,0.0
+so101_pick_blue_ball,22,KEEP,foil_visible,auto,stage1,,7.2,15.6,24.4,1,0,0,0,0,1.6,0.0
+so101_pick_blue_ball,23,DROP,foil_visible,medium,look_part2,2 regrasps on striped (miss + release) before final hold,16.6,13.0,26.0,3,2,0,0,0,9.4,0.2
+so101_pick_blue_ball,24,KEEP,foil_visible,auto,stage1,,10.4,12.8,19.8,1,0,0,0,0,31.3,0.0
+so101_pick_blue_ball,25,DROP,foil_visible,medium,look_part2,4 failed closes (>1 regrasp); ends holding striped,30.1,12.0,18.9,5,4,0,0,0,19.0,0.1
+so101_pick_blue_ball,26,KEEP,foil_visible,auto,stage1,,13.7,12.7,20.8,1,0,0,0,0,3.0,0.5
+so101_pick_blue_ball,27,KEEP,foil_visible,auto,stage1,,14.6,12.5,26.2,1,0,0,0,0,32.1,0.0
+so101_pick_blue_ball,28,KEEP,foil_visible,auto,stage1,,19.6,12.7,19.3,2,1,0,0,0,5.1,0.0
+so101_pick_blue_ball,29,KEEP,foil_visible,auto,stage1,,13.0,14.0,20.1,1,0,0,0,0,6.1,0.4
+so101_pick_blue_ball,30,KEEP,foil_visible,medium,look_part2,Ends holding striped; one close,13.6,14.8,24.0,1,0,0,0,0,8.1,0.3
+so101_pick_blue_ball,31,DROP,foil_visible,medium,look_part2,2 regrasps on striped,25.6,14.2,29.9,3,2,0,0,0,15.5,0.2
+so101_pick_blue_ball,32,DROP,foil_visible,medium,drop_part1,"no put-back, but episode ends while arm is still moving (pan 26-35, shoulder_lift 9 off start pose): not a clean end at start pose",11.6,14.9,23.7,1,0,0,0,0,40.7,0.1
+so101_pick_blue_ball,33,DROP,foil_visible,high,drop_part1,ends empty: striped handed to a person; also 1-2 regrasps,31.8,1.4,,3,3,0,0,0,1.2,1.8
+so101_pick_blue_ball,34,KEEP,foil_visible,auto,stage1,,12.6,14.5,21.7,1,0,0,0,0,23.5,0.0
+so101_pick_blue_ball,35,KEEP,foil_visible,auto,stage1,,13.4,12.2,18.1,1,0,0,0,0,3.0,0.2
+so101_pick_blue_ball,36,KEEP,foil_visible,auto,stage1,,17.9,12.3,20.1,1,0,0,0,0,22.5,0.3
+so101_pick_blue_ball,37,DROP,foil_visible,medium,look_part2,2 regrasps on striped,18.0,13.0,21.1,3,2,0,0,0,18.2,0.0
+so101_pick_blue_ball,38,KEEP,foil_visible,auto,stage1,,17.3,11.0,19.1,1,0,0,0,0,34.2,0.4
+so101_pick_blue_ball,39,KEEP,foil_visible,auto,stage1,,16.9,14.7,23.1,1,0,0,0,0,13.4,2.1
+so101_pick_blue_ball,40,KEEP,foil_visible,auto,stage1,,18.1,15.0,20.0,1,0,0,0,0,16.7,0.1
+so101_pick_blue_ball,41,KEEP,foil_visible,auto,stage1,,13.9,11.9,21.6,1,0,0,0,0,7.6,0.2
+so101_pick_blue_ball,42,KEEP,foil_visible,auto,stage1,,16.1,12.8,17.3,1,0,0,0,0,13.1,0.1
+so101_pick_blue_ball,43,KEEP,foil_visible,auto,stage1,,10.7,14.2,22.2,1,0,0,0,0,21.1,0.3
+so101_pick_blue_ball,44,KEEP,foil_visible,auto,stage1,,21.9,12.9,17.1,1,0,0,0,0,10.1,0.4
+so101_pick_blue_ball,45,KEEP,foil_visible,auto,stage1,,19.1,12.5,15.7,2,1,0,0,0,4.7,0.4
+so101_pick_blue_ball,46,KEEP,foil_visible,auto,stage1,,17.9,12.3,18.3,1,0,0,0,0,5.5,0.0
+so101_pick_blue_ball,47,KEEP,foil_visible,auto,stage1,,17.7,12.5,16.3,1,0,0,0,0,7.4,0.3
+so101_pick_blue_ball,48,KEEP,foil_visible,auto,stage1,,15.7,12.3,17.5,1,0,0,0,0,10.3,0.2
+so101_pick_blue_ball,49,DROP,foil_visible,high,drop_part1,ends empty (handover to a person at pan -20); stage-1 'put back' at 7s was an empty close in the foil,26.1,3.6,20.8,2,0,0,1,0,14.3,1.8
+so101_pick_blue_ball,50,KEEP,foil_visible,auto,stage1,,27.5,12.5,24.0,1,0,0,0,0,12.6,2.6
+so101_pick_blue_ball,51,KEEP,foil_visible,low,drop_part2,"1 empty close at striped then single grasp (1 regrasp, allowed); ends holding striped; no covering ball moved. Borderline: could be read as 2 regrasps",19.4,14.6,21.1,3,2,0,0,0,8.7,2.3
+so101_pick_blue_ball,52,KEEP,foil_visible,auto,stage1,,13.4,13.7,25.5,1,0,0,0,0,7.2,1.4
+so101_pick_blue_ball,53,KEEP,foil_visible,auto,stage1,,13.6,10.9,26.8,1,0,0,0,0,1.8,0.9
+so101_pick_blue_ball,54,KEEP,foil_visible,auto,stage1,,17.5,11.8,20.5,2,1,0,0,0,6.2,1.5
+so101_pick_blue_ball,55,DROP,foil_visible,high,look_part2,"Many regrasps (>1), 46s long",46.3,12.3,20.6,7,2,0,0,0,2.2,2.9
+so101_pick_blue_ball,56,KEEP,foil_visible,auto,stage1,,21.2,16.0,35.0,1,0,0,0,0,12.2,0.4
+so101_pick_blue_ball,57,DROP,foil_visible,medium,look_part2,2 regrasps on striped; end pan 21 off start,23.8,12.6,41.4,3,2,0,0,0,21.4,0.9
+so101_pick_blue_ball,58,KEEP,foil_visible,auto,stage1,,17.0,14.3,18.9,2,1,0,0,0,13.9,0.9
+so101_pick_blue_ball,59,KEEP,foil_visible,auto,stage1,,14.5,11.4,28.4,1,0,0,0,0,4.5,1.1
+so101_pick_blue_ball,60,KEEP,foil_visible,auto,stage1,,14.9,14.8,23.3,2,1,0,0,0,10.1,0.9
+so101_pick_blue_ball,61,KEEP,foil_visible,auto,stage1,,18.9,15.1,52.0,1,0,0,0,0,10.2,0.4
+so101_pick_blue_ball,62,KEEP,foil_visible,auto,stage1,,11.4,11.9,34.5,1,0,0,0,0,12.5,1.2
+so101_pick_blue_ball,63,KEEP,foil_visible,auto,stage1,,14.8,14.0,35.5,1,0,0,0,0,11.6,0.7
+so101_pick_blue_ball,64,KEEP,foil_visible,auto,stage1,,12.4,13.0,21.9,1,0,0,0,0,16.1,0.6
+so101_pick_blue_ball,65,KEEP,foil_visible,medium,drop_part2,"stage-1 put_back was a partial nudge, no ball held and released; single striped grasp",19.4,12.7,48.9,2,0,0,1,0,14.3,1.5
+so101_pick_blue_ball,66,KEEP,foil_visible,high,look_part2,"Single clean grasp, ends holding striped; wrist 20 mild",13.9,13.7,43.5,1,0,0,0,0,19.5,0.7
+so101_pick_blue_ball,67,KEEP,foil_visible,medium,drop_part2,bowl_unclear flags were nudges with nothing carried; one striped grasp; wrist_flex end offset only,20.6,12.8,19.4,3,0,0,0,0,26.6,0.4
+so101_pick_blue_ball,68,KEEP,foil_visible,high,look_part2,"Single clean grasp, ends holding striped",10.1,13.6,34.8,1,0,0,0,0,17.1,0.6
+so101_pick_blue_ball,69,KEEP,foil_visible,auto,stage1,,14.7,12.7,61.4,1,0,0,0,0,14.4,1.1
+so101_pick_blue_ball,70,KEEP,foil_visible,auto,stage1,,15.2,11.1,29.9,1,0,0,0,0,12.2,0.9
+so101_pick_blue_ball,71,DROP,foil_visible,high,look_part2,Ends with empty open gripper; not holding striped,19.0,16.4,,2,1,0,0,0,11.3,3.2
+so101_pick_blue_ball,72,KEEP,foil_visible,auto,stage1,,16.3,14.7,34.7,1,0,0,0,0,14.3,1.1
+so101_pick_blue_ball,73,KEEP,foil_visible,auto,stage1,,15.8,12.7,22.6,1,0,0,0,0,2.0,0.4
+so101_pick_blue_ball,74,KEEP,foil_visible,auto,stage1,,11.2,13.0,25.5,1,0,0,0,0,13.7,0.8
+so101_pick_blue_ball,75,KEEP,foil_visible,high,look_part3,"striped visible in bowl, no clearing; 1 regrasp; ends holding striped near start",16.7,13.8,22.1,2,0,0,0,0,4.8,0.5
+so101_pick_blue_ball,76,KEEP,foil_visible,auto,stage1,,20.8,12.7,17.8,1,0,0,0,0,14.6,0.9
+so101_pick_blue_ball,77,KEEP,foil_visible,auto,stage1,,11.5,14.8,29.7,1,0,0,0,0,5.2,2.2
+so101_pick_blue_ball,78,KEEP,foil_visible,auto,stage1,,12.1,12.9,33.7,1,0,0,0,0,2.5,0.9
+so101_pick_blue_ball,79,KEEP,foil_visible,auto,stage1,,14.6,14.6,27.2,1,0,0,0,0,4.2,1.1
+so101_pick_blue_ball,80,KEEP,foil_visible,medium,drop_part2,stage-1 put_back was jaw narrowing not a held foil ball; one striped grasp,16.2,12.9,25.6,2,0,0,1,0,15.0,0.4
+so101_pick_blue_ball,81,KEEP,foil_visible,auto,stage1,,21.4,13.1,24.5,2,1,0,0,0,8.7,0.5
+so101_pick_blue_ball,82,KEEP,foil_visible,auto,stage1,,18.5,13.1,27.7,1,0,0,0,0,4.1,0.1
+so101_pick_blue_ball,83,KEEP,foil_visible,auto,stage1,,10.1,13.4,25.6,1,0,0,0,0,6.8,1.3
+so101_pick_blue_ball,84,KEEP,foil_visible,auto,stage1,,11.2,14.9,27.0,1,0,0,0,0,9.7,0.6
+so101_pick_blue_ball,85,KEEP,foil_visible,auto,stage1,,13.2,12.3,34.5,1,0,0,0,0,13.3,0.1
+so101_pick_blue_ball,86,KEEP,foil_visible,high,look_part3,striped visible; 1 regrasp on striped; ends holding striped,15.3,14.4,23.2,2,0,0,0,0,6.7,1.1
+so101_pick_blue_ball,87,KEEP,foil_visible,auto,stage1,,10.3,13.3,31.2,1,0,0,0,0,11.9,0.8
+so101_pick_blue_ball,88,KEEP,foil_visible,high,look_part3,striped visible; 1 regrasp; ends holding striped; pan -17 release is just bowl side,13.5,12.8,23.9,2,0,0,0,0,3.2,1.1
+so101_pick_blue_ball,89,KEEP,foil_visible,high,drop_part2,"put_back false: gripper g28->12 only, no foil held; single grasp, held at end",10.8,12.4,26.4,2,0,0,1,0,1.9,0.4
+so101_pick_blue_ball,90,KEEP,foil_visible,auto,stage1,,8.5,12.7,34.5,1,0,0,0,0,5.2,0.6
+so101_pick_blue_ball,91,KEEP,foil_visible,auto,stage1,,15.1,12.8,34.0,2,1,0,0,0,5.3,0.7
+so101_pick_blue_ball,92,KEEP,foil_visible,high,look_part3,striped visible; 1 regrasp; ends holding striped,15.0,15.2,22.1,2,0,0,0,0,12.9,0.6
+so101_pick_blue_ball,93,KEEP,foil_visible,auto,stage1,,12.3,14.8,35.7,1,0,0,0,0,9.5,0.6
+so101_pick_blue_ball,94,KEEP,foil_visible,auto,stage1,,10.7,12.9,23.7,1,0,0,0,0,5.3,0.5
+so101_pick_blue_ball,95,KEEP,foil_visible,medium,drop_part2,only reason was end wrist_flex 40; single clean grasp; end pose offset minor,13.3,14.9,25.4,1,0,0,0,0,40.2,0.7
+so101_pick_blue_ball,96,KEEP,foil_visible,auto,stage1,,13.1,14.8,25.5,1,0,0,0,0,12.3,0.7
+so101_pick_blue_ball,97,KEEP,foil_visible,auto,stage1,,12.4,11.4,27.7,1,0,0,0,0,11.9,1.0
+so101_pick_blue_ball,98,KEEP,foil_visible,medium,drop_part2,only reason was end pan 26/wrist 18 offset; single clean grasp,16.8,14.5,30.8,1,0,0,0,0,25.9,1.2
+so101_pick_blue_ball,99,KEEP,foil_visible,auto,stage1,,10.4,15.3,26.2,1,0,0,0,0,8.3,0.6
+so101_pick_buried_ball,0,KEEP,foil_buried,medium,look_part3,2 foil into hole; 1 regrasp on striped; ends holding striped,43.8,13.3,22.4,4,2,1,0,0,8.3,1.9
+so101_pick_buried_ball,1,KEEP,foil_buried,medium,drop_part2,foil went into hole (pan 50 = hole); 'put back' at 25s was a striped-area close = at most 1 regrasp,33.9,11.4,25.5,4,0,1,1,0,9.1,1.1
+so101_pick_buried_ball,2,KEEP,foil_buried,high,drop_part2,both covering balls visible in hole; one striped grasp; wrist_flex end offset only,39.1,13.8,64.7,3,0,2,0,0,36.6,1.8
+so101_pick_buried_ball,3,KEEP,foil_buried,low,drop_part2,"pan -12..-16 releases are the hole, not put-backs; striped-aimed empties are 1-2 (24s ambiguous blip), so regrasp count borderline",51.8,11.2,15.5,7,3,0,3,0,11.9,0.9
+so101_pick_buried_ball,4,KEEP,foil_buried,auto,stage1,,24.7,13.4,23.8,3,0,1,0,0,5.5,0.7
+so101_pick_buried_ball,5,KEEP,foil_buried,medium,look_part3,all 3 foil in hole; 1 striped try; stage1 wrist_flex flag minor,46.4,11.1,23.0,6,0,3,0,0,22.0,0.8
+so101_pick_buried_ball,6,KEEP,foil_visible,medium,look_part3,"striped grabbed 2nd try, ends with striped; end still travelling home (pan 19 off, may need trim end)",15.1,13.5,23.1,2,0,0,0,0,19.0,0.6
+so101_pick_buried_ball,7,DROP,foil_buried,medium,drop_part2,"2 failed/empty closes at striped (38s, 40.5s) before final grasp = 2 regrasps (>1)",47.5,11.2,21.7,10,2,4,1,0,14.4,0.8
+so101_pick_buried_ball,8,DROP,foil_buried,low,look_part3,possible foil put back in bowl at 21s (breaks every cleared ball into hole) plus 2 extra closes on striped,30.7,15.1,22.8,6,1,3,0,0,8.7,0.3
+so101_pick_buried_ball,9,DROP,foil_buried,medium,drop_part2,3 failed closes at striped before final grasp = 2+ regrasps; hole drops fine,50.1,15.4,28.8,8,4,0,2,0,12.2,0.5
+so101_pick_buried_ball,10,KEEP,foil_buried,high,drop_part2,ambiguous releases are hole drops; hole holds 3 balls; one striped grasp,37.2,11.6,31.2,4,0,0,0,0,30.7,0.5
+so101_pick_buried_ball,11,KEEP,foil_buried,auto,stage1,,47.8,13.1,27.7,5,1,3,0,0,16.6,0.6
+so101_pick_buried_ball,12,DROP,foil_buried,medium,look_part3,3+ regrasps on striped (visible in frames 28-34s),41.6,12.4,26.4,8,2,4,0,1,9.0,0.5
+so101_pick_buried_ball,13,KEEP,foil_buried,auto,stage1,,25.0,10.5,27.3,3,0,2,0,0,12.9,0.9
+so101_pick_buried_ball,14,KEEP,foil_buried,auto,stage1,,34.1,13.1,17.7,5,1,2,0,0,9.8,0.8
+so101_pick_buried_ball,15,KEEP,foil_buried,auto,stage1,,33.4,14.9,21.4,4,0,3,0,0,19.9,2.3
+so101_pick_buried_ball,16,KEEP,foil_buried,medium,drop_part2,put_backs were regrip in bowl of a ball that then went to hole; no ball left in bowl; one striped grasp,42.1,13.9,23.3,8,0,3,2,1,16.4,0.6
+so101_pick_buried_ball,17,DROP,foil_buried,low,look_part3,2 empty misses on striped before final grasp (>1 regrasp); borderline,34.7,12.5,28.6,7,3,3,0,0,4.1,0.3
+so101_pick_buried_ball,18,KEEP,foil_buried,medium,drop_part2,"put_back was approach jaw narrowing; one clear into hole, one striped grasp",20.6,13.1,22.6,3,0,1,1,0,5.0,0.3
+so101_pick_buried_ball,19,KEEP,foil_buried,medium,look_part3,"all cleared into hole; grasp_at_hole_region is a retry at the hole, not a violation",45.2,12.4,20.3,6,0,5,0,0,3.5,0.5
+so101_pick_buried_ball,20,KEEP,foil_buried,medium,look_part3,3 in hole; 1 miss on striped; ends holding striped,46.0,11.4,19.1,7,2,3,0,0,8.5,2.1
+so101_pick_buried_ball,21,KEEP,foil_buried,auto,stage1,,34.3,11.8,17.8,6,1,2,0,0,4.3,0.1
+so101_pick_buried_ball,22,KEEP,foil_buried,high,look_part3,striped slip then regrasp = 1; no-release flag false alarm; 11s L1 is empty blip,34.9,11.4,20.9,6,0,3,0,1,3.1,1.0
+so101_pick_buried_ball,23,KEEP,foil_buried,medium,drop_part2,'put back' at 23s is a nudge/short close; at most 1 regrasp; all cleared balls in hole,27.6,12.5,19.1,6,0,4,1,0,5.3,0.3
+so101_pick_buried_ball,24,DROP,foil_buried,low,look_part3,"2 failed grabs on striped/foil in bowl before final (>1 regrasp), uncleared 25s grab",48.0,14.1,30.9,7,0,4,0,1,15.4,0.5
+so101_pick_buried_ball,25,KEEP,foil_buried,medium,drop_part2,"stage-1 'put_back x4' were hole drops, pan -7..-9 is hole position in this scene; one striped grasp",49.0,14.8,23.4,7,1,0,4,0,8.9,0.5
+so101_pick_buried_ball,26,KEEP,foil_buried,auto,stage1,,36.9,14.4,26.6,6,0,5,0,0,0.4,0.1
+so101_pick_buried_ball,27,KEEP,foil_buried,auto,stage1,,20.4,13.6,24.4,3,0,2,0,0,15.6,0.8
+so101_pick_buried_ball,28,KEEP,foil_visible,medium,drop_part2,put_back was nudge/narrowing with nothing held; <=1 empty at striped,22.0,14.8,24.5,3,0,1,1,0,2.7,0.7
+so101_pick_buried_ball,29,KEEP,foil_buried,auto,stage1,,30.5,12.8,22.1,3,0,2,0,0,9.3,0.6
+so101_pick_buried_ball,30,KEEP,foil_buried,auto,stage1,,24.2,14.8,21.4,2,0,1,0,0,9.2,1.1
+so101_pick_buried_ball,31,KEEP,foil_buried,auto,stage1,,20.1,11.7,24.1,3,0,2,0,0,13.0,0.8
+so101_pick_buried_ball,32,KEEP,foil_buried,medium,drop_part2,both covering balls in hole; at most 1 partial striped attempt,24.5,12.5,22.0,5,1,2,1,0,2.9,0.5
+so101_pick_buried_ball,33,KEEP,foil_visible,high,drop_part2,put_back was a nudge; short 8.7s episode with one grasp,8.7,13.3,20.5,2,0,0,1,0,9.8,0.3
+so101_pick_buried_ball,34,KEEP,foil_visible,medium,drop_part2,covering ball went into hole; one striped grasp; held at end,22.4,15.1,20.1,3,0,1,1,0,11.7,1.8
+so101_pick_buried_ball,35,KEEP,foil_buried,auto,stage1,,19.7,13.2,25.1,3,0,2,0,0,4.3,0.7
+so101_pick_buried_ball,36,KEEP,foil_buried,medium,look_part3,all in hole; picked_at_hole_region_released_at_bowl is a rim re-pick; ends holding striped,23.0,15.2,22.6,5,0,3,0,0,6.8,0.6
+so101_pick_buried_ball,37,DROP,foil_buried,medium,drop_part2,3 close attempts at striped = 2 regrasps (>1),41.0,13.8,33.2,6,3,0,2,0,25.8,0.8
+so101_pick_buried_ball,38,KEEP,foil_buried,auto,stage1,,19.7,15.1,25.6,2,0,1,0,0,12.2,0.4
+so101_pick_buried_ball,39,KEEP,foil_buried,auto,stage1,,26.1,13.4,17.6,4,1,2,0,0,7.7,0.7
+so101_pick_buried_ball,40,KEEP,foil_buried,auto,stage1,,17.7,11.8,20.9,3,0,1,0,0,16.4,0.7
+so101_pick_buried_ball,41,KEEP,foil_buried,auto,stage1,,49.0,13.4,38.0,8,0,4,0,0,16.2,0.4
+so101_pick_buried_ball,42,KEEP,foil_buried,high,drop_part2,all put_backs were hole drops (pan 16-18 hole position); one striped grasp,29.9,13.7,26.2,6,0,1,2,0,13.3,0.9
+so101_pick_buried_ball,43,KEEP,foil_buried,auto,stage1,,34.8,13.1,33.9,6,1,4,0,0,11.0,0.8
+so101_pick_buried_ball,44,KEEP,foil_buried,auto,stage1,,29.1,13.8,21.1,4,0,3,0,0,2.1,0.7
+so101_pick_rb_mixed,0,KEEP,rb_buried,high,look_part1,"ends holding striped; all cleared balls in holes; stage-1 'released at bowl@9s' is a failed close, not a put-back",30.1,13.1,25.6,5,0,3,0,0,6.8,1.6
+so101_pick_rb_mixed,1,KEEP,rb_visible,auto,stage1,,11.0,14.1,18.2,1,0,0,0,0,16.0,0.5
+so101_pick_rb_mixed,2,KEEP,rb_visible,auto,stage1,,13.2,13.0,23.1,1,0,0,0,0,4.3,0.7
+so101_pick_rb_mixed,3,KEEP,rb_visible,auto,stage1,,13.3,12.3,27.9,1,0,0,0,0,6.8,0.4
+so101_pick_rb_mixed,4,KEEP,rb_buried,auto,stage1,,18.4,13.4,25.1,2,0,1,0,0,5.5,0.5
+so101_pick_rb_mixed,5,KEEP,rb_buried,high,drop_part1,"stage-1 put-back at 10s was an empty/partial close; only 1 clear, into red hole; ends holding striped",15.4,13.9,21.3,4,0,1,1,0,13.7,0.5
+so101_pick_rb_mixed,6,KEEP,rb_buried,auto,stage1,,35.2,12.7,24.4,7,1,4,0,0,3.3,0.4
+so101_pick_rb_mixed,7,KEEP,rb_buried,auto,stage1,,42.7,13.7,30.3,7,0,6,0,0,9.4,2.0
+so101_pick_rb_mixed,8,KEEP,rb_buried,medium,look_part1,1 regrasp on striped; 4 clears all into holes; 'no release detected' is a false alarm,28.6,12.4,24.0,7,1,4,0,1,3.6,0.0
+so101_pick_rb_mixed,9,DROP,rb_buried,medium,look_part1,2 failed regrasps on striped (>1); otherwise normal and ends holding striped,20.0,14.5,18.7,4,2,1,0,0,6.6,0.3
+so101_pick_rb_mixed,10,KEEP,rb_visible,auto,stage1,,10.7,12.5,21.3,1,0,0,0,0,5.5,1.7
+so101_pick_rb_mixed,11,KEEP,rb_buried,medium,look_part1,3 clears into holes; stage-1 label 'str' at 14s is really blue; no-release flag is detector miss,33.0,14.3,26.0,4,0,2,0,1,12.5,0.4
+so101_pick_rb_mixed,12,KEEP,rb_buried,auto,stage1,,16.3,16.6,20.4,3,1,1,0,0,1.8,0.0
+so101_pick_rb_mixed,13,KEEP,rb_buried,auto,stage1,,26.1,12.0,37.0,4,0,3,0,0,3.7,0.3
+so101_pick_rb_mixed,14,KEEP,rb_buried,auto,stage1,,19.3,12.7,24.8,3,0,2,0,0,7.5,0.1
+so101_pick_rb_mixed,15,KEEP,rb_buried,auto,stage1,,22.4,12.3,24.1,3,0,2,0,0,6.8,0.2
+so101_pick_rb_mixed,16,KEEP,rb_buried,auto,stage1,,17.2,10.8,24.4,4,1,1,0,0,2.8,0.1
+so101_pick_rb_mixed,17,KEEP,rb_buried,high,drop_part1,both clears into red hole (stage-1 labels blu/nol wrong); the 'put back' at 17s is an open gripper with nothing held,22.0,12.8,23.3,4,0,2,1,0,10.5,0.2
+so101_pick_rb_mixed,18,KEEP,rb_buried,auto,stage1,,32.5,14.5,24.9,7,1,4,0,0,3.7,0.0
+so101_pick_rb_mixed,19,KEEP,rb_visible,auto,stage1,,9.7,14.3,29.9,1,0,0,0,0,7.4,0.1
+so101_pick_rb_mixed,20,KEEP,rb_buried,auto,stage1,,27.9,14.3,29.6,4,0,3,0,0,5.5,0.2
+so101_pick_rb_mixed,21,DROP,rb_visible,medium,look_part1,2 regrasps on striped (>1) and end pose off start; no covering ball ever cleared (stage-1 'covering ball no release' is wrong),15.8,15.3,31.2,4,2,0,0,1,14.7,0.7
+so101_pick_rb_mixed,22,DROP,rb_buried,medium,drop_part1,3 grabs of the striped ball plus an empty close: >1 striped regrasp; no real put-back of a covering ball,23.9,12.3,22.8,6,1,1,1,0,16.0,0.2
+so101_pick_rb_mixed,23,KEEP,rb_visible,auto,stage1,,10.7,16.2,26.4,1,0,0,0,0,13.2,0.4
+so101_pick_rb_mixed,24,KEEP,rb_visible,auto,stage1,,11.2,12.9,28.2,1,0,0,0,0,4.1,0.0
+so101_pick_rb_mixed,25,KEEP,rb_buried,high,drop_part1,both clears into red hole; stage-1 put-back at 7s is an open-gripper pass; ends holding striped,29.2,15.5,18.7,4,0,2,1,0,3.2,0.9
+so101_pick_rb_mixed,26,KEEP,rb_buried,auto,stage1,,18.3,15.7,26.4,2,0,1,0,0,1.8,0.7
+so101_pick_rb_mixed,27,KEEP,rb_buried,auto,stage1,,15.3,13.1,26.0,2,0,1,0,0,6.0,0.4
+so101_pick_rb_mixed,28,DROP,rb_buried,medium,drop_part1,striped dropped back into bowl and grabbed 3 times: 2 striped regrasps (>1),36.4,14.2,31.2,6,1,2,1,0,12.6,0.4
+so101_pick_rb_mixed,29,KEEP,rb_buried,high,drop_part1,"clean: 2 clears into holes, no put-back, striped final",20.6,13.0,27.2,4,0,2,1,0,17.7,0.5
+so101_pick_rb_mixed,30,KEEP,rb_visible,auto,stage1,,12.6,12.9,23.2,1,0,0,0,0,6.1,0.5
+so101_pick_rb_mixed,31,KEEP,rb_visible,high,look_part1,clean single grasp,10.6,12.9,18.6,2,0,0,0,0,11.7,0.0
+so101_pick_rb_mixed,32,KEEP,rb_buried,medium,drop_part1,"pan -19 is the bowl in this ep: closes at 10-15s press covering balls (partial, nothing carried); only 1 real clear blue->blue hole; low-end uncertainty on whether those nudges were aimed at striped",28.8,13.0,24.6,4,0,1,1,0,2.9,2.4
+so101_pick_rb_mixed,33,KEEP,rb_buried,auto,stage1,,13.6,13.6,27.9,2,0,1,0,0,5.6,0.1
+so101_pick_rb_mixed,34,KEEP,rb_buried,medium,look_part1,"1 clear into blue hole; stage-1 'ball into bowl' flag is empty closes, not a put-back",29.4,12.1,18.9,4,1,1,0,0,4.9,1.4
+so101_pick_rb_mixed,35,KEEP,rb_buried,medium,drop_part1,1 red cleared into red hole; early closes are nudges of covering ball; stage-1 put-backs are nudges (readings 8-12 with nothing in jaws),23.2,12.2,29.2,4,0,1,2,0,12.7,0.2
+so101_pick_rb_mixed,36,KEEP,rb_visible,auto,stage1,,15.1,14.5,35.9,2,1,0,0,0,3.9,0.0
+so101_pick_rb_mixed,37,KEEP,rb_buried,auto,stage1,,14.6,14.2,29.2,2,0,1,0,0,0.2,0.1
+so101_pick_rb_mixed,38,KEEP,rb_buried,medium,drop_part1,2 blues into blue hole; the 'put back' at 11s is an empty close (reading 6),28.6,13.7,19.7,5,1,2,1,0,6.9,0.2
+so101_pick_rb_mixed,39,KEEP,rb_buried,medium,drop_part1,2 clears into holes; stage-1 red put-back at 31s was an empty close with nothing in jaws; closes at 36s are nudges of a covering ball; if those count as striped-aimed regrasps it would be 2,45.1,14.2,20.5,5,1,2,1,0,2.3,1.3
+so101_pick_rb_mixed,40,KEEP,rb_visible,auto,stage1,,13.0,15.6,25.5,2,1,0,0,0,7.6,0.4
+so101_pick_rb_mixed,41,KEEP,rb_buried,medium,drop_part1,"2 clears into holes; stage-1 red put-back at 24s looks like a nudge (reading 16-20, nothing carried); 1 striped regrasp",31.7,15.5,23.1,6,1,2,2,0,2.7,0.0
+so101_pick_rb_mixed,42,KEEP,rb_visible,auto,stage1,,9.3,13.8,28.4,1,0,0,0,0,10.0,0.0
+so101_pick_rb_mixed,43,KEEP,rb_visible,high,look_part1,trim end: 8 s trailing idle holding striped,19.1,15.8,25.5,1,0,0,0,0,6.1,8.0
+so101_pick_rb_mixed,44,DROP,rb_buried,medium,look_part1,2 regrasps on striped; blue covering ball never put in a hole,27.0,12.9,25.9,5,1,1,0,0,1.3,0.3
+so101_pick_rb_mixed,45,KEEP,rb_buried,high,drop_part1,both reds into red hole; stage-1 put-back at 17s is a slipped red regrasped and carried to the hole,27.9,13.1,24.4,4,0,2,1,0,7.6,0.0
+so101_pick_rb_mixed,46,KEEP,rb_visible,auto,stage1,,12.7,12.7,25.5,1,0,0,0,0,3.7,1.0
+so101_pick_rb_mixed,47,KEEP,rb_buried,medium,drop_part1,1 blue into blue hole; stage-1 red put-back at 11s is open gripper nothing held,16.6,15.6,27.7,3,0,1,1,0,6.1,0.2
+so101_pick_rb_mixed,48,DROP,rb_buried,high,drop_part1,3 clears into holes but >=4 striped regrasps and long struggle at the end,54.1,11.1,25.9,14,5,4,2,1,4.8,0.0
+so101_pick_rb_mixed,49,KEEP,rb_buried,medium,look_part1,all cleared balls in holes; ends holding striped,35.1,12.6,47.6,4,0,2,0,0,4.9,1.2
+so101_pick_rb_mixed,50,KEEP,rb_buried,medium,drop_part1,"2 clears into holes, no put-back; 1 empty close at striped (1 regrasp)",32.6,12.6,20.4,8,3,2,1,1,6.6,0.0
+so101_pick_rb_mixed,51,KEEP,rb_buried,medium,look_part1,2 clears into holes; 1 failed close before striped grab,29.5,13.1,32.6,4,0,2,0,0,10.0,0.0
+so101_pick_rb_mixed,52,DROP,rb_buried,low,look_part1,abnormal data: human hand in scene after blue release; otherwise would KEEP (stage-1 'released at bowl' is wrong: blue stayed in hole),26.5,13.0,20.1,4,0,1,0,0,16.5,0.2
+so101_pick_rb_mixed,53,KEEP,rb_buried,auto,stage1,,29.6,15.3,20.7,3,0,2,0,0,7.8,0.1
+so101_pick_rb_mixed,54,KEEP,rb_buried,high,drop_part1,2 blues into blue hole; stage-1 'put back' at 18s is open gripper; blue holds read 5-7 in this ep,32.8,15.5,22.6,6,0,2,1,0,11.3,0.1
+so101_pick_rb_mixed,55,KEEP,rb_buried,auto,stage1,,22.8,14.5,25.7,3,0,2,0,0,1.9,0.1
+so101_pick_rb_mixed,56,KEEP,rb_buried,auto,stage1,,29.7,14.0,28.8,4,0,3,0,0,5.8,0.3
+so101_pick_rb_mixed,57,KEEP,rb_buried,high,drop_part1,1 red into red hole; stage-1 blue put-back at 12s was open gripper over bowl,19.3,12.9,26.8,3,0,1,1,0,8.0,0.3
+so101_pick_rb_mixed,58,KEEP,rb_buried,medium,look_part1,1 clear into hole; ends holding striped,18.9,14.1,27.9,3,0,1,0,0,7.3,0.0
+so101_pick_rb_mixed,59,KEEP,rb_buried,medium,look_part1,1 clear into red hole; 'grasp_at_hole_region' flag unconfirmed visually,25.1,14.4,27.3,3,0,2,0,0,2.8,0.1
+so101_pick_rb_mixed,60,KEEP,rb_visible,auto,stage1,,12.6,13.1,17.4,1,0,0,0,0,6.1,0.1
+so101_pick_rb_mixed,61,KEEP,rb_buried,auto,stage1,,43.9,14.6,30.2,5,1,3,0,0,2.9,0.7
+so101_pick_rb_mixed,62,KEEP,rb_visible,auto,stage1,,15.9,13.6,20.9,2,1,0,0,0,8.8,0.9
+so101_pick_rb_mixed,63,KEEP,rb_visible,medium,look_part1,"striped visible; no cleared balls; short episode, normal",15.7,12.4,20.4,3,0,0,0,0,9.1,0.1
+so101_pick_rb_mixed,64,KEEP,rb_buried,high,drop_part1,2 clears into holes; stage-1 red put-back at 20s was release at the red hole; early g8 is rest closed gripper,26.1,12.0,28.6,5,0,2,1,0,13.5,0.0
+so101_pick_rb_mixed,65,KEEP,rb_visible,high,drop_part1,"no cleared balls; stage-1 put-back at 0s is a rest-pose reading, not a ball; striped final",11.9,15.5,27.9,2,0,0,1,0,8.0,0.0
+so101_pick_rb_mixed,66,KEEP,rb_visible,auto,stage1,,11.9,12.5,22.6,2,1,0,0,0,5.3,0.0
+so101_pick_rb_mixed,67,KEEP,rb_buried,auto,stage1,,23.6,13.1,21.8,3,1,1,0,0,17.1,0.3
+so101_pick_rb_mixed,68,KEEP,rb_buried,auto,stage1,,21.7,12.0,30.4,2,0,1,0,0,13.9,0.8
+so101_pick_rb_mixed,69,DROP,rb_buried,high,drop_part1,"5 closes aimed at striped (>1 regrasp); 4 clears into holes, no real put-back",59.6,13.8,22.8,12,4,4,1,1,24.9,0.0
+so101_pick_rb_mixed,70,KEEP,rb_buried,auto,stage1,,27.6,16.7,34.0,3,0,2,0,0,22.5,3.8
+so101_pick_rb_mixed,71,KEEP,rb_buried,auto,stage1,,27.2,11.6,26.3,3,0,2,0,0,16.6,0.5
+so101_pick_rb_mixed,72,KEEP,rb_buried,high,look_part2,"Both cleared balls were RED (stage-1 labelled first close 'str', wrong) and went into the red hole; ends holding striped",28.2,14.9,18.2,3,0,2,0,0,10.1,0.3
+so101_pick_rb_mixed,73,KEEP,rb_buried,auto,stage1,,34.0,14.2,30.0,3,0,2,0,0,12.6,0.8
+so101_pick_rb_mixed,74,KEEP,rb_buried,auto,stage1,,24.4,13.4,29.6,2,0,1,0,0,15.9,1.0
+so101_pick_rb_mixed,75,KEEP,rb_buried,auto,stage1,,33.4,16.2,24.0,4,1,2,0,0,16.6,1.6
+so101_pick_rb_mixed,76,KEEP,rb_buried,high,drop_part1,2 clears into holes; stage-1 red put-back at 22s is open gripper with nothing held,30.2,13.4,23.5,4,0,2,1,0,12.1,0.1
+so101_pick_rb_mixed,77,KEEP,rb_buried,auto,stage1,,39.0,13.0,29.4,5,1,3,0,0,3.2,0.0
+so101_pick_rb_mixed,78,KEEP,rb_visible,auto,stage1,,16.6,12.6,20.3,2,1,0,0,0,2.5,1.1
+so101_pick_rb_mixed,79,KEEP,rb_buried,auto,stage1,,21.4,13.9,24.5,2,0,1,0,0,13.3,0.1
+so101_pick_rb_mixed,80,KEEP,rb_visible,auto,new40,,11.9,9.4,23.0,1,0,0,0,0,9.3,0.2
+so101_pick_rb_mixed,81,KEEP,rb_visible,auto,new40,,10.2,12.3,21.8,1,0,0,0,0,6.8,1.3
+so101_pick_rb_mixed,82,KEEP,rb_visible,auto,new40,,14.9,13.6,17.8,2,1,0,0,0,6.0,0.3
+so101_pick_rb_mixed,83,KEEP,rb_visible,auto,new40,,9.5,12.7,23.7,1,0,0,0,0,5.8,0.5
+so101_pick_rb_mixed,84,KEEP,rb_visible,auto,new40,,9.7,12.0,28.4,1,0,0,0,0,4.2,0.4
+so101_pick_rb_mixed,85,KEEP,rb_visible,auto,new40,,8.3,13.4,30.1,1,0,0,0,0,10.2,0.7
+so101_pick_rb_mixed,86,KEEP,rb_visible,auto,new40,,11.7,12.2,17.7,1,0,0,0,0,4.4,0.1
+so101_pick_rb_mixed,87,KEEP,rb_visible,auto,new40,,11.3,15.5,22.6,1,0,0,0,0,13.1,0.2
+so101_pick_rb_mixed,88,KEEP,rb_visible,auto,new40,,9.9,13.6,20.7,1,0,0,0,0,7.0,0.9
+so101_pick_rb_mixed,89,KEEP,rb_visible,auto,new40,,7.9,14.6,20.4,1,0,0,0,0,6.9,0.0
+so101_pick_rb_mixed,90,KEEP,rb_visible,auto,new40,,8.4,15.6,27.2,1,0,0,0,0,2.8,0.0
+so101_pick_rb_mixed,91,KEEP,rb_visible,auto,new40,,7.3,15.3,23.7,1,0,0,0,0,5.2,0.0
+so101_pick_rb_mixed,92,KEEP,rb_visible,auto,new40,,9.4,13.8,24.5,1,0,0,0,0,5.7,0.2
+so101_pick_rb_mixed,93,DROP,rb_visible,auto,new40,"ends far from start pose: shoulder_lift 38;elbow_flex 83;wrist_flex 138; idle 5.9 s (lead 0.7, trail 0.0, internal 5.9); 1 covering ball(s) with no release detected",20.9,17.3,24.9,2,0,0,0,1,137.9,5.9
+so101_pick_rb_mixed,94,KEEP,rb_visible,auto,new40,,6.9,15.5,29.2,1,0,0,0,0,9.1,0.5
+so101_pick_rb_mixed,95,KEEP,rb_visible,auto,new40,,9.9,12.0,33.6,1,0,0,0,0,9.8,0.1
+so101_pick_rb_mixed,96,KEEP,rb_visible,auto,new40,,7.9,15.3,29.9,1,0,0,0,0,0.9,0.4
+so101_pick_rb_mixed,97,KEEP,rb_visible,auto,new40,,8.2,14.6,25.3,1,0,0,0,0,2.6,0.0
+so101_pick_rb_mixed,98,KEEP,rb_visible,auto,new40,,10.7,15.5,23.0,1,0,0,0,0,2.3,0.4
+so101_pick_rb_mixed,99,KEEP,rb_visible,auto,new40,,9.6,13.1,21.8,1,0,0,0,0,3.8,0.1
+so101_pick_rb_mixed,100,KEEP,rb_visible,auto,new40,,9.8,13.8,30.4,1,0,0,0,0,1.5,0.7
+so101_pick_rb_mixed,101,LOOK,rb_visible,auto,new40,"no final hold detected, gripper open at end (23.0); last close: nolabel released; ball_into_bowl_unclear_label(nolabel)@6s",11.0,23.0,,1,0,0,0,0,2.9,0.9
+so101_pick_rb_mixed,102,LOOK,rb_visible,auto,new40,ball_into_bowl_unclear_label(nolabel)@9s,19.8,12.3,21.9,2,0,0,0,0,5.1,0.6
+so101_pick_rb_mixed,103,KEEP,rb_visible,auto,new40,,14.0,15.3,30.6,1,0,0,0,0,1.3,0.3
+so101_pick_rb_mixed,104,KEEP,rb_visible,auto,new40,,10.8,14.7,27.4,1,0,0,0,0,5.4,1.5
+so101_pick_rb_mixed,105,KEEP,rb_visible,auto,new40,,12.0,12.3,20.1,1,0,0,0,0,7.3,0.3
+so101_pick_rb_mixed,106,KEEP,rb_visible,auto,new40,,11.8,14.5,27.6,1,0,0,0,0,7.6,0.2
+so101_pick_rb_mixed,107,KEEP,rb_visible,auto,new40,,9.5,15.2,26.4,1,0,0,0,0,4.5,0.5
+so101_pick_rb_mixed,108,KEEP,rb_visible,auto,new40,,8.0,12.3,27.5,1,0,0,0,0,13.3,0.6
+so101_pick_rb_mixed,109,KEEP,rb_visible,auto,new40,,12.5,14.2,30.8,1,0,0,0,0,5.8,0.1
+so101_pick_rb_mixed,110,KEEP,rb_visible,auto,new40,,10.2,11.7,23.3,1,0,0,0,0,4.3,0.3
+so101_pick_rb_mixed,111,KEEP,rb_visible,auto,new40,,11.0,12.5,21.1,1,0,0,0,0,1.8,0.9
+so101_pick_rb_mixed,112,LOOK,rb_visible,auto,new40,ambiguous_release_pan(13)@8s,12.4,12.5,18.2,2,0,0,0,0,5.6,0.3
+so101_pick_rb_mixed,113,KEEP,rb_visible,auto,new40,,25.3,12.3,23.7,3,0,2,0,0,5.1,0.0
+so101_pick_rb_mixed,114,KEEP,rb_visible,auto,new40,,30.8,11.2,23.7,4,0,2,0,0,5.2,0.0
+so101_pick_rb_mixed,115,KEEP,rb_visible,auto,new40,,7.2,13.2,21.8,1,0,0,0,0,4.3,0.1
+so101_pick_rb_mixed,116,KEEP,rb_visible,auto,new40,,14.1,12.9,28.7,1,0,0,0,0,5.7,0.1
+so101_pick_rb_mixed,117,KEEP,rb_visible,auto,new40,,10.1,10.7,29.6,1,0,0,0,0,6.9,0.2
+so101_pick_rb_mixed,118,LOOK,rb_visible,auto,new40,ball_into_bowl_unclear_label(nolabel)@7s,16.8,11.5,26.1,3,1,0,0,0,7.7,0.2
+so101_pick_rb_mixed,119,KEEP,rb_visible,auto,new40,,9.1,13.4,30.6,1,0,0,0,0,5.7,0.4
+so101_pick_rb_mixed,120,LOOK,,low,auto_stage1,,10.6,14.6,27.4,1,0,0,0,0,9.1,0.2
+so101_pick_rb_mixed,121,LOOK,,low,auto_stage1,ball_into_bowl_unclear_label(nolabel)@3s,9.1,12.9,27.2,2,0,0,0,0,4.0,0.2
+so101_pick_rb_mixed,122,LOOK,,low,auto_stage1,,12.5,12.9,21.5,1,0,0,0,0,7.7,0.5
+so101_pick_rb_mixed,123,LOOK,,low,auto_stage1,picked_at_hole_region_released_at_bowl@12s,21.0,11.1,25.3,3,0,1,0,0,11.7,0.0
+so101_pick_rb_mixed,124,LOOK,,low,auto_stage1,picked_at_hole_region_released_at_bowl@10s,17.3,15.4,23.1,3,0,1,0,0,10.4,0.6
+so101_pick_rb_mixed,125,LOOK,,low,auto_stage1,,20.9,15.3,30.4,2,0,1,0,0,4.1,1.1
+so101_pick_rb_mixed,126,LOOK,,low,auto_stage1,,9.9,13.9,28.8,1,0,0,0,0,3.6,0.0
+so101_pick_rb_mixed,127,LOOK,,low,auto_stage1,,28.2,14.5,31.2,5,1,2,0,0,7.4,0.7
+so101_pick_rb_mixed,128,LOOK,,low,auto_stage1,,17.2,12.4,39.8,2,0,1,0,0,1.5,0.1
+so101_pick_rb_mixed,129,LOOK,,low,auto_stage1,,9.7,14.4,27.6,1,0,0,0,0,1.8,0.0
+so101_pick_rb_mixed,130,LOOK,,low,auto_stage1,,9.0,11.0,27.9,1,0,0,0,0,5.7,0.0
+so101_pick_rb_mixed,131,LOOK,,low,auto_stage1,ball_into_bowl_unclear_label(nolabel)@7s,13.6,14.3,41.5,2,0,0,0,0,5.8,0.0
+so101_pick_rb_mixed,132,LOOK,,low,auto_stage1,,12.1,11.0,21.4,1,0,0,0,0,2.9,0.3
+so101_pick_rb_mixed,133,LOOK,,low,auto_stage1,1 covering ball(s) with no release detected; ball_into_bowl_unclear_label(nolabel)@13s,16.7,13.9,26.1,3,0,0,0,1,5.4,0.3
+so101_pick_rb_mixed,134,LOOK,,low,auto_stage1,,14.6,12.8,24.2,1,0,0,0,0,1.0,0.3
+so101_pick_rb_mixed,135,LOOK,,low,auto_stage1,,7.7,14.0,25.6,1,0,0,0,0,7.5,0.0
+so101_pick_rb_mixed,136,LOOK,,low,auto_stage1,ball_into_bowl_unclear_label(nolabel)@17s,31.7,13.9,42.7,6,0,2,0,0,10.9,0.2
+so101_pick_rb_mixed,137,LOOK,,low,auto_stage1,,28.0,12.9,47.7,4,0,2,0,0,7.0,0.0
+so101_pick_rb_mixed,138,LOOK,,low,auto_stage1,,11.6,11.0,39.0,1,0,0,0,0,8.0,0.9
+so101_pick_rb_mixed,139,LOOK,,low,auto_stage1,,43.1,13.4,30.8,5,0,4,0,0,1.9,0.0
+so101_pick_rb_mixed,140,LOOK,,low,auto_stage1,,30.2,14.5,38.3,4,0,3,0,0,2.9,0.0
+so101_pick_rb_mixed,141,LOOK,,low,auto_stage1,ball_into_bowl_unclear_label(nolabel)@31s,36.7,13.1,32.8,5,0,3,0,0,4.2,0.0
+so101_pick_rb_mixed,142,LOOK,,low,auto_stage1,,34.4,12.4,34.1,4,0,3,0,0,5.3,0.3
+so101_pick_rb_mixed,143,LOOK,,low,auto_stage1,,21.7,14.7,39.8,4,0,3,0,0,8.4,0.0
+so101_pick_rb_mixed,144,LOOK,,low,auto_stage1,ball_into_bowl_unclear_label(nolabel)@15s,44.0,10.4,32.0,9,0,4,0,0,0.4,0.6
+so101_pick_rb_mixed,145,LOOK,,low,auto_stage1,picked_at_hole_region_released_at_bowl@8s; ball_into_bowl_unclear_label(nolabel)@18s,30.1,13.0,43.0,6,0,2,0,0,6.1,0.0
+so101_pick_rb_mixed,146,LOOK,,low,auto_stage1,1 covering ball(s) with no release detected; ball_into_bowl_unclear_label(nolabel)@38s,45.4,13.0,32.4,7,1,3,0,1,3.8,0.3
+so101_pick_rb_mixed,147,LOOK,,low,auto_stage1,,15.6,13.1,42.7,2,0,1,0,0,4.7,2.1
+so101_pick_rb_mixed,148,LOOK,,low,auto_stage1,ball_into_bowl_unclear_label(nolabel)@4s; ball_into_bowl_unclear_label(nolabel)@17s,23.6,15.4,25.9,4,0,1,0,0,3.4,0.0
+so101_pick_rb_mixed,149,LOOK,,low,auto_stage1,,11.6,12.9,33.7,1,0,0,0,0,9.6,1.6
+so101_pick_rb_mixed,150,LOOK,,low,auto_stage1,,23.5,13.3,38.6,4,0,2,0,0,2.9,0.2
+so101_pick_rb_mixed,151,LOOK,,low,auto_stage1,"1 covering ball(s) with no release detected; 3 regrasps (0 striped-labelled, 3 empty closes after last clear)",21.2,15.7,46.0,5,3,0,0,1,7.2,0.3
