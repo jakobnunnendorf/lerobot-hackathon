@@ -56,6 +56,23 @@ def parse(transcript: str) -> Command | None:
     return Command(target, destination, transcript.strip(), "voice")
 
 
+@dataclass(frozen=True)
+class Scores:
+    wake: float
+    destinations: dict[str, float]
+    colours: tuple[str, ...]
+
+
+def scores(transcript: str) -> Scores:
+    words = normalise(transcript).split()
+    wake, length = max((wake_score(" ".join(words[:n])), n) for n in (1, 2, 3))
+    rest = words[length:] if wake >= WAKE_CUTOFF else words
+    text = " ".join(rest)
+    destinations = {key: max(similarity(p, text) for p in phrases) / 100 for key, phrases in DESTINATIONS.items()}
+    colours = tuple(target for target, colour_words in TARGETS.items() if colour_words & set(rest))
+    return Scores(wake / 100, destinations, colours)
+
+
 def from_key(key: str) -> Command | None:
     destination = KEYS.get(key.strip())
     if destination is None:

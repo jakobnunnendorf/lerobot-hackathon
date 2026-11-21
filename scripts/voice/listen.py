@@ -20,6 +20,7 @@ MIN_SECONDS = 0.3
 SILENCE_PEAK = 0.01
 POLL_SECONDS = 0.2
 RULE = "=" * 72
+ACTIONS = {"hand": "pick it, give it to a hand", "container": "pick it, put it in container"}
 
 
 def main() -> None:
@@ -47,6 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--host", default=link.HOST)
     parser.add_argument("--port", type=int, default=link.PORT)
     parser.add_argument("--wav", type=Path, nargs="+", help="transcribe these files instead of the microphone")
+    parser.add_argument("--dry-run", action="store_true", help="show the match scores and never send a command")
     return parser.parse_args()
 
 
@@ -156,6 +158,8 @@ def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: 
     seconds = time.perf_counter() - started
     command = commands.parse(transcript)
     show(f"HEARD    {transcript!r}  ({seconds:.1f} s)", command, transcript)
+    if args.dry_run:
+        show_scores(transcript)
     if command is not None:
         deliver(command, args)
 
@@ -168,8 +172,22 @@ def show(heading: str, command: commands.Command | None, transcript: str) -> Non
     print(f"\n{RULE}\n  {heading}\n\n  {result}\n{RULE}", flush=True)
 
 
+def show_scores(transcript: str) -> None:
+    result = commands.scores(transcript)
+    cutoff, margin = commands.MATCH_CUTOFF / 100, commands.MIN_MARGIN / 100
+    print(f"  match scores, 0-1: text similarity, not probabilities. A command needs {cutoff:.2f} for the wake phrase")
+    print(f"  and for one action, and a lead of {margin:.2f} over the other action.")
+    print(f'    {"wake phrase " + repr(commands.WAKE_PHRASE):<41}{result.wake:.2f}')
+    for destination, score in sorted(result.destinations.items(), key=lambda item: -item[1]):
+        print(f"    {destination:<10} {ACTIONS.get(destination, ''):<30} {score:.2f}")
+    print(f"    ball named: {', '.join(result.colours) or f'none, so {commands.DEFAULT_TARGET}'}")
+
+
 def deliver(command: commands.Command, args: argparse.Namespace) -> None:
     message = asdict(command)
+    if args.dry_run:
+        print(f"dry run, not sent: {json.dumps(message)}")
+        return
     if link.send(message, args.host, args.port):
         print(f"sent {json.dumps(message)}")
     else:

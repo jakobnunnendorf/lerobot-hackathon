@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "voice"))
 
-from commands import DEFAULT_TARGET, from_key, parse  # noqa: E402
+from commands import DEFAULT_TARGET, from_key, parse, scores  # noqa: E402
 
 ACCEPTED = [
     ("Hey bot, give it to me.", "hand"),
@@ -89,6 +89,10 @@ for key, expected in KEYS:
     command = from_key(key)
     if (command and command.destination) != expected or (command and command.source != "keyboard"):
         failures.append(f"key {key!r}: expected {expected!r}, got {command}")
+
+shown = scores("Hey bot, give me the red ball.")
+if not (shown.wake == 1.0 and shown.destinations["hand"] == 1.0 > shown.destinations["container"] and shown.colours == ("red",)):
+    failures.append(f"scores for 'Hey bot, give me the red ball.': {shown}")
 
 total = len(ACCEPTED) + len(COLOURED) + len(REJECTED) + len(KEYS)
 print(f"{total} cases: {len(ACCEPTED)} accepted, {len(COLOURED)} with a colour, {len(REJECTED)} rejected, {len(KEYS)} keys")
