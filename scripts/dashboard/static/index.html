@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ball Handover</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <div class="title">
+      <span class="logo">🤖</span>
+      <div>
+        <h1>Ball Handover</h1>
+        <div class="subtitle">SO-101 · learned pick · hand following</div>
+      </div>
+    </div>
+    <div class="badges">
+      <span id="badge-robot" class="badge off">Robot program: not running</span>
+      <span id="badge-speech" class="badge debug">Speech: loading</span>
+      <span id="badge-log" class="badge debug">Log: none</span>
+    </div>
+    <div class="header-actions">
+      <label class="toggle"><input type="checkbox" id="toggle-demo"> Demo mode</label>
+      <label class="toggle debug"><input type="checkbox" id="toggle-cameras"> Cameras always on</label>
+      <button id="abort" class="abort" title="Same as a + Enter in the robot program. The power switch is the real stop.">ABORT</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel left">
+      <h2>Start a chain</h2>
+      <div id="tiles" class="tiles"></div>
+      <div id="tiles-note" class="note"></div>
+
+      <h2>Say or type it</h2>
+      <div id="chat" class="chat"></div>
+      <form id="chat-form" class="chat-form">
+        <button type="button" id="mic" class="mic" title="Click to talk, click again to send. Or hold Space.">🎤</button>
+        <input id="chat-input" autocomplete="off" placeholder="give me the ball · put it in the container">
+        <button type="submit">Send</button>
+      </form>
+      <div id="mic-state" class="note">Click 🎤 or hold Space to talk.</div>
+    </section>
+
+    <section class="panel centre">
+      <div class="cameras">
+        <figure>
+          <figcaption>Top camera</figcaption>
+          <div class="feed" id="feed-top"><img alt="top camera"><div class="idle">Cameras start when a chain runs</div></div>
+        </figure>
+        <figure>
+          <figcaption>Wrist camera</figcaption>
+          <div class="feed" id="feed-wrist"><img alt="wrist camera"><div class="idle">Cameras start when a chain runs</div></div>
+        </figure>
+      </div>
+      <div class="round-head">
+        <div id="round-title" class="round-title">Waiting for a command</div>
+        <div id="round-chain" class="round-chain"></div>
+      </div>
+      <div id="states" class="states"></div>
+      <div class="budget"><div id="budget-bar"></div><span id="budget-text"></span></div>
+    </section>
+
+    <section class="panel right debug">
+      <h2>Live</h2>
+      <div class="live">
+        <div class="metric">
+          <label>Gripper</label>
+          <div class="gauge"><div class="band" id="hold-band"></div><div class="needle" id="gripper-needle"></div></div>
+          <span id="gripper-value">-</span>
+        </div>
+        <div class="metric"><label>Handover</label><span id="give-mode" class="chip">-</span></div>
+        <div class="metric"><label>Palms seen</label><span id="palms">-</span></div>
+        <div class="metric"><label>Gripper tip</label><span id="tip">-</span></div>
+        <div class="metric"><label>Control loop</label><span id="loop-hz">-</span></div>
+        <div class="metric"><label>Pick policy</label><span id="policy" class="small">-</span></div>
+        <div class="metric"><label>Grasp check</label><span id="grasp" class="small">-</span></div>
+        <div class="metric"><label>Wrong-ball check</label><span id="held" class="small">-</span></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="panel bottom debug">
+    <div class="bottom-head">
+      <h2>Rounds</h2>
+      <div id="tally" class="tally"></div>
+      <button id="summary">Copy board summary</button>
+    </div>
+    <table class="rounds">
+      <thead><tr><th>#</th><th>Chain</th><th>Outcome</th><th>s</th><th>Picks</th><th>Wrong balls</th><th>Your result</th><th>Note</th></tr></thead>
+      <tbody id="rounds"></tbody>
+    </table>
+    <h2>Events</h2>
+    <div id="events" class="events"></div>
+  </section>
+
+  <dialog id="summary-dialog">
+    <p>Copied to the clipboard. Paste it on the board:</p>
+    <textarea id="summary-text" rows="14" readonly></textarea>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
