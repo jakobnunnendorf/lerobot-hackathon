@@ -1,0 +1,22 @@
+diff --git a/scripts/supervisor/run_supervisor.py b/scripts/supervisor/run_supervisor.py
+index 8069f77..ac629e5 100644
+--- a/scripts/supervisor/run_supervisor.py
++++ b/scripts/supervisor/run_supervisor.py
+@@ -200,7 +200,7 @@ def run_robot(args) -> None:
+     else:
+         print(f"WARNING: no frame_link.py in {frame_link_dir}: the hand tracker gets no top-camera frames", flush=True)
+     try:
+-        run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands)
++        run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy, clear_policy)
+     finally:
+         # A crash or Ctrl-C must not leave the shared-memory block: the next start would fail with FileExistsError.
+         if frame_writer is not None:
+@@ -239,7 +239,7 @@ def give_settings_from(args) -> GiveSettings:
+                         max_step_deg=args.give_max_step_deg, max_step_m=args.give_max_step_m, celebrate=args.celebrate)
+ 
+ 
+-def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands) -> None:
++def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, commands, features, pick_policy, clear_policy) -> None:
+     sync_goal_to_present(robot.bus)
+     robot.connect()
+     log = TransitionLog(args.log)

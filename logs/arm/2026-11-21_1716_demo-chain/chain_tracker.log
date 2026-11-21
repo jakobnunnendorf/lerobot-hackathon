@@ -1,0 +1,1384 @@
+INFO: [environment.cc:36] Creating LiteRT environment with options
+INFO: [accelerator_registry.cc:54] RegisterAccelerator: ptr=0x7eeeac0345a0, name=CpuAccelerator
+INFO: [cpu_registry.cc:75] XNNPACK CPU accelerator registered.
+INFO: [compiled_model.cc:1022] Flatbuffer model initialized directly from incoming litert model.
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+INFO: [environment.cc:36] Creating LiteRT environment with options
+INFO: [accelerator_registry.cc:54] RegisterAccelerator: ptr=0x7eeeac0db2e0, name=CpuAccelerator
+INFO: [cpu_registry.cc:75] XNNPACK CPU accelerator registered.
+INFO: [compiled_model.cc:1022] Flatbuffer model initialized directly from incoming litert model.
+WARNING: Logging before InitGoogle() is written to STDERR
+W0000 00:00:1795278047.593605    8071 inference_runner_litert.cc:1433] Input tensor memory is not aligned according to LiteRt's memory alignment requirements. Reallocating memory and copying data.
+W0000 00:00:1795278047.610197    8069 landmark_projection_calculator.cc:81] Using NORM_RECT without IMAGE_DIMENSIONS is only supported for the square ROI. Provide IMAGE_DIMENSIONS or use PROJECTION_MATRIX.
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.123 y -0.238 m open palm
+x +0.120 y -0.243 m open palm
+x +0.117 y -0.239 m open palm
+x +0.106 y -0.248 m open palm
+x +0.089 y -0.255 m open palm
+x +0.074 y -0.253 m open palm
+x +0.067 y -0.246 m open palm
+x +0.066 y -0.245 m open palm
+x +0.069 y -0.247 m open palm
+x +0.070 y -0.249 m open palm
+x +0.073 y -0.252 m open palm
+x +0.078 y -0.246 m open palm
+x +0.116 y -0.222 m open palm
+x +0.173 y -0.191 m open palm
+x +0.215 y -0.157 m open palm
+x +0.241 y -0.139 m open palm
+x +0.287 y -0.110 m not an open palm
+x +0.252 y -0.182 m not an open palm
+x +0.188 y -0.219 m open palm
+x +0.175 y -0.233 m open palm
+x +0.158 y -0.277 m open palm
+x +0.160 y -0.303 m open palm
+x +0.160 y -0.311 m open palm
+x +0.162 y -0.327 m open palm
+x +0.166 y -0.340 m open palm
+x +0.170 y -0.347 m open palm | x +0.186 y -0.344 m not an open palm
+x +0.165 y -0.346 m open palm
+x +0.175 y -0.352 m open palm
+x +0.166 y -0.368 m open palm
+x +0.192 y -0.388 m open palm | x +0.185 y -0.375 m not an open palm
+x +0.191 y -0.399 m open palm
+x +0.192 y -0.397 m open palm
+x +0.175 y -0.399 m not an open palm
+x +0.174 y -0.398 m not an open palm
+x +0.176 y -0.400 m not an open palm
+x +0.177 y -0.399 m not an open palm
+x +0.180 y -0.398 m not an open palm
+x +0.183 y -0.396 m open palm
+x +0.174 y -0.394 m open palm
+x +0.175 y -0.396 m not an open palm
+x +0.179 y -0.397 m not an open palm
+x +0.178 y -0.400 m not an open palm
+x +0.178 y -0.400 m not an open palm
+x +0.176 y -0.398 m not an open palm
+x +0.180 y -0.397 m open palm
+x +0.171 y -0.396 m not an open palm
+x +0.172 y -0.398 m not an open palm
+x +0.172 y -0.396 m not an open palm
+x +0.171 y -0.398 m not an open palm
+x +0.172 y -0.398 m not an open palm
+x +0.168 y -0.396 m not an open palm
+x +0.167 y -0.398 m not an open palm
+x +0.170 y -0.399 m open palm
+x +0.171 y -0.399 m not an open palm
+x +0.167 y -0.398 m open palm
+x +0.158 y -0.389 m not an open palm
+x +0.147 y -0.368 m not an open palm
+x +0.109 y -0.268 m not an open palm
+x +0.126 y -0.259 m open palm
+x +0.125 y -0.259 m open palm
+x +0.123 y -0.263 m open palm
+x +0.125 y -0.268 m open palm
+x +0.129 y -0.268 m open palm
+x +0.130 y -0.268 m open palm
+x +0.127 y -0.264 m open palm
+x +0.123 y -0.263 m open palm
+x +0.107 y -0.252 m open palm
+x +0.098 y -0.248 m open palm
+x +0.105 y -0.249 m open palm
+x +0.109 y -0.249 m open palm
+x +0.106 y -0.241 m open palm
+x +0.115 y -0.236 m open palm
+x +0.110 y -0.237 m open palm
+x +0.114 y -0.245 m open palm
+x +0.119 y -0.250 m open palm
+x +0.107 y -0.244 m open palm
+x +0.109 y -0.246 m open palm
+x +0.110 y -0.239 m open palm
+x +0.114 y -0.238 m open palm
+x +0.119 y -0.243 m open palm
+x +0.119 y -0.239 m open palm
+x +0.124 y -0.240 m open palm
+x +0.124 y -0.246 m open palm
+x +0.122 y -0.243 m open palm
+x +0.122 y -0.248 m open palm
+x +0.121 y -0.261 m open palm
+x +0.119 y -0.261 m open palm
+x +0.116 y -0.252 m open palm
+x +0.108 y -0.257 m open palm
+x +0.117 y -0.233 m not an open palm
+x +0.099 y -0.275 m not an open palm
+no hand
+x +0.101 y -0.266 m open palm
+x +0.097 y -0.262 m open palm
+x +0.068 y -0.197 m not an open palm
+x +0.085 y -0.284 m open palm
+x +0.103 y -0.287 m not an open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.045 y -0.237 m open palm
+x +0.062 y -0.262 m open palm
+x +0.058 y -0.223 m open palm
+x +0.065 y -0.212 m open palm
+x +0.073 y -0.216 m open palm
+x +0.076 y -0.219 m open palm
+x +0.079 y -0.225 m open palm
+x +0.074 y -0.227 m open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.227 y -0.050 m not an open palm
+no hand
+no hand
+no hand
+no hand
+x +0.154 y -0.087 m not an open palm
+x +0.173 y -0.098 m not an open palm
+x +0.210 y -0.079 m not an open palm
+no hand
+no hand
+no hand
+x +0.200 y -0.080 m not an open palm
+x +0.207 y -0.086 m not an open palm
+x +0.190 y -0.063 m not an open palm
+x +0.172 y -0.089 m not an open palm
+x +0.008 y -0.172 m not an open palm | x +0.199 y +0.013 m not an open palm
+x +0.116 y -0.130 m not an open palm | x +0.198 y +0.045 m not an open palm
+x +0.179 y -0.089 m not an open palm | x +0.197 y +0.051 m not an open palm
+x +0.133 y -0.113 m not an open palm | x +0.198 y +0.053 m not an open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+waiting for frames from the robot program (top_camera_frames) ...
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.144 y +0.006 m not an open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.205 y -0.035 m not an open palm
+no hand
+no hand
+x +0.200 y -0.021 m not an open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.173 y +0.001 m not an open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.190 y -0.123 m not an open palm
+x +0.194 y -0.118 m not an open palm | x +0.180 y +0.041 m not an open palm
+x +0.190 y -0.138 m not an open palm | x +0.174 y +0.031 m not an open palm
+x +0.201 y -0.146 m not an open palm | x +0.193 y -0.000 m not an open palm
+x +0.196 y -0.102 m not an open palm | x +0.185 y +0.026 m not an open palm
+x +0.215 y -0.120 m not an open palm | x +0.173 y +0.051 m not an open palm
+x +0.232 y -0.097 m not an open palm | x +0.169 y +0.053 m not an open palm
+x +0.213 y -0.130 m not an open palm | x +0.165 y +0.054 m not an open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.137 y +0.018 m not an open palm
+no hand
+x +0.143 y +0.008 m open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+x +0.132 y -0.166 m open palm
+x +0.142 y -0.175 m open palm
+x +0.143 y -0.177 m open palm
+x +0.137 y -0.177 m open palm
+x +0.138 y -0.173 m open palm
+x +0.139 y -0.172 m open palm
+x +0.139 y -0.172 m open palm
+x +0.139 y -0.171 m open palm
+x +0.140 y -0.175 m open palm
+x +0.140 y -0.178 m open palm
+x +0.142 y -0.180 m open palm
+x +0.140 y -0.181 m open palm
+x +0.138 y -0.180 m open palm
+x +0.137 y -0.183 m open palm
+x +0.144 y -0.202 m open palm
+x +0.150 y -0.213 m open palm
+x +0.164 y -0.233 m open palm
+x +0.215 y -0.247 m open palm
+x +0.262 y -0.254 m open palm
+x +0.271 y -0.255 m open palm
+x +0.266 y -0.255 m open palm
+x +0.261 y -0.276 m open palm
+x +0.260 y -0.281 m open palm
+x +0.260 y -0.281 m open palm
+x +0.259 y -0.281 m open palm
+x +0.257 y -0.279 m open palm
+x +0.255 y -0.280 m open palm
+x +0.256 y -0.283 m open palm
+x +0.230 y -0.284 m open palm | x +0.182 y -0.217 m open palm
+x +0.221 y -0.287 m open palm | x +0.169 y -0.226 m open palm
+x +0.209 y -0.287 m open palm | x +0.162 y -0.226 m open palm
+x +0.207 y -0.286 m open palm | x +0.167 y -0.233 m open palm
+x +0.206 y -0.311 m open palm
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+no hand
+waiting for frames from the robot program (top_camera_frames) ...
+Traceback (most recent call last):
+  File "/mnt/c/Users/molib/Documents/elrobot/demo/scripts/handtrack/hand_tracker.py", line 78, in open_frames
+    return FrameReader(name)
+           ^^^^^^^^^^^^^^^^^
+  File "/mnt/c/Users/molib/Documents/elrobot/demo/scripts/handtrack/frame_link.py", line 39, in __init__
+    self.shm = shared_memory.SharedMemory(name=name)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/molnrb/miniforge3/envs/handtrack/lib/python3.12/multiprocessing/shared_memory.py", line 104, in __init__
+    self._fd = _posixshmem.shm_open(
+               ^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/top_camera_frames'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/mnt/c/Users/molib/Documents/elrobot/demo/scripts/handtrack/hand_tracker.py", line 138, in <module>
+    main()
+  File "/mnt/c/Users/molib/Documents/elrobot/demo/scripts/handtrack/hand_tracker.py", line 119, in main
+    reader, last_frame = open_frames(args.shm_name), time.monotonic()
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/c/Users/molib/Documents/elrobot/demo/scripts/handtrack/hand_tracker.py", line 83, in open_frames
+    time.sleep(0.5)
+KeyboardInterrupt
