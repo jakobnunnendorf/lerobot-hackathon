@@ -61,6 +61,7 @@ Then start the hand tracker (the receiver now ignores closed hands itself; `--on
 - Voice with the robot program in **WSL** and the listener on Windows: add `--voice-host 0.0.0.0`. With 127.0.0.1, 2 of 8 starts were unreachable from Windows for 11-15 s (`decisions/voice-commands.md`).
 - `--clear-gray-policy <checkpoint>` turns on CLEAR GRAY. It is for the **old foil-ball setup** (gray tinfoil balls, replaced by red and blue balls on 2026-11-21, board 7062034477) and stays off; LOOK's target mask is also for the striped ball only.
 - `--hold-range 6 20` (measured holds 9.3-16.4, open jaws 17-40) and `--max-pick-attempts 3` are flags. Every VERIFY_HOLD reading is in the log: check it after the first rounds, and read a foil ball once.
+- **Max picks from the dashboard:** the Live panel's − / + changes `--max-pick-attempts` in the running robot program (1-20), also during a round: when the ball is buried deep, press + so the round keeps digging instead of giving up. It stays until the program restarts; each `round_end` line logs the limit in effect.
 - `--n-action-steps 20` replans ACT every 0.67 s instead of 3.3 s; `--camera-rename top=camera1 wrist=camera2` for a SmolVLA checkpoint.
 
 ## Full chain PICK -> GIVE (Tian's hand-following loop) -> REST
