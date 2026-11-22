@@ -52,7 +52,7 @@ REST -> [LOOK, optional] -> PICK -> VERIFY_HOLD -> GIVE (hand) or PUT_DOWN (no h
   - A camera silent for 2 s still aborts.
   - Each stall is printed and goes into the live status and the tick log.
 - **An ABORT on an error logs `error`, `error_at` (file:line function), the gripper load, the last hold load and the pick count.** The failing state's own details are lost when it raises; take 2 lost its held-check verdict that way.
-- **Log:** one JSONL line per transition and one `round_end` line per round with `outcome` (`given`, `put_down`, `gave_up`, `wrong_ball`, `aborted`, `unsupported_target`), `wrong_balls`, pick and clear attempts and the state list, for the H5/H7 counts.
+- **Log:** one JSONL line per transition and one `round_end` line per round with `outcome` (`given`, `put_down`, `gave_up`, `wrong_ball`, `aborted`, `unsupported_target`; for plans also `cleared`, `step_gave_up`, `unsupported_plan`, see `multistep-step-state.md`), `wrong_balls`, pick and clear attempts and the state list, for the H5/H7 counts.
 
 ## Robot ownership
 

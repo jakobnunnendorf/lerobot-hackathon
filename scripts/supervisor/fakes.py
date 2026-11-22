@@ -56,6 +56,8 @@ class World:
     # The arm stops for this many ticks after a close on nothing (a jaw caught on the bowl): the back-off cannot arrive.
     stuck_after_miss_ticks: int = 0
     stuck_for: int = 0
+    # What the clear policies do, one cycle each, shared by every prompt (FakeClear). Empty: they idle.
+    clears: list[str] = field(default_factory=list)
 
 
 class FakeArm:
@@ -168,6 +170,47 @@ class FakeGraspPick:
 
     def requery(self):
         self.world.queries += 1
+
+
+# A colour clear policy: from wherever the arm is, go to the bowl (pan 0), close, swing to a hole and open, one cycle
+# per World.clears entry: "red"/"blue" (that ball into its hole, whichever colour the policy is for), "miss" (closes on
+# nothing, opens over the bowl), "empty_red"/"empty_blue" (closes on nothing and still swings to that hole and opens,
+# as both clear ACTs did on the arm 2026-11-22), "hold" (picks a ball and never lets go), "idle" (does nothing for the
+# rest of the prompt).
+class FakeClear:
+    HOLE_PAN = {"red": -30.0, "blue": 25.0, "empty_red": -30.0, "empty_blue": 25.0}
+
+    def __init__(self, world: World, colour: str):
+        self.world, self.name = world, f"clear_{colour}"
+
+    def start(self, obs, last_sent, now):
+        self.base, self.cycle, self.tick = pose_of(last_sent), None, 0
+
+    def step(self, obs, now):
+        if self.cycle is None:
+            self.cycle, self.tick = (self.world.clears.pop(0) if self.world.clears else "idle"), 0
+        if self.cycle == "idle":
+            return None
+        self.tick += 1
+        pose, hole = self.base.copy(), self.HOLE_PAN.get(self.cycle, 0.0)
+        if self.tick <= 10:
+            pose[0], pose[5] = self.base[0] * (10 - self.tick) / 10, 40.0
+        elif self.tick <= 25 or self.cycle == "hold":
+            if self.tick == 11 and self.cycle in ("red", "blue", "hold"):
+                self.world.holding, self.world.held_ball = True, self.cycle
+            pose[0], pose[5] = hole * min(self.tick - 11, 14) / 14, CLOSED_GOAL
+        else:
+            self.world.holding, self.world.held_ball = False, None
+            pose[0], pose[5] = hole, 40.0
+            if self.tick >= 30:
+                self.base, self.cycle = pose, None
+        return action_of(pose)
+
+    def done(self, obs, now):
+        return False
+
+    def result(self):
+        return "ran"
 
 
 # A bite whose jaws close on a finger and that never finishes (its time budget runs out during SNAP): the gripper reads
@@ -291,6 +334,10 @@ class Scenario:
     dance_available: bool = True
     dance_max_step_deg: float | None = 3.0
     holding_at_start: bool = False
+    # A multi-step plan, the clear policies loaded (one FakeClear per colour) and what they do (World.clears).
+    plan: tuple[tuple[str, int], ...] | None = None
+    clear_colours: tuple[str, ...] = ("red", "blue")
+    clears: list[str] = field(default_factory=list)
     # A bite round (run_round(bite=True)) with a scripted bite skill, or none (no --bite).
     bite: bool = False
     bite_available: bool = True
@@ -341,7 +388,7 @@ def build(scenario: Scenario):
     world = World(buried=scenario.buried, hand=scenario.hand, destination=scenario.destination,
                   block_after_pick=scenario.block_after_pick, held_balls=list(scenario.held_balls),
                   grasps=list(scenario.grasps), lag_deg=scenario.lag_deg, lift_floor=scenario.lift_floor,
-                  stuck_after_miss_ticks=scenario.stuck_after_miss_ticks)
+                  stuck_after_miss_ticks=scenario.stuck_after_miss_ticks, clears=list(scenario.clears))
     if scenario.holding_at_start:
         world.holding, world.held_ball = True, "striped"
     arm = FakeArm(world, abort)
@@ -359,10 +406,11 @@ def build(scenario: Scenario):
         if scenario.colour_pick else None,
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
         dance=synthetic_dance(scenario.dance_max_step_deg) if scenario.dance_available else None,
+        clear_colour={colour: (lambda colour=colour: FakeClear(world, colour)) for colour in scenario.clear_colours},
         bite=None if not scenario.bite_available else (lambda: FingerCaughtBite(world)) if scenario.finger_caught
         else scripted("bite", world, scenario.bites, lambda outcome, last_sent: _with_gripper(last_sent, 60.0)),
     )
-    sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
+    sensors = Sensors(target=lambda: scenario.target, plan=lambda: scenario.plan, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
                       held_ball_area=fake_held_ball_area(world, scenario.held_check),
                       ball_colour=(lambda: world.held_ball) if scenario.colour_sensor else None,
@@ -377,7 +425,8 @@ def build(scenario: Scenario):
 
 
 R, P, V, G, U, D, A = "REST", "PICK", "VERIFY_HOLD", "GIVE", "PUT_DOWN", "DONE", "ABORT"
-L, C, S, DA, BI = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE", "BITE"
+L, C, S, DA, ST, BI = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE", "STEP", "BITE"
+RED2_BLUE1_STRIPED = (("red", 2), ("blue", 1), ("striped", 1))
 
 SCENARIOS = [
     Scenario("pick_then_give", [R, P, V, G, R, D], "given"),
@@ -465,6 +514,30 @@ SCENARIOS = [
     Scenario("dance_refused_while_holding", [R, D], "refused_holding", dance=True, holding_at_start=True),
     Scenario("dance_unavailable_refused", [], "unsupported_dance", dance=True, dance_available=False),
     Scenario("abort_key_during_dance", [R, DA, A], "aborted", dance=True, abort_at_tick=80),
+    # Multi-step plans: red/blue steps counted from the joints (drops.py), then the striped PICK chain.
+    Scenario("plan_red2_blue1_then_striped", [R, ST, ST, R, P, V, G, R, D], "given", plan=RED2_BLUE1_STRIPED,
+             clears=["red", "red", "blue"]),
+    Scenario("plan_wrong_colour_drop_counts_for_its_hole", [R, ST, ST, R, P, V, G, R, D], "given",
+             plan=(("red", 1), ("blue", 1), ("striped", 1)), clears=["blue", "red"]),
+    Scenario("plan_step_timeout_reprompts", [R, ST, ST, R, P, V, G, R, D], "given", plan=(("red", 1), ("striped", 1)),
+             clears=["miss", "idle", "red"]),
+    Scenario("plan_step_gives_up_after_3_reprompts", [R, ST, ST, ST, ST, R, D], "step_gave_up",
+             plan=(("red", 1), ("striped", 1))),
+    Scenario("plan_step_still_holding_reprompts_then_aborts", [R, ST, ST, ST, ST, A], "aborted",
+             plan=(("red", 1), ("striped", 1)), clears=["hold"]),
+    Scenario("plan_empty_trips_to_the_hole_are_not_drops", [R, ST, R, D], "cleared", plan=(("blue", 1),),
+             clears=["empty_blue", "empty_blue", "blue"]),
+    Scenario("plan_grasp_check_empty_close_reprompts_in_the_bowl", [R, ST, ST, R, D], "cleared", plan=(("red", 1),),
+             clears=["empty_red", "red"], settings={"grasp_check": GraspCheckSettings()}),
+    Scenario("plan_grasp_check_hold_still_drops_at_the_hole", [R, ST, R, D], "cleared", plan=(("red", 1),),
+             clears=["red"], settings={"grasp_check": GraspCheckSettings()}),
+    Scenario("plan_grasp_check_misses_give_up", [R] + [ST] * 9 + [R, D], "step_gave_up", plan=(("red", 1),),
+             clears=["empty_red"] * 9, settings={"grasp_check": GraspCheckSettings()}),
+    Scenario("plan_abort_during_step", [R, ST, A], "aborted", plan=RED2_BLUE1_STRIPED, clears=["red", "red", "blue"],
+             abort_at_tick=40),
+    Scenario("plan_without_striped_ends_cleared", [R, ST, R, D], "cleared", plan=(("blue", 1),), clears=["blue"]),
+    Scenario("plan_refused_without_blue_policy", [], "unsupported_plan", plan=RED2_BLUE1_STRIPED,
+             clear_colours=("red",)),
     Scenario("bite_from_rest", [R, BI, R, D], "bit", bite=True),
     Scenario("bite_no_finger_in_window", [R, BI, R, D], "no_finger", bite=True, bites=["no_finger"]),
     Scenario("bite_times_out", [R, BI, R, D], "bite_timeout", bite=True, bites=["hang"], settings={"bite_timeout_s": 2.0}),

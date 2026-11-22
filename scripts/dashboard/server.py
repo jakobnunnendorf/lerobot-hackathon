@@ -347,7 +347,8 @@ def round_ends(events: list[dict]) -> dict[str, dict]:
             number = str(event["round"])
             ends[number] = {**event, "target": starts.get(number, {}).get("target"),
                             "destination": starts.get(number, {}).get("destination"),
-                            "dance": starts.get(number, {}).get("dance"), "bite": starts.get(number, {}).get("bite")}
+                            "dance": starts.get(number, {}).get("dance"), "bite": starts.get(number, {}).get("bite"),
+                            "plan": starts.get(number, {}).get("plan")}
     return ends
 
 
@@ -359,6 +360,8 @@ def summary_markdown(events: list[dict], results: list[dict], log: Path | None, 
     for number, end in ends.items():
         row = marked.get(number, {})
         chain = end["dance"] if end.get("dance") else "bite" if end.get("bite") else f"{end.get('target') or 'striped'} -> {end.get('destination') or '(none)'}"
+        if end.get("plan"):
+            chain = f"plan {' '.join(f'{count} {target}' for target, count in end['plan'])} -> {end.get('destination') or '(none)'}"
         lines.append(f"| {number} | {chain} | {end['outcome']} | {end.get('duration_s', '')} | {end.get('pick_attempts', '')} | "
                      f"{end.get('wrong_balls', '')} | {row.get('result', '')} | {row.get('note', '')} |")
     outcomes = Counter(end["outcome"] for end in ends.values())
@@ -563,6 +566,12 @@ def build_app(args) -> FastAPI:
     def send_bite(transcript: str, source: str) -> dict:
         return deliver({"bite": True, "transcript": transcript, "source": source}, busy_arm() or bite_refusal())
 
+    # The robot program refuses it too; this only saves a refused round in the log.
+    def plan_refusal(plan) -> str | None:
+        loaded = available().get("plan_colours", [])
+        missing = [target for target, _ in plan.steps if target != "striped" and target not in loaded]
+        return f"no {missing[0]} clear policy in this robot program (--clear-{missing[0]}-policy)" if missing else None
+
     def deliver(command: dict, reason: str | None) -> dict:
         if reason:
             return {"ok": False, "reason": reason, "command": command}
@@ -576,6 +585,9 @@ def build_app(args) -> FastAPI:
             return {"text": text, **send_bite(text, source)}
         if voice.wants_dance(text):
             return {"text": text, **send_dance(text, source)}
+        plan = voice.parse_plan(text)
+        if plan is not None:
+            return {"text": text, **deliver({**plan.message(), "source": source}, busy_arm() or plan_refusal(plan))}
         command = voice.parse(text)
         if command is None:
             scores = voice.scores(text)

@@ -202,21 +202,26 @@ def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: 
     started = time.perf_counter()
     transcript = transcribe(np.pad(audio, round(PAD_SECONDS * speech.SAMPLE_RATE)))
     seconds = time.perf_counter() - started
-    command = commands.parse(transcript)
+    command = commands.parse_plan(transcript) or commands.parse(transcript)
     show(f"HEARD    {transcript!r}  ({seconds:.1f} s)", command, transcript)
     if args.dry_run:
         show_scores(transcript)
-    if command is not None:
+    if isinstance(command, commands.Plan):
+        deliver(command.message(), args)
+    elif command is not None:
         deliver(asdict(command), args)
     elif commands.wants_bite(transcript):
         deliver({"bite": True, "transcript": transcript.strip(), "source": "voice"}, args)
 
 
-def show(heading: str, command: commands.Command | None, transcript: str) -> None:
+def show(heading: str, command: commands.Command | commands.Plan | None, transcript: str) -> None:
     if command is None and commands.wants_bite(transcript):
         result = ">>> BITE"
     elif command is None:
         result = f"NOT UNDERSTOOD: {commands.rejection_reason(transcript)}"
+    elif isinstance(command, commands.Plan):
+        steps = ", then ".join(f"{count} {target}" for target, count in command.steps)
+        result = f">>> PLAN {steps}  ({command.destination or 'hand if two palms'})"
     else:
         result = f">>> {command.destination.upper()}  ({command.target} ball)"
     print(f"\n{RULE}\n  {heading}\n\n  {result}\n{RULE}", flush=True)

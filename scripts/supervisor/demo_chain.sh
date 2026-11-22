@@ -2,6 +2,8 @@
 # Usage (WSL on the robot laptop): bash scripts/supervisor/demo_chain.sh [--step 20000] [more run_supervisor.py flags]
 # The old pick model: PICK_POLICY=Space0code/act_redblue_from_foil bash scripts/supervisor/demo_chain.sh --step 015000
 # The demo chain voice -> PICK (learned) -> GIVE (hand following) -> REST on one connection. Runbook: docs/demo-chain-test.md.
+# Multi-step plans ("take out 2 red, then the striped ball"): set CLEAR_RED_POLICY / CLEAR_BLUE_POLICY (Hub id or local
+# dir, optionally @step, as PICK_POLICY) in ~/.so101.env or on the command line; a colour left unset refuses its plans.
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1
 if [ -f "$HOME/.so101.env" ]; then
   set -a
@@ -29,6 +31,15 @@ export PYTHONUNBUFFERED=1 HF_HUB_DISABLE_PROGRESS_BARS=1
 policy="${PICK_POLICY:-Space0code/act_redblue_from_foil_v2}@$step"
 checkpoint=$(python -c "import sys; sys.path.insert(0, 'scripts/eval'); from eval_pick import resolve_checkpoint; print(resolve_checkpoint(sys.argv[1])[0])" "$policy") || exit 1
 echo "PICK policy $policy -> $checkpoint"
+clear_flags=()
+for colour in red blue; do
+  spec_var="CLEAR_${colour^^}_POLICY"
+  spec="${!spec_var:-}"
+  [ -n "$spec" ] || continue
+  path=$(python -c "import sys; sys.path.insert(0, 'scripts/eval'); from eval_pick import resolve_checkpoint; print(resolve_checkpoint(sys.argv[1])[0])" "$spec") || exit 1
+  echo "clear $colour policy $spec -> $path"
+  clear_flags+=("--clear-$colour-policy" "$path")
+done
 mkdir -p "$HOME/so101/demo"
 
 # --rest is eval_pick's HOME (median first frame of the training episodes, as P runs it) with the gripper at 30, not
@@ -50,4 +61,4 @@ python scripts/supervisor/run_supervisor.py --robot \
   --put-down-pose $PUT_DOWN_POSE \
   --give-mode follow --voice --voice-host 0.0.0.0 --rounds 10 \
   --log "$HOME/so101/demo/chain_$(date +%Y%m%d_%H%M%S).jsonl" --tick-log \
-  "$@"
+  "${clear_flags[@]}" "$@"
