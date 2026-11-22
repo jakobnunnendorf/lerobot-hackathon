@@ -13,6 +13,7 @@ wheels/
 outputs/
 data/
 calib_frames/
+scripts/dashboard/static/music/
 wandb/
 *.safetensors
 
