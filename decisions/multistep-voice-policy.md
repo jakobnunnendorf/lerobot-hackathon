@@ -24,7 +24,23 @@ The research recommendation was (a), one SmolVLA prompted per step, gated by a l
 - **Hold-out:** 10% of segments, spread evenly over recording order and placed last, because `eval_split` holds out the last episodes and rb_mixed was recorded in scenario blocks. Held-out source episodes: red 6, 13, 18, 41, 55, 69, 123, 140, 150, 157, 162, 166, 184; blue 7, 26, 52, 69, 79, 141, 156, 161, 170, 185.
 - **Recovery tails are not used.** The skill suggests starting a segment after a failed close for ACT, but `segments.csv` has no failure times; the 32 failure segments are dropped whole.
 - **Re-grasps stay in.** Clean clearing segments often re-grasp in the bowl (gripper opens at a bowl pan); they are kept as recoveries.
-- **Training (not run yet):** `scripts/multistep/modal_clear.py`, same settings as `act_redblue_from_foil` (batch 32, lr 2e-5, its augmentation, bf16), 8K steps, checkpoints every 2K, eval every 1K, H100, 35 min cap per colour: worst case 6.84 USD for both, estimated about 3.5 USD. Dataset revision pinned to `8d36c36c` (201 episodes).
+- **Training:** `scripts/multistep/modal_clear.py`, same settings as `act_redblue_from_foil` (batch 32, lr 2e-5, its augmentation, bf16), checkpoints every 2K, eval every 1K, H100. Dataset revision pinned to `8d36c36c` (201 episodes).
+
+## First run and arm test (2026-11-22)
+
+- **Run 1**, 8K steps, about 5.4 USD with the check. Held-out eval loss was lowest at 1K (0.307 / 0.308) and rose to 0.343 / 0.341 by 8K. Steps 2K and 4K were published: `TianK003/act_clear_red`, `TianK003/act_clear_blue`.
+- **Mistake: run 1 started from the repo root of `act_redblue_from_foil`, which was step 25000** (Hub commit `f736ad70`, 2026-11-21 15:53), not 015000, the PICK that grasps on the arm. 25000 has never run on the arm. `START_CHECKPOINT` now pins `checkpoints/015000`.
+- **Arm test** (board 7072005462, step 4000): neither colour grabbed a ball. Every close was empty, but the arm went to the right hole each time. The supervisor counted blue's empty trips as drops; fixed on `TianK003/multistep-supervisor` (`decisions/multistep-step-state.md`).
+- **Offline, open loop on the held-out segments:**
+  - The clear policies close at about the demo's time and pose. Median |dt| is 0.17 s (red) and 0.05 s (blue); median joint error at the close is 7.7 / 3.9 deg mean, 12.5 / 8.9 deg max.
+  - Across segments, the predicted close pan follows the demo's, with r = 0.73 and std 6.0 against the demo's 4.8.
+  - Steps 2K and 4K behave the same.
+  - So the failure does not show up open loop. The recorded state and wrist image already lead the policy to the ball, so open loop cannot show whether the policy aims by vision.
+  - Script and results: `grasp_check/` in Tian's job scratch, not committed.
+- **Still open, cheapest first:**
+  - the 02:06 tick log and video;
+  - a one-ball table test (left, centre, right) to see whether the close follows the ball;
+  - a retrain from 015000 (2K steps is enough on this loss curve).
 
 ## Recommendation of the research (superseded by the decision above)
 

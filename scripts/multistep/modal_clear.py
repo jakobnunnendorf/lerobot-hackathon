@@ -20,6 +20,9 @@ SOURCE_REPO = "molnrb/so101_pick_rb_mixed"
 # The revision segments.csv and the joint check were verified against (201 episodes).
 SOURCE_REVISION = "8d36c36c357e7ae6a78b3a844ef3caa1093d7c59"
 START_POLICY = "Space0code/act_redblue_from_foil"
+# The repo root moved to step 25000 on 2026-11-21 (commit f736ad70), which has never run on the arm; the first clear
+# runs started from it by mistake. 015000 is the PICK that grasps on the arm (demo_chain.sh's default).
+START_CHECKPOINT = "checkpoints/015000"
 TASKS = {"red": "Put one red ball into the red hole", "blue": "Put one blue ball into the blue hole"}
 KINDS = {"red": "clear_r", "blue": "clear_b"}
 
@@ -84,13 +87,16 @@ def build_and_check(colour: str) -> str:
 
 @app.function(cpu=CPU, memory=MEMORY, gpu="H100", volumes={VOL: volume}, timeout=60 * 60)
 def train_colour(colour: str, steps: int, max_minutes: float, run_name: str) -> dict:
+    from huggingface_hub import snapshot_download
+
     start = time.time()
     dataset_root = build_and_check(colour)
+    start_policy = snapshot_download(START_POLICY, allow_patterns=[f"{START_CHECKPOINT}/*"], local_dir=f"{WORK}/start")
     command = [
         "lerobot-train",
         f"--dataset.repo_id=local/clear_{colour}",
         f"--dataset.root={dataset_root}",
-        f"--policy.path={START_POLICY}",
+        f"--policy.path={start_policy}/{START_CHECKPOINT}",
         "--policy.device=cuda",
         "--policy.push_to_hub=false",
         # 2e-5 at batch 32, as in act_redblue_from_foil.
