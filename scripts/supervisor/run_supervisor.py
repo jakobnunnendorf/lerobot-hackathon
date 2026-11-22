@@ -153,7 +153,7 @@ def settings_from(args) -> Settings:
                     dance_timeout_s=args.dance_timeout,
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     hold_min_load=args.hold_min_load, step_timeout_s=args.step_timeout,
-                    max_step_reprompts=args.max_step_reprompts,
+                    max_step_reprompts=args.max_step_reprompts, max_step_grasp_misses=args.max_step_grasp_misses,
                     drop_rule=DropRule(*args.drop_gripper, *args.drop_pan),
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
                     held_check_colours=tuple(args.held_check_colours), held_unseen_floor_px=args.held_unseen_floor,
@@ -569,7 +569,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--step-timeout", type=float, default=Settings.step_timeout_s,
                    help="plan: seconds per prompt of a colour step before a re-prompt (also catches a missed drop)")
     p.add_argument("--max-step-reprompts", type=int, default=Settings.max_step_reprompts,
-                   help="plan: re-prompts after a timeout with an empty gripper, then the round gives up at rest")
+                   help="plan: re-prompts after a step timeout, then the round gives up at rest (or aborts if holding)")
+    p.add_argument("--max-step-grasp-misses", type=int, default=Settings.max_step_grasp_misses,
+                   help="plan, with the grasp check: empty closes per step, each opened in the bowl and re-prompted")
     p.add_argument("--drop-gripper", type=float, nargs=2, default=(DropRule.holding_below, DropRule.open_at),
                    metavar=("HELD_BELOW", "OPEN_AT"), help="plan drop counter: held below, then opened at (measured gripper)")
     p.add_argument("--drop-pan", type=float, nargs=2, default=(DropRule.red_pan_below, DropRule.blue_pan_above),

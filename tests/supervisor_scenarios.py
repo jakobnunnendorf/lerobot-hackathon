@@ -201,6 +201,31 @@ def multistep(log_path: str) -> None:
     prompts = [e["prompt"] for e in events if e.get("source") == "STEP"]
     check("plan: at most 3 re-prompts, then the round gives up at rest",
           prompts == [1, 2, 3, 4] and events[-1]["outcome"] == "step_gave_up", str(prompts))
+    events = run("plan_empty_trips_to_the_hole_are_not_drops")
+    opens = [(e["event"], e["hole"], e["pan"], e["closed_min"]) for e in events if e["event"] in ("drop", "release")]
+    check("plan: an empty close carried to the hole and opened there is a release, not a drop (arm test 2026-11-22)",
+          [o[:2] for o in opens] == [("release", None), ("release", None), ("drop", "blue")]
+          and opens[0][2] == 25.0 and opens[0][3] < 5 <= opens[2][3], str(opens))
+    events = run("plan_grasp_check_empty_close_reprompts_in_the_bowl")
+    steps = [(e["skill"], e["prompt"], e.get("grasp_misses")) for e in events if e.get("source") == "STEP"]
+    checks = [(e["step_colour"], e["phase"]) for e in events if e["event"] == "grasp_check"]
+    hole_pans = [e["pan"] for e in events if e["event"] == "release"]
+    check("plan + grasp check: an empty close is opened in the bowl and re-prompted at once, no trip to the hole",
+          steps == [("grasp_miss", 1, 1), ("count_reached", 2, None)] and ("red", "settle") in checks
+          and all(abs(p) < 5 for p in hole_pans), f"{steps} {checks} {hole_pans}")
+    events = run("plan_grasp_check_hold_still_drops_at_the_hole")
+    drops = [(e["hole"], e["pan"]) for e in events if e["event"] == "drop"]
+    check("plan + grasp check: a held ball is not locked, the policy still opens at its hole and the drop counts",
+          drops == [("red", -30.0)] and not any(e.get("phase") == "release_blocked" for e in events), str(drops))
+    events = run("plan_grasp_check_misses_give_up")
+    end = events[-1]
+    check("plan + grasp check: 8 empty closes re-prompt, the 9th gives up at rest",
+          end["outcome"] == "step_gave_up" and sum(e.get("skill") == "grasp_miss" for e in events) == 9, end["outcome"])
+    events = run("plan_step_still_holding_reprompts_then_aborts")
+    reasons = [e["reason"] for e in events if e.get("source") == "STEP"]
+    check("plan: a timeout while holding re-prompts (the drop may still come), ABORT only after the last re-prompt",
+          [r.split(": re-prompt")[0] for r in reasons[:3]] == ["red step timeout, still holding"] * 3
+          and reasons[-1] == "red step: still holding after 4 prompts", str(reasons))
     events = run("plan_refused_without_blue_policy")
     end = events[-1]
     check("plan: refused before the arm moves when a colour has no clear policy, the log names the flag",
@@ -215,6 +240,12 @@ def multistep(log_path: str) -> None:
     check("drop counter: re-grasp over the bowl is a release; a partial open (16.8, rb_mixed ep 11) is missed; "
           "open past 18 at pan -31 red, at +26 blue; no second count without a new close",
           [o for o in opened if o] == [(None, 5), ("red", -31), ("blue", 26)] and counter.counts == {"red": 1, "blue": 1},
+          f"{opened} {counter.counts}")
+    counter = DropCounter(DropRule())
+    track = [(40, 0), (1.6, -8), (4.0, -20), (30, -30), (12, -8), (11.5, -30), (30, -30)]
+    opened = [counter.update({"gripper.pos": g, "shoulder_pan.pos": pan}) for g, pan in track]
+    check("drop counter: an empty close (lowest reading 1.6) opened over the red hole is a release; a held one counts",
+          [o for o in opened if o] == [(None, -30), ("red", -30)] and counter.counts == {"red": 1, "blue": 0},
           f"{opened} {counter.counts}")
 
     keys = {"p 3b 2r s h":((("blue", 3), ("red", 2), ("striped", 1)), "hand"), "p 2r": ((("red", 2),), None),
@@ -613,13 +644,15 @@ def robot_flags() -> None:
            rule.holding_below, rule.open_at, rule.red_pan_below, rule.blue_pan_above)
           == (None, None, 30.0, 3, 16.5, 18.0, -25.0, 18.0), str(rule))
     args = parsed("--clear-red-policy", "me/act_clear_red", "--clear-blue-policy", "/ckpt/blue", "--step-timeout", "20",
-                  "--max-step-reprompts", "1", "--drop-gripper", "15", "17", "--drop-pan", "-22", "16")
+                  "--max-step-reprompts", "1", "--drop-gripper", "15", "17", "--drop-pan", "-22", "16",
+                  "--max-step-grasp-misses", "5")
     settings = settings_from(args)
-    check("plan flags: --clear-red/blue-policy, --step-timeout, --max-step-reprompts, --drop-gripper, --drop-pan",
+    check("plan flags: --clear-red/blue-policy, --step-timeout, --max-step-reprompts, --max-step-grasp-misses, "
+          "--drop-gripper, --drop-pan",
           (args.clear_red_policy, args.clear_blue_policy, settings.step_timeout_s, settings.max_step_reprompts,
-           vars(settings.drop_rule)) == ("me/act_clear_red", "/ckpt/blue", 20.0, 1,
+           settings.max_step_grasp_misses, vars(settings.drop_rule)) == ("me/act_clear_red", "/ckpt/blue", 20.0, 1, 5,
                                           {"holding_below": 15.0, "open_at": 17.0, "red_pan_below": -22.0,
-                                           "blue_pan_above": 16.0}), str(vars(settings.drop_rule)))
+                                           "blue_pan_above": 16.0, "held_above": 5.0}), str(vars(settings.drop_rule)))
     args = parsed("--held-check-colours", "striped", "red", "--min-held-target-area", "120",
                   "--min-held-area", "red=1500", "--camera-fourcc", "none")
     settings, cameras = settings_from(args), camera_configs(args)

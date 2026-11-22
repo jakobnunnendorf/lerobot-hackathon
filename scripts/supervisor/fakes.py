@@ -174,9 +174,11 @@ class FakeGraspPick:
 
 # A colour clear policy: from wherever the arm is, go to the bowl (pan 0), close, swing to a hole and open, one cycle
 # per World.clears entry: "red"/"blue" (that ball into its hole, whichever colour the policy is for), "miss" (closes on
-# nothing, opens over the bowl), "hold" (picks a ball and never lets go), "idle" (does nothing for the rest of the prompt).
+# nothing, opens over the bowl), "empty_red"/"empty_blue" (closes on nothing and still swings to that hole and opens,
+# as both clear ACTs did on the arm 2026-11-22), "hold" (picks a ball and never lets go), "idle" (does nothing for the
+# rest of the prompt).
 class FakeClear:
-    HOLE_PAN = {"red": -30.0, "blue": 25.0}
+    HOLE_PAN = {"red": -30.0, "blue": 25.0, "empty_red": -30.0, "empty_blue": 25.0}
 
     def __init__(self, world: World, colour: str):
         self.world, self.name = world, f"clear_{colour}"
@@ -194,7 +196,7 @@ class FakeClear:
         if self.tick <= 10:
             pose[0], pose[5] = self.base[0] * (10 - self.tick) / 10, 40.0
         elif self.tick <= 25 or self.cycle == "hold":
-            if self.tick == 11 and self.cycle != "miss":
+            if self.tick == 11 and self.cycle in ("red", "blue", "hold"):
                 self.world.holding, self.world.held_ball = True, self.cycle
             pose[0], pose[5] = hole * min(self.tick - 11, 14) / 14, CLOSED_GOAL
         else:
@@ -488,8 +490,16 @@ SCENARIOS = [
              clears=["miss", "idle", "red"]),
     Scenario("plan_step_gives_up_after_3_reprompts", [R, ST, ST, ST, ST, R, D], "step_gave_up",
              plan=(("red", 1), ("striped", 1))),
-    Scenario("plan_step_timeout_still_holding_aborts", [R, ST, A], "aborted", plan=(("red", 1), ("striped", 1)),
-             clears=["hold"]),
+    Scenario("plan_step_still_holding_reprompts_then_aborts", [R, ST, ST, ST, ST, A], "aborted",
+             plan=(("red", 1), ("striped", 1)), clears=["hold"]),
+    Scenario("plan_empty_trips_to_the_hole_are_not_drops", [R, ST, R, D], "cleared", plan=(("blue", 1),),
+             clears=["empty_blue", "empty_blue", "blue"]),
+    Scenario("plan_grasp_check_empty_close_reprompts_in_the_bowl", [R, ST, ST, R, D], "cleared", plan=(("red", 1),),
+             clears=["empty_red", "red"], settings={"grasp_check": GraspCheckSettings()}),
+    Scenario("plan_grasp_check_hold_still_drops_at_the_hole", [R, ST, R, D], "cleared", plan=(("red", 1),),
+             clears=["red"], settings={"grasp_check": GraspCheckSettings()}),
+    Scenario("plan_grasp_check_misses_give_up", [R] + [ST] * 9 + [R, D], "step_gave_up", plan=(("red", 1),),
+             clears=["empty_red"] * 9, settings={"grasp_check": GraspCheckSettings()}),
     Scenario("plan_abort_during_step", [R, ST, A], "aborted", plan=RED2_BLUE1_STRIPED, clears=["red", "red", "blue"],
              abort_at_tick=40),
     Scenario("plan_without_striped_ends_cleared", [R, ST, R, D], "cleared", plan=(("blue", 1),), clears=["blue"]),

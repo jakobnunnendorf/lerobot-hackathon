@@ -4,7 +4,7 @@ import threading
 import time
 import traceback
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -84,6 +84,9 @@ class Settings:
     # timeout with an empty gripper it is prompted again, at most max_step_reprompts times (decisions/multistep-step-state.md).
     step_timeout_s: float = 30.0
     max_step_reprompts: int = 3
+    # With the grasp check on, an empty close in a step is opened in the bowl and re-prompted at once, at most this
+    # many times per step (2026-11-22: each empty close otherwise cost a ~7 s trip to the hole).
+    max_step_grasp_misses: int = 8
     drop_rule: DropRule = field(default_factory=DropRule)
 
 
@@ -187,6 +190,7 @@ class Round:
     plan: tuple[tuple[str, int], ...] | None = None
     step: int = 0
     prompts: int = 0
+    step_misses: int = 0
     drops: DropCounter | None = None
     states: list[State] = field(default_factory=list)
 
@@ -290,23 +294,46 @@ class Supervisor:
         if self.round.drops.counts[colour] >= wanted:
             return self._next_step(f"{colour}: {wanted} already dropped", details)
         self.round.prompts += 1
-        skill = UntilDrops(self.skills.clear_colour[colour](), self.round.drops, colour, wanted,
+        skill = UntilDrops(self._grasp_checked_clear(colour), self.round.drops, colour, wanted,
                            lambda hole, pan, obs: self._log_drop(colour, hole, pan, obs))
         result = self.run_skill(skill, self.s.step_timeout_s)
         details.update(skill=result, prompt=self.round.prompts, dropped=dict(self.round.drops.counts))
         if result == "count_reached":
             return self._next_step(f"{colour}: {wanted} dropped", details)
+        if result == "grasp_miss":
+            self.round.step_misses += 1
+            details["grasp_misses"] = self.round.step_misses
+            if self.round.step_misses <= self.s.max_step_grasp_misses:
+                return State.STEP, f"{colour} step: empty close, opened in the bowl: re-prompt", details
+            self.round.outcome, self.round.after_rest = "step_gave_up", State.DONE
+            return State.REST, f"{colour} step: {self.round.step_misses} empty closes, giving up", details
         holding, reading = self.holding()
         details["reading"] = round(reading, 2)
+        timeouts = self.round.prompts - self.round.step_misses
+        if timeouts <= self.s.max_step_reprompts:
+            # Holding at the timeout is a ball on its way to the hole (2026-11-22: red ran out mid-trip): a new
+            # prompt lets the policy finish the drop instead of aborting.
+            state = "still holding" if holding else "gripper empty"
+            return State.STEP, f"{colour} step {result}, {state}: re-prompt {timeouts}", details
         if holding:
-            return State.ABORT, f"{colour} step: still holding after {result}", details
-        if self.round.prompts <= self.s.max_step_reprompts:
-            return State.STEP, f"{colour} step {result}, gripper empty: re-prompt {self.round.prompts}", details
+            return State.ABORT, f"{colour} step: still holding after {timeouts} prompts", details
         self.round.outcome, self.round.after_rest = "step_gave_up", State.DONE
-        return State.REST, f"{colour} step: {self.round.prompts} prompts without reaching {wanted}, giving up", details
+        return State.REST, f"{colour} step: {timeouts} prompts without reaching {wanted}, giving up", details
+
+    # Unlocked: the clear policy has to open at its hole, which the pick's lock after a hold would block.
+    def _grasp_checked_clear(self, colour: str):
+        skill = self.skills.clear_colour[colour]()
+        if self.s.grasp_check is None:
+            return skill
+        checked = GraspChecked(skill, replace(self.s.grasp_check, lock_after_hold=False), self.s.fps,
+                               self.sensors.gripper_load, self.sensors.tip_height)
+        prompt = self.round.prompts
+        checked.on_check = lambda record: self.log.write(event="grasp_check", round=self.round.number,
+                                                         step_colour=colour, prompt=prompt, **record)
+        return checked
 
     def _next_step(self, reason: str, details: dict):
-        self.round.step, self.round.prompts = self.round.step + 1, 0
+        self.round.step, self.round.prompts, self.round.step_misses = self.round.step + 1, 0, 0
         if self.round.step == len(self.round.plan):
             self.round.outcome, self.round.after_rest = "cleared", State.DONE
             return State.REST, f"{reason}; plan done", details
@@ -318,7 +345,8 @@ class Supervisor:
     def _log_drop(self, step_colour: str, hole: str | None, pan: float, obs: dict) -> None:
         self.log.write(event="drop" if hole else "release", round=self.round.number, step_colour=step_colour, hole=hole,
                        wrong_colour=hole is not None and hole != step_colour, pan=round(pan, 1),
-                       gripper=round(float(obs["gripper.pos"]), 2), dropped=dict(self.round.drops.counts))
+                       gripper=round(float(obs["gripper.pos"]), 2), closed_min=round(self.round.drops.last_closed_min, 2),
+                       dropped=dict(self.round.drops.counts))
 
     def _transition(self, source: State, target: State, reason: str, **details) -> None:
         self.log.write(event="transition", round=self.round.number, source=source.value, target=target.value,
