@@ -346,7 +346,7 @@ def round_ends(events: list[dict]) -> dict[str, dict]:
             number = str(event["round"])
             ends[number] = {**event, "target": starts.get(number, {}).get("target"),
                             "destination": starts.get(number, {}).get("destination"),
-                            "dance": starts.get(number, {}).get("dance")}
+                            "dance": starts.get(number, {}).get("dance"), "bite": starts.get(number, {}).get("bite")}
     return ends
 
 
@@ -357,7 +357,7 @@ def summary_markdown(events: list[dict], results: list[dict], log: Path | None, 
              "| # | chain | outcome | s | picks | wrong balls | result | note |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for number, end in ends.items():
         row = marked.get(number, {})
-        chain = end["dance"] if end.get("dance") else f"{end.get('target') or 'striped'} -> {end.get('destination') or '(none)'}"
+        chain = end["dance"] if end.get("dance") else "bite" if end.get("bite") else f"{end.get('target') or 'striped'} -> {end.get('destination') or '(none)'}"
         lines.append(f"| {number} | {chain} | {end['outcome']} | {end.get('duration_s', '')} | {end.get('pick_attempts', '')} | "
                      f"{end.get('wrong_balls', '')} | {row.get('result', '')} | {row.get('note', '')} |")
     outcomes = Counter(end["outcome"] for end in ends.values())
@@ -538,20 +538,29 @@ def build_app(args) -> FastAPI:
         return "a data collection session owns the arm" if collecting() else \
             "a round is running: wait for it to end, or ABORT" if round_running() else None
 
-    # The robot program refuses a dance with a ball in the gripper too; this only saves a refused round in the log.
+    def gripper_holds_ball() -> bool:
+        gripper, band = status.latest.get("gripper"), status.latest.get("hold_range")
+        return gripper is not None and bool(band) and band[0] <= gripper <= band[1]
+
+    # The robot program refuses a dance or a bite with a ball in the gripper too; this only saves a refused round in the log.
     def dance_refusal() -> str | None:
         if not available().get("dance"):
             return "no dance in this robot program: start it with --dance-episode"
-        gripper, band = status.latest.get("gripper"), status.latest.get("hold_range")
-        if gripper is not None and band and band[0] <= gripper <= band[1]:
-            return "the gripper holds a ball: empty it before a dance"
-        return None
+        return "the gripper holds a ball: empty it before a dance" if gripper_holds_ball() else None
+
+    def bite_refusal() -> str | None:
+        if not available().get("bite"):
+            return "no bite in this robot program: start it with --bite"
+        return "the gripper holds a ball: empty it before biting" if gripper_holds_ball() else None
 
     def send(command: dict) -> dict:
         return deliver(command, busy_arm() or unavailable_reason(command["target"], command["destination"]))
 
     def send_dance(transcript: str, source: str) -> dict:
         return deliver({"dance": True, "transcript": transcript, "source": source}, busy_arm() or dance_refusal())
+
+    def send_bite(transcript: str, source: str) -> dict:
+        return deliver({"bite": True, "transcript": transcript, "source": source}, busy_arm() or bite_refusal())
 
     def deliver(command: dict, reason: str | None) -> dict:
         if reason:
@@ -562,6 +571,8 @@ def build_app(args) -> FastAPI:
         return {"ok": sent, "command": command, "reason": None if sent else "robot program is not listening on 8765"}
 
     def handle_text(text: str, source: str) -> dict:
+        if voice.wants_bite(text):
+            return {"text": text, **send_bite(text, source)}
         if voice.wants_dance(text):
             return {"text": text, **send_dance(text, source)}
         command = voice.parse(text)
@@ -621,6 +632,10 @@ def build_app(args) -> FastAPI:
     @app.post("/api/dance")
     def dance():
         return send_dance("", "dashboard")
+
+    @app.post("/api/bite")
+    def bite():
+        return send_bite("", "dashboard")
 
     @app.post("/api/text")
     async def text(request: Request):
@@ -695,7 +710,7 @@ def build_app(args) -> FastAPI:
         number = str(body.get("round"))
         end = round_ends(log.snapshot()).get(number, {})
         results.add(log.path, {"time": datetime.now().isoformat(timespec="seconds"), "log": log.path.name if log.path else "",
-                               "round": number, "target": end.get("target") or end.get("dance"),
+                               "round": number, "target": end.get("target") or end.get("dance") or ("bite" if end.get("bite") else None),
                                "destination": end.get("destination"),
                                "outcome": end.get("outcome"), "duration_s": end.get("duration_s"),
                                "pick_attempts": end.get("pick_attempts"), "wrong_balls": end.get("wrong_balls"),

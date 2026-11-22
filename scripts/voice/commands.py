@@ -21,6 +21,8 @@ DESTINATIONS = {
 # Whole words, like the colours: "dance" has no near-miss among the ball commands, and "dancing"/"boogie" cover
 # "let's go dancing" and "boogie time".
 DANCE_WORDS = {"dance", "dancing", "boogie"}
+# Whole words for the same reason; "byte" is how Whisper tends to hear "bite".
+BITE_WORDS = {"bite", "bites", "biting", "byte"}
 KEYS = {"1": "hand", "2": "container"}
 MATCH_CUTOFF = 80
 MIN_MARGIN = 10
@@ -38,7 +40,7 @@ class Command:
 # when tried live. See decisions/voice-commands.md.
 def parse(transcript: str) -> Command | None:
     words = normalise(transcript).split()
-    if DANCE_WORDS & set(words):
+    if (DANCE_WORDS | BITE_WORDS) & set(words):
         return None
     destination = best_match(" ".join(words), DESTINATIONS)
     if destination is None:
@@ -73,11 +75,19 @@ def from_key(key: str) -> Command | None:
 # A sentence with a dance word and a ball command is refused: which one was meant is a guess.
 def wants_dance(transcript: str) -> bool:
     words = normalise(transcript).split()
-    return bool(DANCE_WORDS & set(words)) and best_match(" ".join(words), DESTINATIONS) is None
+    return bool(DANCE_WORDS & set(words)) and not BITE_WORDS & set(words) and best_match(" ".join(words), DESTINATIONS) is None
+
+
+# Same rule for a bite: next to a dance word or a ball command, which one was meant is a guess.
+def wants_bite(transcript: str) -> bool:
+    words = normalise(transcript).split()
+    return bool(BITE_WORDS & set(words)) and not DANCE_WORDS & set(words) and best_match(" ".join(words), DESTINATIONS) is None
 
 
 def rejection_reason(transcript: str) -> str:
     words = normalise(transcript).split()
+    if BITE_WORDS & set(words) and not wants_bite(transcript):
+        return "a bite and another command in one sentence"
     if wants_dance(transcript):
         return "a dance: the dashboard starts it, not listen.py"
     if DANCE_WORDS & set(words):
