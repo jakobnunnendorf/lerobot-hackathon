@@ -1,0 +1,20 @@
+created: '2026-11-21T14:54:37'
+image_width: 640
+image_height: 480
+K:
+- [1258.4766294784863, 0.0, 318.46723598316566]
+- [0.0, 1276.5173916038598, 95.45930530427427]
+- [0.0, 0.0, 1.0]
+dist: [0.1125059473884667, 0.24719657399771938, -0.055772948574622366, 0.005403233100930986,
+  0.0]
+rms_px: 0.294344903279131
+images_used: 37
+images_dropped: [board_22.png, board_29.png, board_38.png]
+square_x_m: 0.02875
+square_y_m: 0.029
+inner_corners: [7, 5]
+camera: {index_or_path: /dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0,
+  fourcc: MJPG, fps: 30}
+warnings: [6 of 48 image cells were never covered by the board; add frames with the
+    board in the image corners and edges., refit with k3 fixed at 0 (same RMS as the
+    free-k3 fit; free k3 was 9.8 and extrapolates badly in the 6 uncovered cells)]

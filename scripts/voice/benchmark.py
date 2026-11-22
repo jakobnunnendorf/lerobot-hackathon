@@ -5,7 +5,6 @@ import shutil
 import statistics
 import subprocess
 import time
-from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +12,8 @@ import numpy as np
 import commands
 import speech
 
+# The texts still start with the dropped wake phrase, so that saved transcripts stay comparable; the parser now
+# ignores it, and the two sentences without it are commands.
 SENTENCES = [
     ("Hey bot, give it to me.", "hand"),
     ("Hey bot, give me the ball.", "hand"),
@@ -22,8 +23,8 @@ SENTENCES = [
     ("Hey bot, drop it in the container.", "container"),
     ("Hey bot, put the ball in the container.", "container"),
     ("Hey bot, container, please.", "container"),
-    ("Give it to me.", None),
-    ("Put it in the container.", None),
+    ("Give it to me.", "hand"),
+    ("Put it in the container.", "container"),
     ("Hey bot, what time is it?", None),
     ("Hey bot, open the window.", None),
     ("I think the robot is great.", None),
@@ -158,8 +159,6 @@ def report_accuracy(rows: list[dict]) -> None:
     for condition in dict.fromkeys(r["condition"] for r in rows):
         print(f"  {condition:<11}" + score_line([r for r in rows if r["condition"] == condition]))
     print(f"  {'all':<11}" + score_line(rows))
-    heads = Counter(" ".join(commands.normalise(r["transcript"]).split()[:2]) for r in rows if wake_said(r))
-    print("  first two words when the wake phrase was said, most common:", dict(heads.most_common(20)))
 
 
 def score_line(rows: list[dict]) -> str:
@@ -181,10 +180,6 @@ def heard(row: dict) -> str | None:
 
 def expected(row: dict) -> str | None:
     return SENTENCES[row["sentence"]][1]
-
-
-def wake_said(row: dict) -> bool:
-    return SENTENCES[row["sentence"]][0].startswith("Hey bot")
 
 
 def main() -> None:

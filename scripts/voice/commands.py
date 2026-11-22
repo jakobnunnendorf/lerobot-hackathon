@@ -3,24 +3,26 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
-WAKE_PHRASE = "hey bot"
-# measured mis-hearings that fuzzy matching misses; ordinary sentence starts heard in its place ("people", "paper",
-# "they bought") stay out, or any first word would pass. See decisions/voice-commands.md.
-WAKE_VARIANTS = {
-    "hey bot", "heybot", "hey robot",
-    "hey bud", "hey bosch", "hey bach", "hey buck", "hey pop", "hey von", "hey vaughn", "hey vaugh", "hey vod",
-    "hey fox", "hey folks", "hey books", "hey bye",
-    "a bot", "k bot", "pay bot", "paybot", "paypot", "pay bought", "paybought", "paybook", "pay box", "paybox",
-    "play bot", "playbot", "haybot", "haybox", "heybox", "baybot", "peabot",
-}
-WAKE_CUTOFF = 80
-
 DEFAULT_TARGET = "striped"
-TARGETS = {"striped": ("striped", "stripy", "stripes")}
+# Whole words, not fuzzy: a three-letter word such as "red" scores 100 inside "tired" or "hundred".
+TARGETS = {
+    "striped": {"striped", "stripy", "stripes", "stripe", "yellow", "green", "target"},
+    "red": {"red"},
+    "blue": {"blue"},
+}
 DESTINATIONS = {
-    "hand": ("give it to me", "give me the ball", "hand it to me", "hand it over", "pass it to me", "in my hand"),
+    "hand": (
+        "give it to me", "give me the ball", "give me", "hand it to me", "hand me", "hand it over", "pass it to me",
+        # "in the hand", not "put it in the hand": the longer phrase pulled "put it in the contain her" off container.
+        "in my hand", "in the hand",
+    ),
     "container": ("put it in the container", "container"),
 }
+# Whole words, like the colours: "dance" has no near-miss among the ball commands, and "dancing"/"boogie" cover
+# "let's go dancing" and "boogie time".
+DANCE_WORDS = {"dance", "dancing", "boogie"}
+# Whole words for the same reason; "byte" is how Whisper tends to hear "bite".
+BITE_WORDS = {"bite", "bites", "biting", "byte"}
 KEYS = {"1": "hand", "2": "container"}
 MATCH_CUTOFF = 80
 MIN_MARGIN = 10
@@ -34,17 +36,53 @@ class Command:
     source: str
 
 
+# A spoken multi-step task: red/blue balls into their holes, then the striped ball (decisions/multistep-step-state.md).
+@dataclass(frozen=True)
+class Plan:
+    steps: tuple[tuple[str, int], ...]
+    destination: str | None
+    transcript: str
+    source: str
+
+    def message(self) -> dict:
+        return {"plan": [{"target": target, "count": count} for target, count in self.steps],
+                "destination": self.destination, "transcript": self.transcript, "source": self.source}
+
+
+COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+# "a"/"an" count as one inside a plan, but never make a sentence a plan: "give me a red ball" stays a single command.
+ARTICLES = {"a", "an"}
+# A count binds to the first colour within this many words: "3 of the blue balls".
+COUNT_REACH = 4
+
+
+# No wake phrase: Enter already marks the words as meant for the robot, and "hey bot" was misheard too often
+# when tried live. See decisions/voice-commands.md.
 def parse(transcript: str) -> Command | None:
-    rest = strip_wake_phrase(normalise(transcript).split())
-    if rest is None:
+    words = normalise(transcript).split()
+    if (DANCE_WORDS | BITE_WORDS) & set(words) or is_plan(words):
         return None
-    text = " ".join(rest)
-    destination = best_match(text, DESTINATIONS)
+    destination = best_match(" ".join(words), DESTINATIONS)
     if destination is None:
         return None
-    # only one ball exists today, so a command that names none still means it
-    target = best_match(text, TARGETS) or DEFAULT_TARGET
+    target = named_target(words)
+    if target is None:
+        return None
     return Command(target, destination, transcript.strip(), "voice")
+
+
+@dataclass(frozen=True)
+class Scores:
+    destinations: dict[str, float]
+    colours: tuple[str, ...]
+
+
+def scores(transcript: str) -> Scores:
+    words = normalise(transcript).split()
+    text = " ".join(words)
+    destinations = {key: max(similarity(p, text) for p in phrases) / 100 for key, phrases in DESTINATIONS.items()}
+    colours = tuple(target for target, colour_words in TARGETS.items() if colour_words & set(words))
+    return Scores(destinations, colours)
 
 
 def from_key(key: str) -> Command | None:
@@ -54,23 +92,111 @@ def from_key(key: str) -> Command | None:
     return Command(DEFAULT_TARGET, destination, "", "keyboard")
 
 
+# A sentence with a dance word and a ball command is refused: which one was meant is a guess.
+def wants_dance(transcript: str) -> bool:
+    words = normalise(transcript).split()
+    return bool(DANCE_WORDS & set(words)) and not BITE_WORDS & set(words) and best_match(" ".join(words), DESTINATIONS) is None
+
+
+# Same rule for a bite: next to a dance word or a ball command, which one was meant is a guess.
+def wants_bite(transcript: str) -> bool:
+    words = normalise(transcript).split()
+    return bool(BITE_WORDS & set(words)) and not DANCE_WORDS & set(words) and best_match(" ".join(words), DESTINATIONS) is None
+
+
 def rejection_reason(transcript: str) -> str:
-    if strip_wake_phrase(normalise(transcript).split()) is None:
-        return f'no "{WAKE_PHRASE}" at the start'
+    words = normalise(transcript).split()
+    if BITE_WORDS & set(words) and not wants_bite(transcript):
+        return "a bite and another command in one sentence"
+    if is_plan(words) and not (DANCE_WORDS | BITE_WORDS) & set(words):
+        return plan_steps(words)[1]
+    if wants_dance(transcript):
+        return "a dance: the dashboard starts it, not listen.py"
+    if DANCE_WORDS & set(words):
+        return "a dance and a ball command in one sentence"
+    if best_match(" ".join(words), DESTINATIONS) is not None and named_target(words) is None:
+        return "more than one ball colour named"
     return "no single command recognised"
+
+
+def parse_plan(transcript: str) -> Plan | None:
+    words = normalise(transcript).split()
+    if (DANCE_WORDS | BITE_WORDS) & set(words) or not is_plan(words):
+        return None
+    steps, _reason = plan_steps(words)
+    if steps is None:
+        return None
+    return Plan(steps, best_match(" ".join(words), DESTINATIONS), transcript.strip(), "voice")
+
+
+# A sentence is a plan once a number is spoken: any count except "one", which also means "the striped one", unless it
+# is followed by a colour.
+def is_plan(words: list[str]) -> bool:
+    return any(count_of(word) and (word != "one" or colour_near(words, i)) for i, word in enumerate(words))
+
+
+def count_of(word: str) -> int | None:
+    if word.isdigit():
+        return int(word) or None
+    return COUNTS.get(word)
+
+
+def colour_of(word: str) -> str | None:
+    return next((target for target, colour_words in TARGETS.items() if word in colour_words), None)
+
+
+def colour_near(words: list[str], index: int) -> bool:
+    return any(colour_of(word) for word in words[index + 1: index + 1 + COUNT_REACH])
+
+
+# Steps in spoken order, the striped ball moved last: it ends the round. Returns (steps, "") or (None, reason).
+def plan_steps(words: list[str]) -> tuple[tuple[tuple[str, int], ...] | None, str]:
+    steps: list[tuple[str, int]] = []
+    pending: tuple[int, str, int] | None = None
+    for i, word in enumerate(words):
+        if pending and i - pending[2] > COUNT_REACH:
+            if must_bind(pending[1]):
+                return None, f"a count without a known ball colour ({pending[1]!r})"
+            pending = None
+        count = count_of(word) or (1 if word in ARTICLES else None)
+        if count is not None:
+            if pending and must_bind(pending[1]) and word not in ARTICLES:
+                return None, f"a count without a known ball colour ({pending[1]!r})"
+            if not (pending and word in ARTICLES):
+                pending = (count, word, i)
+            continue
+        colour = colour_of(word)
+        if colour is None:
+            continue
+        if pending is None and colour == "striped" and steps and steps[-1][0] == "striped":
+            continue
+        if pending is None and colour != "striped":
+            return None, f"no count for the {colour} balls"
+        steps.append((colour, pending[0] if pending else 1))
+        pending = None
+    if pending and must_bind(pending[1]):
+        return None, f"a count without a known ball colour ({pending[1]!r})"
+    if sum(count for colour, count in steps if colour == "striped") > 1:
+        return None, "there is only one striped ball"
+    striped = [step for step in steps if step[0] == "striped"]
+    return tuple([step for step in steps if step[0] != "striped"] + striped), ""
+
+
+def must_bind(word: str) -> bool:
+    return word not in ARTICLES and word != "one"
+
+
+# The striped ball is the demo's target, so a command that names no colour means it; two colours are refused,
+# because guessing one would send the wrong ball.
+def named_target(words: list[str]) -> str | None:
+    named = [target for target, colour_words in TARGETS.items() if colour_words & set(words)]
+    if not named:
+        return DEFAULT_TARGET
+    return named[0] if len(named) == 1 else None
 
 
 def normalise(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "")).strip()
-
-
-def strip_wake_phrase(words: list[str]) -> list[str] | None:
-    score, length = max((wake_score(" ".join(words[:n])), n) for n in (1, 2, 3))
-    return words[length:] if score >= WAKE_CUTOFF else None
-
-
-def wake_score(head: str) -> float:
-    return 100 if head in WAKE_VARIANTS else fuzz.ratio(head, WAKE_PHRASE)
 
 
 def best_match(text: str, table: dict[str, tuple[str, ...]]) -> str | None:

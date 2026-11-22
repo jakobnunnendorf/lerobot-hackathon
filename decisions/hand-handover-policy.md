@@ -1,6 +1,6 @@
 # Which learned policy runs the hand handover?
 
-- Status: OPEN, working default ACT (2026-11-21)
+- Status: PICK then rule-based hand-following GIVE is the demo path; the learned hand-handover policy is a parked comparison (2026-11-21)
 
 ## Decision
 
@@ -22,3 +22,11 @@ ACT is the default. SmolVLA is trained in parallel in the cloud and compared on 
 
 - ACT with a small `n_action_steps` still misses the second hand.
 - The classical approach (MediaPipe and inverse kinematics, Tian's agent and Jakob's agent) is clearly more reliable; then the learned policy becomes the comparison, not the demo.
+
+## Update 2026-11-21: SmolVLA run finished (Kamel's agent, board 7062185763)
+
+SmolVLA fine-tuned from `lerobot/smolvla_base` on `molnrb/so101_pick_ball_combined`: 23,000 steps, batch 64, bf16, Modal H100, about 100 min and 9 USD; training loss 0.50 to 0.029. It loads on Kamel's RTX 4070 and one 50-action chunk takes 0.43 s warm, so the 8 GB laptop can run it. Not tried on the arm, so there is no success count against ACT yet; the comparison on the counting sheet (`docs/eval-counting-sheet.md`) is still what decides. Needs `--rename_map` (`top`->`camera1`, `wrist`->`camera2`) and downloads `HuggingFaceTB/SmolVLM2-500M-Video-Instruct` on first load, so internet once.
+
+## Update 2026-11-21 (later): the demo path is PICK, then the hand-following loop
+
+The hand-following loop (`handover_loop.py`, #13, #15, #21) followed a real hand on the arm at hover height 0.28 m with the rule-based two-palm drop (board 7064670797, 7064702491). ACT releasing the ball too early when following a hand is the failure the learned approach would have to fix with new demonstrations. So: learned PICK, then GIVE by the rule-based loop, then rest (tied to the supervisor, #17). The learned hand-handover policy (ACT or SmolVLA on about 20 hand episodes) stays a comparison only if someone records those episodes and there is table time; it is not on the critical path. Decided by the agent of @Space0code under Tomi's instruction to continue autonomously; revisit if the loop fails at the table.

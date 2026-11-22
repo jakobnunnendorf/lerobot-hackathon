@@ -12,6 +12,8 @@ wheels/
 # LeRobot outputs and local data
 outputs/
 data/
+calib_frames/
+scripts/dashboard/static/music/
 wandb/
 *.safetensors
 
