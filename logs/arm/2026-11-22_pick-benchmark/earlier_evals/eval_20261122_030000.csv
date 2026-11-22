@@ -1,0 +1,13 @@
+run,layout,policy,checkpoint,started,n_action_steps,temporal_ensemble_coeff,cap_s,seconds,end,gripper_end,left_home,late_ticks_pct,start_state,result
+1,1,foil15,Space0code/act_redblue_from_foil@015000,2026-11-22T03:00:09,100,,75.0,15.7,returned,7.6,True,1.1,visible,success
+2,1,foilv2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T03:00:37,100,,75.0,74.5,operator,1.2,True,1.0,visible,empty
+3,1,clean,jakobnunnendorf/act_clean_from_all@010000,2026-11-22T03:02:08,100,,75.0,65.9,returned,10.8,True,1.0,visible,success
+4,1,kamel_b32,brouthen/act_so101_pick_rb_mixed_b32_38k@030000,2026-11-22T03:03:32,100,,75.0,29.7,returned,8.5,True,1.1,visible,success
+5,1,balazs,molnrb/act_pick_rb_mixed@080000,2026-11-22T03:04:33,100,,75.0,15.2,operator,16.8,True,1.2,visible,success
+6,2,foilv2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T03:04:59,100,,75.0,9.1,returned,9.8,True,1.2,visible,success
+7,2,clean,jakobnunnendorf/act_clean_from_all@010000,2026-11-22T03:06:37,100,,75.0,44.2,operator,1.4,True,1.0,visible,empty
+8,2,kamel_b32,brouthen/act_so101_pick_rb_mixed_b32_38k@030000,2026-11-22T03:07:40,100,,75.0,25.2,operator,2.1,True,1.1,visible,dropped
+9,2,balazs,molnrb/act_pick_rb_mixed@080000,2026-11-22T03:08:15,100,,75.0,9.3,returned,9.4,True,1.2,visible,success
+10,2,foil15,Space0code/act_redblue_from_foil@015000,2026-11-22T03:09:03,100,,75.0,59.0,operator,0.2,True,1.0,visible,wrong_ball
+11,3,clean,jakobnunnendorf/act_clean_from_all@010000,2026-11-22T03:10:10,100,,75.0,71.5,operator,1.0,True,1.0,visible,success
+12,3,kamel_b32,brouthen/act_so101_pick_rb_mixed_b32_38k@030000,2026-11-22T03:11:42,100,,75.0,20.8,operator,0.3,True,1.0,visible,success

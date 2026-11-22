@@ -1,0 +1,451 @@
+Loading v2: Space0code/act_redblue_from_foil_v2@20000 from /home/molnrb/.cache/huggingface/hub/models--Space0code--act_redblue_from_foil_v2/snapshots/391d394f939570c289a38869b071300d8efecbbc/checkpoints/20000
+Loading weights from local directory
+Loading hidden: TianK003/act_hidden_from_v2@002000 from /home/molnrb/.cache/huggingface/hub/models--TianK003--act_hidden_from_v2/snapshots/5b48d993cb5df20357f45a1dd219fe8637772ad2/checkpoints/002000
+Loading weights from local directory
+Loading v3: TianK003/act_redblue_from_foil_v3@030000 from /home/molnrb/.cache/huggingface/hub/models--TianK003--act_redblue_from_foil_v3/snapshots/5da98ff7692d5f2426bbc29e5e91ed5920f8665d/checkpoints/030000
+Loading weights from local directory
+Loading clean_all: jakobnunnendorf/act_clean_from_all@010000 from /home/molnrb/.cache/huggingface/hub/models--jakobnunnendorf--act_clean_from_all/snapshots/06fa36765d9f716ca301d38236451ef22daef601/checkpoints/010000
+Loading weights from local directory
+Loading clean_scratch: jakobnunnendorf/act_clean_scratch@030000 from /home/molnrb/.cache/huggingface/hub/models--jakobnunnendorf--act_clean_scratch/snapshots/c749d36195144d1ba5d5dadebae68a95a5f07d5e/checkpoints/030000
+Loading weights from local directory
+Loading balazs: molnrb/act_pick_rb_mixed@080000 from /home/molnrb/.cache/huggingface/hub/models--molnrb--act_pick_rb_mixed/snapshots/2220e844f207f384809e374e180a1ba3f0010220/checkpoints/080000/pretrained_model
+Loading weights from local directory
+Loading vla: jakobnunnendorf/smolvla_redblue_v2@003000 from /home/molnrb/.cache/huggingface/hub/models--jakobnunnendorf--smolvla_redblue_v2/snapshots/48da8264cd22bc03b495cba4173361c15930a8d0/checkpoints/003000
+Loading  HuggingFaceTB/SmolVLM2-500M-Video-Instruct weights ...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Reducing the number of VLM layers to 16 ...
+Loading weights from local directory
+gripper torque capped at 200/1000
+
+[30;43m[1m   RUN 1  LAYOUT 1/8  POLICY v2: set up a NEW layout. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 1 (v2) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 51.4 s, gripper 12.6 (holding is about 6-20), slow ticks 3.2%
+[1m  Ball at start?  [v] visible  [p] partly  [h] hidden[0m
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 2  LAYOUT 1/8  POLICY hidden: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 2 (hidden) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 43.6 s, gripper 13.0 (holding is about 6-20), slow ticks 3.4%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 3  LAYOUT 1/8  POLICY v3: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 3 (v3) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 64.7 s, gripper 17.2 (holding is about 6-20), slow ticks 3.1%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 4  LAYOUT 1/8  POLICY clean_all: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 4 (clean_all) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 38.5 s, gripper 15.9 (holding is about 6-20), slow ticks 3.4%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 5  LAYOUT 1/8  POLICY clean_scratch: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 5 (clean_scratch) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 46.0 s, gripper 17.6 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+  clean_scratch: hidden 1/1 | all 1/1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 6  LAYOUT 1/8  POLICY balazs: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 6 (balazs) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 19.3 (holding is about 6-20), slow ticks 3.5%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+  clean_scratch: hidden 1/1 | all 1/1
+  balazs: hidden 0/1 | all 0/1 | failures: still_digging 1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 7  LAYOUT 1/8  POLICY vla: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 7 (vla) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 24.5 (holding is about 6-20), slow ticks 3.4%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+  clean_scratch: hidden 1/1 | all 1/1
+  balazs: hidden 0/1 | all 0/1 | failures: still_digging 1
+  vla: hidden 0/1 | all 0/1 | failures: still_digging 1
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 8  LAYOUT 2/8  POLICY vla: set up a NEW layout. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 8 (vla) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 14.1 (holding is about 6-20), slow ticks 3.4%
+[1m  Ball at start?  [v] visible  [p] partly  [h] hidden[0m
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+  clean_scratch: hidden 1/1 | all 1/1
+  balazs: hidden 0/1 | all 0/1 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 9  LAYOUT 2/8  POLICY balazs: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 9 (balazs) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 56.3 s, gripper 17.9 (holding is about 6-20), slow ticks 3.2%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+  clean_scratch: hidden 1/1 | all 1/1
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 10  LAYOUT 2/8  POLICY clean_scratch: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 10 (clean_scratch) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 16.0 s, gripper 13.7 (holding is about 6-20), slow ticks 3.2%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 1/1 | all 1/1
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 11  LAYOUT 2/8  POLICY clean_all: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 11 (clean_all) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 9.8 s, gripper 12.4 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 1/1 | all 1/1
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 12  LAYOUT 2/8  POLICY v3: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 12 (v3) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 26.2 s, gripper 14.4 (holding is about 6-20), slow ticks 3.2%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 1/1 | all 1/1
+  v3: hidden 2/2 | all 2/2
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 13  LAYOUT 2/8  POLICY hidden: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 13 (hidden) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 45.7 s, gripper 14.0 (holding is about 6-20), slow ticks 3.1%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 1/1 | all 1/1
+  hidden: hidden 2/2 | all 2/2
+  v3: hidden 2/2 | all 2/2
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 14  LAYOUT 2/8  POLICY v2: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 14 (v2) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 35.0 s, gripper 14.0 (holding is about 6-20), slow ticks 3.5%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/2 | all 2/2
+  hidden: hidden 2/2 | all 2/2
+  v3: hidden 2/2 | all 2/2
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 15  LAYOUT 3/8  POLICY v2: set up a NEW layout. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 15 (v2) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 7.4 (holding is about 6-20), slow ticks 3.3%
+[1m  Ball at start?  [v] visible  [p] partly  [h] hidden[0m
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 2/2 | all 2/2
+  v3: hidden 2/2 | all 2/2
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 16  LAYOUT 3/8  POLICY hidden: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 16 (hidden) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 10.4 s, gripper 14.1 (holding is about 6-20), slow ticks 3.2%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 2/2 | all 2/2
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 17  LAYOUT 3/8  POLICY v3: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 17 (v3) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 24.4 s, gripper 15.1 (holding is about 6-20), slow ticks 3.6%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/2 | all 2/2
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 18  LAYOUT 3/8  POLICY clean_all: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 18 (clean_all) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 22.5 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 2/2 | all 2/2
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 19  LAYOUT 3/8  POLICY clean_scratch: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 19 (clean_scratch) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 27.0 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 2/3 | all 2/3 | failures: still_digging 1
+  balazs: hidden 1/2 | all 1/2 | failures: still_digging 1
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 20  LAYOUT 3/8  POLICY balazs: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 20 (balazs) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 15.8 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 2/3 | all 2/3 | failures: still_digging 1
+  balazs: hidden 1/3 | all 1/3 | failures: still_digging 2
+  vla: hidden 0/2 | all 0/2 | failures: still_digging 2
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 21  LAYOUT 3/8  POLICY vla: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 21 (vla) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.0 s, gripper 9.1 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 2/3 | all 2/3 | failures: still_digging 1
+  balazs: hidden 1/3 | all 1/3 | failures: still_digging 2
+  vla: hidden 0/3 | all 0/3 | failures: still_digging 3
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 22  LAYOUT 4/8  POLICY vla: set up a NEW layout. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 22 (vla) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: timeout after 90.4 s, gripper 18.3 (holding is about 6-20), slow ticks 3.5%
+[1m  Ball at start?  [v] visible  [p] partly  [h] hidden[0m
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 2/3 | all 2/3 | failures: still_digging 1
+  balazs: hidden 1/3 | all 1/3 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 23  LAYOUT 4/8  POLICY balazs: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 23 (balazs) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 45.4 s, gripper 10.1 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 2/3 | all 2/3 | failures: still_digging 1
+  balazs: hidden 2/4 | all 2/4 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 24  LAYOUT 4/8  POLICY clean_scratch: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 24 (clean_scratch) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 17.0 s, gripper 12.9 (holding is about 6-20), slow ticks 3.0%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 2/3 | all 2/3 | failures: other 1
+  clean_scratch: hidden 3/4 | all 3/4 | failures: still_digging 1
+  balazs: hidden 2/4 | all 2/4 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 25  LAYOUT 4/8  POLICY clean_all: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 25 (clean_all) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 16.7 s, gripper 12.2 (holding is about 6-20), slow ticks 3.0%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 3/3 | all 3/3
+  clean_all: hidden 3/4 | all 3/4 | failures: other 1
+  clean_scratch: hidden 3/4 | all 3/4 | failures: still_digging 1
+  balazs: hidden 2/4 | all 2/4 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 26  LAYOUT 4/8  POLICY v3: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 26 (v3) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 53.0 s, gripper 14.8 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 3/3 | all 3/3
+  v3: hidden 4/4 | all 4/4
+  clean_all: hidden 3/4 | all 3/4 | failures: other 1
+  clean_scratch: hidden 3/4 | all 3/4 | failures: still_digging 1
+  balazs: hidden 2/4 | all 2/4 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 27  LAYOUT 4/8  POLICY hidden: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 27 (hidden) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 15.6 s, gripper 14.0 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 2/3 | all 2/3 | failures: still_digging 1
+  hidden: hidden 4/4 | all 4/4
+  v3: hidden 4/4 | all 4/4
+  clean_all: hidden 3/4 | all 3/4 | failures: other 1
+  clean_scratch: hidden 3/4 | all 3/4 | failures: still_digging 1
+  balazs: hidden 2/4 | all 2/4 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 28  LAYOUT 4/8  POLICY v2: set up the SAME layout as the last run. SPACE = start,  q = quit[0m
+
+[97;41m[1m   RUN 28 (v2) RUNNING  -  max 90 s.  SPACE = end now,  ESC = abort (arm holds)[0m
+
+  ended: returned after 14.1 s, gripper 12.4 (holding is about 6-20), slow ticks 3.3%
+[1m  Result?  [s] success  [w] wrong_ball  [e] empty  [d] dropped  [t] still_digging  [n] never_started  [o] other[0m
+  v2: hidden 3/4 | all 3/4 | failures: still_digging 1
+  hidden: hidden 4/4 | all 4/4
+  v3: hidden 4/4 | all 4/4
+  clean_all: hidden 3/4 | all 3/4 | failures: other 1
+  clean_scratch: hidden 3/4 | all 3/4 | failures: still_digging 1
+  balazs: hidden 2/4 | all 2/4 | failures: still_digging 2
+  vla: hidden 0/4 | all 0/4 | failures: still_digging 4
+
+[30;43m[1m   Hold a hand under the gripper. SPACE = open the gripper                    [0m
+
+[30;43m[1m   RUN 29  LAYOUT 5/8  POLICY v2: set up a NEW layout. SPACE = start,  q = quit[0m

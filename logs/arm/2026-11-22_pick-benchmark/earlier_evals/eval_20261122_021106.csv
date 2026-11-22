@@ -1,0 +1,5 @@
+run,layout,policy,checkpoint,started,n_action_steps,temporal_ensemble_coeff,cap_s,seconds,end,gripper_end,left_home,late_ticks_pct,start_state,result
+1,1,redblue_v2_10k,Space0code/act_redblue_v2@10000,2026-11-22T02:11:35,100,,90.0,90.0,timeout,26.0,True,1.0,partly,other
+2,1,foil_v2_10k,Space0code/act_redblue_from_foil_v2@10000,2026-11-22T02:13:22,100,,90.0,28.8,returned,17.6,True,1.1,partly,success
+3,2,foil_v2_10k,Space0code/act_redblue_from_foil_v2@10000,2026-11-22T02:14:00,100,,90.0,90.0,timeout,2.1,True,1.0,visible,success
+4,2,redblue_v2_10k,Space0code/act_redblue_v2@10000,2026-11-22T02:15:49,100,,90.0,43.5,operator,14.4,True,1.0,visible,wrong_ball

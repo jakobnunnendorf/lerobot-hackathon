@@ -1,0 +1,17 @@
+run,layout,policy,checkpoint,started,n_action_steps,cap_s,seconds,end,gripper_end,left_home,late_ticks_pct,start_state,result
+1,1,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:13:18,100,75.0,32.8,returned,14.3,True,1.2,visible,other
+2,1,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:14:19,100,75.0,29.4,returned,12.2,True,1.1,visible,success
+3,2,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:15:10,100,75.0,19.9,returned,11.0,True,1.1,partly,success
+4,2,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:15:46,100,75.0,15.6,returned,16.7,True,1.6,partly,success
+5,3,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:16:13,100,75.0,55.4,returned,14.0,True,1.1,hidden,success
+6,3,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:17:24,100,75.0,75.0,timeout,12.0,True,1.0,hidden,empty
+7,4,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:19:22,100,75.0,9.5,returned,14.2,True,1.1,visible,success
+8,4,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:19:41,100,75.0,10.0,returned,15.4,True,1.1,visible,success
+9,5,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:20:11,100,75.0,41.9,returned,18.3,True,1.0,partly,wrong_ball
+10,5,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:21:10,100,75.0,23.3,returned,16.1,True,1.1,partly,success
+11,6,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:22:33,100,75.0,75.0,timeout,26.0,True,1.0,hidden,empty
+12,6,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:24:11,100,75.0,75.0,timeout,20.2,True,1.0,hidden,empty
+13,7,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:25:58,100,75.0,19.5,returned,14.2,True,1.1,visible,success
+14,7,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:26:36,100,75.0,44.1,returned,10.5,True,1.0,visible,success
+15,8,tomi_v2,Space0code/act_redblue_from_foil_v2@20000,2026-11-22T05:27:41,100,75.0,9.8,returned,16.3,True,1.1,visible,success
+16,8,tomi_v1,Space0code/act_redblue_from_foil@015000,2026-11-22T05:28:02,100,75.0,10.2,returned,18.3,True,1.0,visible,success
