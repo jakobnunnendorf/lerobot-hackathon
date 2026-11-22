@@ -77,7 +77,11 @@ function danceReason() {
   return null;
 }
 
+// Shown as planned, not hidden: the bite does not work on the arm yet (Tomi, 2026-11-22). Delete this line once it does.
+const BITE_NOT_READY = "coming soon: not working on the arm yet";
+
 function biteReason() {
+  if (BITE_NOT_READY) return BITE_NOT_READY;
   const allowed = available();
   if (!allowed) return "robot program not running";
   if (!allowed.bite) return "no bite: start the robot program with --bite";
