@@ -80,6 +80,14 @@ def main() -> None:
             aborted = wait_for(lambda: "| 2 | striped -> container | aborted" in call("/api/summary"), 15)
             check("ABORT ends round 2 'aborted'", bool(aborted), call("/api/summary").splitlines()[-3:])
             dance_round(Path(logs))
+            bite_round(Path(logs))
+            robot.terminate()
+            robot.wait(timeout=10)
+            # other frame blocks: the server still holds the first robot's, and Windows keeps a block while it is open
+            robot = subprocess.Popen([sys.executable, "-u", str(ROOT / "scripts/dashboard/fake_robot.py"), "--log-dir", logs,
+                                      "--speed", "6", "--no-bite", *PORTS[:4], "--top-shm", "smoke_top2", "--wrist-shm",
+                                      "smoke_wrist2"])
+            no_bite_program()
             sys.path.insert(0, str(ROOT / "scripts/dashboard"))
             no_overwrite(Path(logs))
             stale_status_keeps_log(Path(logs))
@@ -114,6 +122,34 @@ def dance_round(logs: Path) -> None:
     again = wait_for(lambda: (lambda reply: reply if reply["ok"] else None)(call("/api/dance", {})), 10)
     check("Dance button once the round is over -> sent", bool(again) and again["command"]["source"] == "dashboard", str(again))
     wait_for(lambda: "| 4 | dance" in call("/api/summary"), 20)
+
+
+def bite_round(logs: Path) -> None:
+    mixed = call("/api/text", {"text": "bite and give me the ball"})
+    check("chat: a bite and a ball command in one sentence is refused", not mixed["ok"] and "bite" in mixed["reason"],
+          mixed["reason"])
+    bitten = wait_for(lambda: (lambda reply: reply if reply["ok"] else None)(call("/api/text", {"text": "bite the finger"})), 10)
+    check("chat 'bite the finger' -> {\"bite\": true} sent", bool(bitten) and bitten["command"]["bite"] is True, str(bitten))
+    busy = call("/api/bite", {})
+    check("Bite button right after: refused while the bite round runs", not busy["ok"] and "running" in busy["reason"],
+          busy["reason"])
+    ended = wait_for(lambda: "| 5 | bite | bit |" in call("/api/summary"), 20)
+    log = next(p for p in logs.glob("chain_*.jsonl") if not p.name.endswith(".ticks.jsonl"))
+    events = [json.loads(line) for line in log.read_text().splitlines()]
+    start = next((e for e in events if e.get("event") == "round_start" and e["round"] == 5), {})
+    end = next((e for e in events if e.get("event") == "round_end" and e["round"] == 5), {})
+    check("round 5 bites (REST -> BITE -> REST -> DONE, outcome bit) and shows in the summary",
+          bool(ended) and start.get("bite") is True and end.get("states") == ["REST", "BITE", "REST", "DONE"]
+          and end.get("outcome") == "bit", str(call("/api/summary").splitlines()[-4:]))
+    again = wait_for(lambda: (lambda reply: reply if reply["ok"] else None)(call("/api/bite", {})), 10)
+    check("Bite button once the round is over -> sent", bool(again) and again["command"]["source"] == "dashboard", str(again))
+    wait_for(lambda: "| 6 | bite" in call("/api/summary"), 20)
+
+
+def no_bite_program() -> None:
+    refused = wait_for(lambda: (lambda reply: reply if "--bite" in (reply["reason"] or "") else None)(call("/api/bite", {})), 20)
+    check("a robot program started without --bite: Bite button refused, the reason names --bite", bool(refused),
+          str(refused))
 
 
 def round_video(logs: Path) -> None:

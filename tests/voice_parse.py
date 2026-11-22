@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "voice"))
 
-from commands import DEFAULT_TARGET, from_key, parse, rejection_reason, scores, wants_dance  # noqa: E402
+from commands import DEFAULT_TARGET, from_key, parse, rejection_reason, scores, wants_bite, wants_dance  # noqa: E402
 
 ACCEPTED = [
     ("Give it to me.", "hand"),
@@ -78,12 +78,18 @@ REASONS = [
     ("Hand me the red or the blue ball.", "more than one ball colour named"),
     ("Dance and give me the ball.", "a dance and a ball command in one sentence"),
     ("Let's dance.", "a dance: the dashboard starts it, not listen.py"),
+    ("Bite and give it to me.", "a bite and another command in one sentence"),
+    ("Dance and bite.", "a bite and another command in one sentence"),
 ]
 
 DANCE = ["Dance.", "dance", "Let's dance!", "Show me a dance.", "Can you dance?", "Dance for us, robot.",
          "Do a little dance.", "Let's go dancing.", "Boogie time."]
 NOT_DANCE = ["Give it to me.", "Put it in the container.", "Distance.", "Dance and give me the ball.",
              "Put it in the container and dance."]
+
+BITE = ["Bite the finger.", "Bite my finger!", "bite", "byte the finger", "biting time"]
+NOT_BITE = ["Give it to me.", "Put it in the container.", "Let's dance."]
+MIXED_WITH_BITE = ["Bite and give it to me.", "Dance and bite."]
 
 KEYS = [("1", "hand"), ("2", "container"), (" 1 ", "hand"), ("3", None), ("", None)]
 
@@ -105,6 +111,15 @@ for transcript in DANCE:
 for transcript in NOT_DANCE:
     if wants_dance(transcript):
         failures.append(f"expected no dance  <- {transcript!r}")
+for transcript in BITE:
+    if not wants_bite(transcript) or parse(transcript) is not None or wants_dance(transcript):
+        failures.append(f"expected a bite, got wants_bite={wants_bite(transcript)} parse={parse(transcript)}  <- {transcript!r}")
+for transcript in NOT_BITE:
+    if wants_bite(transcript):
+        failures.append(f"expected no bite  <- {transcript!r}")
+for transcript in MIXED_WITH_BITE:
+    if wants_bite(transcript) or wants_dance(transcript) or parse(transcript) is not None:
+        failures.append(f"expected a refusal, nothing guessed  <- {transcript!r}")
 for key, expected in KEYS:
     command = from_key(key)
     if (command and command.destination) != expected or (command and command.source != "keyboard"):
@@ -118,10 +133,11 @@ shown = scores("Give me the red ball.")
 if not (shown.destinations["hand"] == 1.0 > shown.destinations["container"] and shown.colours == ("red",)):
     failures.append(f"scores for 'Give me the red ball.': {shown}")
 
-total = len(ACCEPTED) + len(COLOURED) + len(REJECTED) + len(REASONS) + len(KEYS) + len(DANCE) + len(NOT_DANCE)
+total = len(ACCEPTED) + len(COLOURED) + len(REJECTED) + len(REASONS) + len(KEYS) + len(DANCE) + len(NOT_DANCE) + len(BITE) + len(NOT_BITE) + len(MIXED_WITH_BITE)
 print(
     f"{total} cases: {len(ACCEPTED)} accepted, {len(COLOURED)} with a colour, {len(REJECTED)} rejected, "
-    f"{len(REASONS)} reasons, {len(KEYS)} keys, {len(DANCE)} dances, {len(NOT_DANCE)} not dances"
+    f"{len(REASONS)} reasons, {len(KEYS)} keys, {len(DANCE)} dances, {len(NOT_DANCE)} not dances, {len(BITE)} bites, "
+    f"{len(NOT_BITE) + len(MIXED_WITH_BITE)} not bites"
 )
 for failure in failures:
     print("FAIL", failure)
