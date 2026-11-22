@@ -14,3 +14,5 @@ Once something from here is confirmed on our own hardware, write the confirmed v
 | `rl-post-training.md` | Whether reinforcement learning can improve the trained policies in the time left; human corrections (DAgger) as the realistic step | yes |
 | `lerobot-training-feasibility.md` | Policies, commands and data collection in LeRobot 0.7.0 | yes for the LeRobot parts; the wire-cutting plan in it belongs to a dropped idea |
 | `eod-domain-and-prior-art.md` | Bomb disposal domain | no, dropped idea |
+| `label-patterns.md` | Our own pick data: wrist blindness before the striped grab, clearing patterns, inconsistent demos, and episode vs segment curation per policy (with `label-patterns/*.csv`) | yes |
+| `act-capacity-and-hidden-targets.md` | Whether the ACT model is too small, and what the literature says limits picking a hidden target (observability, memory, chunk length, demonstrations) | yes |
