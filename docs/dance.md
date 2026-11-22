@@ -33,7 +33,7 @@ Terminal 1, the robot program, the usual demo chain plus the dance flags:
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/demo
-bash scripts/supervisor/demo_chain.sh --step 015000 \
+bash scripts/supervisor/demo_chain.sh \
   --dance-episode NikeSong/so101_gestures_dance:1 --dance-speed 0.5 --dance-max-step-deg 4
 ```
 
