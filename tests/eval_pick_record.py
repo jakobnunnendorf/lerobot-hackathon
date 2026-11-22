@@ -64,9 +64,10 @@ def run_policy(name: str, dataset, robot, features, calls, telemetry=None):
     print(f"{name}: {label} type={policy.type} n_action_steps={policy.n_action_steps}", flush=True)
     ticks = iter(range(TICKS))
     ep.key_pressed = lambda: None if next(ticks, None) is not None else " "
-    buffer = ep.EpisodeBuffer()
+    buffer = ep.new_buffer(dataset)
+    assert buffer is not None
     robot.sent.clear()
-    outcome = ep.run_once(robot, policy, features, 30.0, ep.TASK, buffer, telemetry)
+    outcome = ep.run_once(robot, policy, features, 600.0, ep.TASK, buffer, telemetry)
     assert outcome["end"] == "operator" and len(robot.sent) == TICKS, (outcome, len(robot.sent))
     assert all(np.isfinite(list(a.values())).all() for a in robot.sent)
     index = ep.save_episode(dataset, buffer, ep.TASK)
@@ -85,6 +86,8 @@ def main():
         record_features = {**features, **ep.telemetry_features(list(robot.bus.motors))}
         dataset = ep.open_dataset(out, record_features, robot.robot_type, "local/eval_pick_test")
         calls: list = []
+        assert len(dataset) == 0 and not dataset, "a fresh dataset is falsy; main() must still record into it"
+        assert ep.new_buffer(dataset) is not None and ep.new_buffer(None) is None
         stats = [run_policy(name, dataset, robot, features, calls, ep.Telemetry(robot.bus)) for name in POLICIES]
         dataset.finalize()
         reopened = LeRobotDataset("local/eval_pick_test", root=out)
