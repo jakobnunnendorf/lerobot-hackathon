@@ -4,10 +4,10 @@ From `research/BENCHMARK_DESIGN_TEMPLATE.md`. **This is data collection only; th
 
 | | |
 | --- | --- |
-| Status | draft, not shared yet |
+| Status | ready, handed to the robot laptop |
 | Version | v1, 22 Nov 08:00 CET |
 | Board posts | earlier plans 7075454867 and 7075469917 (this file replaces them); data: – |
-| Code | `main` with PR #69 merged (SmolVLA + `--record`), merge commit 25b666c |
+| Code | `main` with PR #69 (SmolVLA + `--record`) and PR #71 (motor telemetry + timestamps), merge commit acbdb77 |
 
 **Open before the first run:**
 1. `balazs` training details (section 2): asked on the board, 7075644974.
@@ -101,7 +101,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 - **Design:** every model runs every layout once. 7 models × 8 layouts = **56 runs**.
 - **Order:** layouts in the listed order. The script rotates the model order within a layout, so no model always goes first after a reset.
 - **Before the first run:**
-  1. Pull `main` (PR #69 is merged).
+  1. Pull `main` (PRs #69 and #71 are merged).
   2. Pre-download all seven checkpoints.
   3. Take the reference photos.
   4. Do one warm-up run (logged as warm-up, not counted).
@@ -117,6 +117,9 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
   - the gripper reading at rest;
   - servo warmth (touch);
   - a top camera photo compared with `ref_top.jpg`.
+- **Telemetry timing check (first two runs):**
+  - compare the script's slow-tick % with earlier runs (about 2%);
+  - if it is clearly higher, restart with `--no-telemetry` into a **new** `--record` dir, and log it in section 11.
 - **Stop a model early only for safety:** repeated hard collisions, or a model that never moves at all. Write down why.
 
 ## 6. Outcomes and failure codes
@@ -147,8 +150,9 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 | What | How | Where |
 | --- | --- | --- |
 | One CSV row per run: run, layout, episode_index, policy, checkpoint, started, n_action_steps, cap_s, seconds, end, gripper_end, left_home, late_ticks_pct, start_state, result | automatic | `~/so101/evals/eval_20261122_*.csv` |
-| Every run as a LeRobot dataset episode: top + wrist video, state, action, 30 fps, task sentence | automatic, `--record` | `~/so101/evals/rec_20261122`, then `molnrb/so101_eval_pick_20261122` (open item 2) |
-| Per episode: row + policy type + git commit | automatic | `rec_20261122/runs.jsonl` |
+| Every run as a LeRobot dataset episode: top + wrist video, joint state, action, 30 fps, task sentence | automatic, `--record` |
+| Per tick: motor current and load (every tick); temperature and voltage (once per second); `wall_time` since run start; `tick_ms` | automatic, `--record` (off with `--no-telemetry`) | same dataset | `~/so101/evals/rec_20261122`, then `molnrb/so101_eval_pick_20261122` (open item 2) |
+| Per episode: row + policy type + git commit + tick_ms mean/max + motor temperature at start and end | automatic | `rec_20261122/runs.jsonl` |
 | Failure code, number of grasp attempts, note | by hand | `fails.csv`: `run,policy,layout,fail,attempts,note` |
 | Layout photos `L1..L8.jpg`, reference photos | phone | uploaded with the logs |
 | Checks every 14 runs, anything surprising | by hand | sections 11 and 12 |
@@ -227,7 +231,7 @@ Free text: anything seen at the table that the numbers don't show.
 - **This benchmark:**
   - recording dataset: `molnrb/so101_eval_pick_20261122` (revision: –);
   - logs: `molnrb/arm-logs/logs/arm/2026-11-22_pick-benchmark/`;
-  - code: `main` at 25b666c (PR #69), plus the command in section 3;
+  - code: `main` at acbdb77 (PRs #69, #71), plus the command in section 3;
   - checkpoints: section 2.
 - **Earlier runs on the new servo** (same arm and servo, different `n_action_steps`, no recordings):
   - board 7074277776: 8 layouts at n100; `v1@015000` 5/8, `v2@20000` 6/8;
