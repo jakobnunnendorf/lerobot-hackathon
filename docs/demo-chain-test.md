@@ -79,7 +79,7 @@ Terminal 1, the robot program. It owns the arm and both cameras, and shares thei
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/demo
-bash scripts/supervisor/demo_chain.sh --step 015000
+bash scripts/supervisor/demo_chain.sh
 ```
 
 - It must not start a calibration. If it asks `Press ENTER to use provided calibration file`, press Enter.

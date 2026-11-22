@@ -8,9 +8,9 @@ import sys
 GRIPPER_TORQUE_LIMIT = 200
 
 
-def cap_gripper_torque(bus) -> None:
-    bus.write("Torque_Limit", "gripper", GRIPPER_TORQUE_LIMIT, normalize=False)
-    applied = bus.read("Torque_Limit", "gripper", normalize=False)
+def cap_gripper_torque(bus, num_retry: int = 0) -> None:
+    bus.write("Torque_Limit", "gripper", GRIPPER_TORQUE_LIMIT, normalize=False, num_retry=num_retry)
+    applied = bus.read("Torque_Limit", "gripper", normalize=False, num_retry=num_retry)
     if applied != GRIPPER_TORQUE_LIMIT:
         raise RuntimeError(f"gripper Torque_Limit reads {applied}, not {GRIPPER_TORQUE_LIMIT}")
     print(f"gripper torque capped at {GRIPPER_TORQUE_LIMIT}/1000", flush=True)

@@ -70,9 +70,24 @@ class FakeDataset:
         self.num_episodes += 1
 
 
+class FakeBus:
+    def __init__(self):
+        self.registers = {}
+
+    def write(self, name, motor, value, normalize=True, num_retry=0):
+        self.registers[(name, motor)] = value
+
+    def read(self, name, motor, normalize=True, num_retry=0):
+        return self.registers[(name, motor)]
+
+
 class FakeRobot:
     def __init__(self):
         self.count = 0
+        self.bus = FakeBus()
+
+    def connect(self):
+        pass
 
     def get_observation(self):
         self.count += 1
@@ -119,6 +134,9 @@ def stand_in_session(work: Path) -> None:
 
     listener, events = Module.init_keyboard_listener()
     robot, dataset = Module.make_robot_from_config(None), FakeDataset()
+    robot.connect()
+    check("connect caps the gripper: Torque_Limit 200 written after LeRobot's connect",
+          robot.bus.registers == {("Torque_Limit", "gripper"): 200}, str(robot.bus.registers))
     time.sleep(0.2)
     Module.log_say("Press space to start")
     phase()

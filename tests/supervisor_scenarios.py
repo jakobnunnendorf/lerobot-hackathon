@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from datetime import datetime
 from pathlib import Path
 
@@ -1307,6 +1308,121 @@ def goal_sync_before_connect() -> None:
           and robot.bus.goal == {"shoulder_pan": 2100}, str(robot.log))
 
 
+class CapBus:
+    # reads: one entry per Torque_Limit read-back, "raise" or a wrong value; once used up, reads return what was written.
+    def __init__(self, events: list, reads=()):
+        self.events, self.reads = events, list(reads)
+        self.torque_limit, self.cap_writes, self.num_retries = None, 0, []
+
+    def connect(self):
+        pass
+
+    def disconnect(self, disable_torque=True):
+        pass
+
+    def sync_read(self, name, motors=None, normalize=True):
+        return {key.removesuffix(".pos"): 50.0 for key in KEYS}
+
+    def sync_write(self, name, values, normalize=True):
+        self.events.append(f"sync_write {name}")
+
+    def write(self, name, motor, value, normalize=True, num_retry=0):
+        assert (name, motor, normalize) == ("Torque_Limit", "gripper", False)
+        self.torque_limit, self.cap_writes = value, self.cap_writes + 1
+        self.num_retries.append(num_retry)
+        self.events.append(f"write {name} {value}")
+
+    def read(self, name, motor, normalize=True, num_retry=0):
+        outcome = self.reads.pop(0) if self.reads else None
+        if outcome == "raise":
+            self.events.append("read failed")
+            raise ConnectionError("Failed to read 'Torque_Limit' from motor ID 6 after 11 tries")
+        self.events.append(f"read {name}")
+        return self.torque_limit if outcome is None else outcome
+
+
+class CapRobot:
+    robot_type = "so101_follower"
+
+    def __init__(self, reads=()):
+        self.events = []
+        self.bus = CapBus(self.events, reads)
+
+    def connect(self):
+        pass
+
+    def disconnect(self):
+        self.events.append("disconnect")
+
+    def get_observation(self):
+        return {key: 50.0 for key in KEYS}
+
+    def send_action(self, action):
+        self.events.append("send_action")
+        return action
+
+
+def run_cap_rounds(log_path: str, rounds: int, reads=()):
+    import run_supervisor
+
+    robot, caps_at_round = CapRobot(reads), []
+
+    class RecordingSupervisor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run_round(self, number, **kwargs):
+            caps_at_round.append(robot.bus.cap_writes)
+            robot.events.append(f"round {number}")
+            return types.SimpleNamespace(outcome="given")
+
+    saved_argv, saved = sys.argv, (run_supervisor.Supervisor, run_supervisor.publish_status)
+    sys.argv = ["run_supervisor.py", "--robot", "--rounds", str(rounds), "--auto", "--no-held-check",
+                "--put-down-pose", "0", "0", "0", "0", "0", "--read-retries", "7", "--log", log_path]
+    run_supervisor.Supervisor, run_supervisor.publish_status = RecordingSupervisor, lambda *args: None
+    stopped = None
+    try:
+        args = run_supervisor.parse_args()
+        policy = types.SimpleNamespace(policy=types.SimpleNamespace(config=types.SimpleNamespace(n_action_steps=1)))
+        run_supervisor.run_connected(args, robot, None, None, Path(log_path).parent, False, Commands(), None, policy, None)
+    except SystemExit as stop:
+        stopped = str(stop)
+    finally:
+        sys.argv = saved_argv
+        run_supervisor.Supervisor, run_supervisor.publish_status = saved
+    failed = [json.loads(line) for line in Path(log_path).read_text(encoding="utf-8").splitlines()
+              if json.loads(line)["event"] == "gripper_cap_failed"]
+    return robot, caps_at_round, failed, stopped
+
+
+def gripper_cap_each_round(work: str) -> None:
+    rounds = 3
+    robot, caps_at_round, failed, stopped = run_cap_rounds(f"{work}/cap.jsonl", rounds)
+    check(f"robot mode: gripper Torque_Limit 200 written after connect (strict) and again before each of {rounds} rounds "
+          "with the bus's own retries (--read-retries)",
+          caps_at_round == list(range(2, rounds + 2)) and robot.bus.cap_writes == 1 + rounds
+          and robot.bus.torque_limit == 200 and robot.bus.num_retries == [0] + [7] * rounds and not failed and stopped is None,
+          f"writes before each round {caps_at_round}, total {robot.bus.cap_writes}, num_retry {robot.bus.num_retries}")
+
+    robot, caps_at_round, failed, stopped = run_cap_rounds(f"{work}/cap_retry.jsonl", 1, reads=[None, "raise"])
+    check("robot mode: one failed Torque_Limit read-back before a round -> logged, retried, the round runs",
+          stopped is None and "round 1" in robot.events and robot.bus.cap_writes == 3
+          and [(f["round"], f["attempt"]) for f in failed] == [(1, 1)] and "Torque_Limit" in failed[0]["error"],
+          f"{robot.events} {failed}")
+
+    robot, caps_at_round, failed, stopped = run_cap_rounds(f"{work}/cap_wrong.jsonl", 1, reads=[None, 500])
+    check("robot mode: a read-back of 500 before a round -> logged with the value, retried, the round runs",
+          stopped is None and "round 1" in robot.events and [f["attempt"] for f in failed] == [1]
+          and "reads 500" in failed[0]["error"], str(failed))
+
+    reads = [None, "raise", "raise", "raise"]
+    robot, caps_at_round, failed, stopped = run_cap_rounds(f"{work}/cap_stop.jsonl", 2, reads=reads)
+    check("robot mode: three failed re-caps -> each logged, the program stops before round 1, nothing sent after",
+          stopped is not None and "before round 1" in stopped and not caps_at_round
+          and [f["attempt"] for f in failed] == [1, 2, 3] and robot.events[-2:] == ["read failed", "disconnect"],
+          f"{stopped!r} {robot.events}")
+
+
 def give_integration(handover_dir: Path, log_path: str) -> None:
     hand_socket = import_from(handover_dir, "hand_socket")
     kinematics = import_from(handover_dir, "kinematics")
@@ -1373,6 +1489,7 @@ def main() -> None:
         tick_log(work)
         camera_stall()
         goal_sync_before_connect()
+        gripper_cap_each_round(work)
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
             vision_adapter(vision_dir)

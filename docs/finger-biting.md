@@ -50,7 +50,7 @@ Terminal 1, the usual demo chain plus the bite flags. `<5 joints>` from step 2, 
 
 ```bash
 source ~/miniforge3/etc/profile.d/conda.sh && conda activate lerobot && cd ~/demo
-bash scripts/supervisor/demo_chain.sh --step 015000 \
+bash scripts/supervisor/demo_chain.sh \
   --bite --bite-mode zone --bite-ready <5 joints> 60 --bite-max 1 --bite-lunge-step-deg 2
 ```
 

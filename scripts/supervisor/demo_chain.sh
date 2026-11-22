@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Usage (WSL on the robot laptop): bash scripts/supervisor/demo_chain.sh [--step 015000] [more run_supervisor.py flags]
+# Usage (WSL on the robot laptop): bash scripts/supervisor/demo_chain.sh [--step 20000] [more run_supervisor.py flags]
+# The old pick model: PICK_POLICY=Space0code/act_redblue_from_foil bash scripts/supervisor/demo_chain.sh --step 015000
 # The demo chain voice -> PICK (learned) -> GIVE (hand following) -> REST on one connection. Runbook: docs/demo-chain-test.md.
 # Multi-step plans ("take out 2 red, then the striped ball"): set CLEAR_RED_POLICY / CLEAR_BLUE_POLICY (Hub id or local
 # dir, optionally @step, as PICK_POLICY) in ~/.so101.env or on the command line; a colour left unset refuses its plans.
@@ -15,7 +16,8 @@ elif [ -f .venv/bin/activate ]; then
   source .venv/bin/activate
 fi
 
-step=015000
+# Tomi's v2 repo names its step folders without padding: 20000, not 020000.
+step=20000
 if [ "${1:-}" = "--step" ]; then
   step=$2
   shift 2
@@ -26,7 +28,7 @@ if [ -z "${PUT_DOWN_POSE:-}" ]; then
 fi
 
 export PYTHONUNBUFFERED=1 HF_HUB_DISABLE_PROGRESS_BARS=1
-policy="${PICK_POLICY:-Space0code/act_redblue_from_foil}@$step"
+policy="${PICK_POLICY:-Space0code/act_redblue_from_foil_v2}@$step"
 checkpoint=$(python -c "import sys; sys.path.insert(0, 'scripts/eval'); from eval_pick import resolve_checkpoint; print(resolve_checkpoint(sys.argv[1])[0])" "$policy") || exit 1
 echo "PICK policy $policy -> $checkpoint"
 clear_flags=()
@@ -45,13 +47,16 @@ mkdir -p "$HOME/so101/demo"
 # --max-step-deg 15 is eval_pick's max_relative_target, not 3: see decisions/supervisor.md (training speeds).
 # --min-held-target-area 120: on the arm 3 of 6 holds were red/blue (striped 0 px) and the one striped hold read 274 px
 # (board 7065772934). Append --min-held-target-area 0 to only log again.
-# A later --max-step-deg on the command line wins.
+# --n-action-steps 30, not the checkpoint's 100: on the arm v2 scored 4/10 at 100 and 6/10 at both 50 and 25, while
+# this script used to run v1 at 100. 30 is Tian's choice between the two tested values: nearly as careful as 25, and it
+# commits better during the approach. See decisions/hidden-ball-picking.md.
+# A later flag on the command line wins.
 # shellcheck disable=SC2086
 python scripts/supervisor/run_supervisor.py --robot \
   --port "${SO101_FOLLOWER_PORT:-/dev/so101_follower}" --robot-id "${SO101_FOLLOWER_ID:-mi_follower}" \
   --top-camera "${SO101_CAM_TOP:-/dev/v4l/by-id/usb-BSW-V06-200512_Integrated_Camera-video-index0}" \
   --wrist-camera "${SO101_CAM_WRIST:-/dev/v4l/by-id/usb-Sonix_Technology_Co.__Ltd._USB2.0_CAM1_USB2.0_CAM1-video-index0}" \
-  --pick-policy "$checkpoint" --pick-timeout 90 --max-step-deg 15 --min-held-target-area 120 \
+  --pick-policy "$checkpoint" --n-action-steps 30 --pick-timeout 90 --max-step-deg 15 --min-held-target-area 120 \
   --rest -5.6 -102.8 96.6 -100.1 -5.2 30 \
   --put-down-pose $PUT_DOWN_POSE \
   --give-mode follow --voice --voice-host 0.0.0.0 --rounds 10 \
