@@ -389,7 +389,7 @@ def run_robot(args) -> None:
     rename = dict(pair.split("=", 1) for pair in args.camera_rename)
     pick_policy = LoadedPolicy(args.pick_policy, args.device, args.n_action_steps, rename)
     clear_policy = LoadedPolicy(args.clear_gray_policy, args.device, None, rename) if args.clear_gray_policy else None
-    colour_policies = {colour: LoadedPolicy(path, args.device, None, rename)
+    colour_policies = {colour: LoadedPolicy(path, args.device, args.clear_n_action_steps, rename)
                        for colour, path in clear_colour_paths(args).items()}
     dances = load_dances(args)
     receiver = import_from(handover_dir, "hand_socket").HandReceiver(*split_address(args.hand_listen)) if has_receiver else None
@@ -655,6 +655,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--device", help="policy device; default: the checkpoint's, falling back as LeRobot does")
     p.add_argument("--pick-policy", default=DEFAULT_PICK)
     p.add_argument("--n-action-steps", type=int, help="override the pick checkpoint's n_action_steps (ACT: 100)")
+    # Off by default: the clearing ACTs have only run at 100, where they closed empty every time, as v2's pick did.
+    p.add_argument("--clear-n-action-steps", type=int, help="override the red/blue clearing checkpoints' n_action_steps")
     p.add_argument("--camera-rename", nargs="*", default=[], metavar="OURS=THEIRS",
                    help="camera names the checkpoint expects, e.g. top=camera1 wrist=camera2 for SmolVLA")
     p.add_argument("--pick-task", default="", help="task sentence; ACT ignores it, SmolVLA needs it")
