@@ -7,7 +7,7 @@ import cv2
 import mediapipe as mp
 
 from frame_link import SHAPE, FrameReader
-from hand_features import describe, is_offering
+from hand_features import describe, is_offering, is_pointing
 from hand_link import HandLineSender
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calib"))
@@ -40,24 +40,33 @@ def load_geometry(intrinsics, extrinsics):
 
 def pixel_message(hand):
     u, v = (round(float(c), 1) for c in hand["palm_centre_px"])
+    tip_u, tip_v = (round(float(c), 1) for c in hand["index_tip_px"])
     return {"u": u, "v": v, "palm_up": hand["palm_facing_camera"], "score": hand["handedness_score"],
-            "open": is_offering(hand), "handedness": hand["handedness"]}
+            "open": is_offering(hand), "handedness": hand["handedness"],
+            "pointing": is_pointing(hand), "tip_u": tip_u, "tip_v": tip_v}
 
 
-def hand_message(hand, geometry, hand_z):
+def fingertip_message(hand, geometry, finger_z):
+    xyz = geometry.pixel_to_base(*hand["index_tip_px"], finger_z)
+    if xyz is None:
+        return {}
+    return {f"tip_{axis}": round(float(c), 4) for axis, c in zip("xyz", xyz)}
+
+
+def hand_message(hand, geometry, hand_z, finger_z):
     xyz = geometry.pixel_to_base(*hand["palm_centre_px"], hand_z)
     if xyz is None:
         return None
     x, y, z = (round(float(c), 4) for c in xyz)
-    return {"x": x, "y": y, "z": z, **pixel_message(hand)}
+    return {"x": x, "y": y, "z": z, **pixel_message(hand), **fingertip_message(hand, geometry, finger_z)}
 
 
-def frame_message(hands, geometry, hand_z, captured_epoch):
+def frame_message(hands, geometry, hand_z, finger_z, captured_epoch):
     # Without calibration the hands go under "pixels" and "hands" stays empty: the robot side turns
     # null coordinates into NaN (np.array([None], dtype=float)) instead of rejecting them.
     if geometry is None:
         return {"t": captured_epoch, "hands": [], "pixels": [pixel_message(h) for h in hands]}
-    located = [hand_message(h, geometry, hand_z) for h in hands]
+    located = [hand_message(h, geometry, hand_z, finger_z) for h in hands]
     return {"t": captured_epoch, "hands": [h for h in located if h is not None]}
 
 
@@ -67,7 +76,7 @@ def summary(message):
         return "no hand"
     return " | ".join(
         (f"x {h['x']:+.3f} y {h['y']:+.3f} m" if "x" in h else f"pixel ({h['u']:.0f}, {h['v']:.0f})")
-        + (" open palm" if h["open"] else " not an open palm") for h in hands)
+        + (" open palm" if h["open"] else " pointing" if h["pointing"] else " not an open palm") for h in hands)
 
 
 def open_frames(name):
@@ -90,6 +99,7 @@ def main():
     parser.add_argument("--intrinsics", type=Path)
     parser.add_argument("--extrinsics", type=Path)
     parser.add_argument("--hand-z", type=float, default=0.15, help="assumed palm height above the table, metres")
+    parser.add_argument("--finger-z", type=float, default=0.15, help="assumed fingertip height above the table, metres")
     parser.add_argument("--only-open", action="store_true", help="send only hands that are open with the palm up")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--seconds", type=float, default=0, help="stop after this long; 0 runs until Ctrl+C")
@@ -127,7 +137,7 @@ def main():
         if args.only_open:
             hands = [h for h in hands if is_offering(h)]
         captured_epoch = round(time.time() - (time.perf_counter_ns() - captured_ns) / 1e9, 3)
-        message = frame_message(hands, geometry, args.hand_z, captured_epoch)
+        message = frame_message(hands, geometry, args.hand_z, args.finger_z, captured_epoch)
         sender.send(message)
         if args.print_every and time.monotonic() - last_print >= args.print_every:
             print(summary(message), flush=True)

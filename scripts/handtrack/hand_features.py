@@ -4,6 +4,7 @@ WRIST = 0
 THUMB = (1, 2, 3, 4)
 FINGERS = {"index": (5, 6, 7, 8), "middle": (9, 10, 11, 12), "ring": (13, 14, 15, 16), "pinky": (17, 18, 19, 20)}
 PALM = (0, 5, 9, 13, 17)
+STRAIGHT_ABOVE = 0.9
 
 
 def image_points(landmarks, width, height):
@@ -33,11 +34,16 @@ def finger_straightness(world, chain):
     return np.linalg.norm(world[chain[-1]] - world[chain[0]]) / segments
 
 
-def extended_fingers(world, threshold=0.9, thumb_threshold=0.85):
+def extended_fingers(world, threshold=STRAIGHT_ABOVE, thumb_threshold=0.85):
     extended = [name for name, chain in FINGERS.items() if finger_straightness(world, chain) > threshold]
     if finger_straightness(world, THUMB) > thumb_threshold:
         extended.append("thumb")
     return extended
+
+
+def index_direction_px(points_px):
+    direction = points_px[8] - points_px[5]
+    return direction / np.linalg.norm(direction)
 
 
 def describe(result, index, width, height):
@@ -51,8 +57,17 @@ def describe(result, index, width, height):
         "palm_centre_px": tuple(np.round(palm_centre_px(points), 1)),
         "palm_facing_camera": bool(palm_facing_camera(points, category.category_name)),
         "extended": extended_fingers(world),
+        "straightness": {name: round(float(finger_straightness(world, chain)), 3) for name, chain in FINGERS.items()},
+        "index_tip_px": tuple(points[8]),
+        "index_direction_px": tuple(index_direction_px(points)),
     }
 
 
 def is_offering(hand, min_extended=3):
     return hand["palm_facing_camera"] and len(hand["extended"]) >= min_extended
+
+
+def is_pointing(hand, curled_below=0.75):
+    straightness = hand["straightness"]
+    others_curled = all(straightness[name] < curled_below for name in ("middle", "ring", "pinky"))
+    return straightness["index"] > STRAIGHT_ABOVE and others_curled

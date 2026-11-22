@@ -14,6 +14,10 @@ def pixel(open_=True):
     return {"u": 300.0, "v": 200.0, "open": open_, "palm_up": open_}
 
 
+def pointing(**extra):
+    return hand(False, **{"pointing": True, "tip_x": 0.30, "tip_y": 0.05, "tip_z": 0.15, **extra})
+
+
 def feed(receiver, **message):
     receiver._store(json.dumps({"t": 0, **message}))
     return len(receiver.newest_hands()), receiver.newest_palm_count()
@@ -37,11 +41,44 @@ def main():
     check("uncalibrated: two fists do not count", feed(r, hands=[], pixels=[pixel(False), pixel(False)]), (0, 0))
     check("uncalibrated: a pixel palm gives no 3D hand for the follower", feed(r, hands=[], pixels=[pixel()])[0], 0)
     check("garbage line leaves the last frame alone", feed(r, hands="x"), (0, 1))
+    tips = lambda: [tuple(t) for t in r.newest_pointing_tips()]  # noqa: E731
+    feed(r, hands=[pointing()])
+    check("pointing hand with tip: tip is there", tips(), [(0.30, 0.05, 0.15)])
+    check("pointing hand is not an open palm", (len(r.newest_hands()), r.newest_palm_count()), (0, 0))
+    feed(r, hands=[pointing(), hand()])
+    check("pointing hand and open palm in one line", (tips(), len(r.newest_hands())), ([(0.30, 0.05, 0.15)], 1))
+    feed(r, hands=[hand(False, pointing=True)])
+    check("pointing hand without tip_x: no tip", tips(), [])
+    feed(r, hands=[hand(False, pointing=True, tip_x=0.3)])
+    check("pointing hand with a partial tip: no tip", tips(), [])
+    feed(r, hands=[hand(False, pointing=False, tip_x=0.30, tip_y=0.05, tip_z=0.15)])
+    check("tip of a hand that is not pointing: no tip", tips(), [])
+    feed(r, hands=[hand(pointing=True, tip_x="garbage", tip_y=0.0, tip_z=0.15), hand()])
+    check("garbage tip: skipped, the open palm still arrives", (tips(), len(r.newest_hands())), ([], 2))
+    feed(r, hands=[pointing(tip_z=None)])
+    check("null tip field: skipped", tips(), [])
+    feed(r, hands=[pointing(tip_x=float("nan"))])
+    check("nan tip field: skipped", tips(), [])
+    r.open_only = False
+    feed(r, hands=[pointing()])
+    check("open_only off: tips unchanged", tips(), [(0.30, 0.05, 0.15)])
+    r.open_only = True
+    check("open_only on: pointing tip still counts", tips(), [(0.30, 0.05, 0.15)])
     r.open_only = False
     check("open_only off: fists count again", feed(r, hands=[hand(False), hand(False)]), (2, 2))
     r.open_only = True
+    feed(r, hands=[pointing()])
+    first, _ = r.newest_pointing()
+    same = r.newest_pointing()
+    feed(r, hands=[hand()])
+    after_palm = r.newest_pointing()
+    feed(r, hands="x")
+    check("message number: the same message twice keeps it, every stored line (pointing or not) adds one, garbage none",
+          (same[0] - first, [tuple(t) for t in same[1]], after_palm[0] - first, after_palm[1], r.newest_pointing()[0] - first),
+          (0, [(0.30, 0.05, 0.15)], 1, [], 1))
     r.max_age_s = -1
-    check("stale frame counts nothing", (len(r.newest_hands()), r.newest_palm_count()), (0, 0))
+    check("stale frame counts nothing", (len(r.newest_hands()), r.newest_palm_count(), tips(), r.newest_pointing()[1]),
+          (0, 0, [], []))
     print("PASS" if not failures else f"FAIL: {failures}")
     sys.exit(1 if failures else 0)
 
