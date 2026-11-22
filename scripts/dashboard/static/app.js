@@ -623,6 +623,96 @@ function connect() {
   source.onerror = () => { $("badge-robot").textContent = "Dashboard server unreachable"; $("badge-robot").className = "badge off"; };
 }
 
+// MediaPipe's HAND_CONNECTIONS. The tracker reads the same top-camera frame block as the preview (640x480, not
+// mirrored, not cropped by the 4:3 tile), so its normalised landmarks map straight onto the canvas.
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [17, 18], [18, 19], [19, 20], [0, 17],
+];
+const OVERLAY_STALE_MS = 500;
+const handOverlay = { data: null, at: 0, enabled: true };
+
+function liveState() {
+  const current = running();
+  if (!current) return null;
+  const last = current.transitions[current.transitions.length - 1];
+  return last ? last.target : "REST";
+}
+
+function drawHand(ctx, hand, width, height, scale) {
+  const colour = hand.offering ? "#34c77b" : "#f0b429";
+  const at = ([x, y]) => [x * width, y * height];
+  ctx.lineCap = "round";
+  ctx.lineWidth = 2.5 * scale;
+  ctx.strokeStyle = colour;
+  ctx.beginPath();
+  for (const [a, b] of HAND_CONNECTIONS) {
+    ctx.moveTo(...at(hand.landmarks[a]));
+    ctx.lineTo(...at(hand.landmarks[b]));
+  }
+  ctx.stroke();
+  ctx.fillStyle = colour;
+  for (const point of hand.landmarks) {
+    ctx.beginPath();
+    ctx.arc(...at(point), 3 * scale, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  const [px, py] = at(hand.palm_centre);
+  ctx.beginPath();
+  ctx.arc(px, py, 8 * scale, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.lineWidth = 2 * scale;
+  ctx.strokeStyle = "white";
+  ctx.stroke();
+  const label = `${hand.handedness}${hand.offering ? " · offering" : ""}`;
+  ctx.font = `600 ${13 * scale}px system-ui, sans-serif`;
+  const boxWidth = ctx.measureText(label).width + 10 * scale;
+  const left = px + 12 * scale + boxWidth > width ? px - 12 * scale - boxWidth : px + 12 * scale;
+  ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+  ctx.fillRect(left, py - 22 * scale, boxWidth, 20 * scale);
+  ctx.fillStyle = colour;
+  ctx.fillText(label, left + 5 * scale, py - 7 * scale);
+}
+
+function drawOverlay() {
+  const canvas = $("overlay-top");
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.round(canvas.clientWidth * ratio);
+  const height = Math.round(canvas.clientHeight * ratio);
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, width, height);
+  const fresh = handOverlay.data && performance.now() - handOverlay.at < OVERLAY_STALE_MS;
+  if (!handOverlay.enabled || !fresh || !width) return;
+  const scale = ratio * (liveState() === "GIVE" ? 1.6 : 1);
+  for (const hand of handOverlay.data.hands) drawHand(ctx, hand, width, height, scale);
+}
+
+function connectOverlay() {
+  const source = new EventSource("/overlay");
+  source.onmessage = (message) => {
+    const data = JSON.parse(message.data);
+    if (data.overlay) { handOverlay.data = data.overlay; handOverlay.at = performance.now(); }
+    else handOverlay.data = null;
+    drawOverlay();
+  };
+}
+
+function setHandOverlay(enabled) {
+  handOverlay.enabled = enabled;
+  $("toggle-hand").checked = enabled;
+  try { localStorage.setItem("handOverlay", enabled ? "on" : "off"); } catch (error) { /* per-viewer convenience only */ }
+  drawOverlay();
+}
+
+$("toggle-hand").onchange = (e) => setHandOverlay(e.target.checked);
+let savedOverlay = "on";
+try { savedOverlay = localStorage.getItem("handOverlay") || "on"; } catch (error) { /* per-viewer convenience only */ }
+setHandOverlay(savedOverlay !== "off");
+new ResizeObserver(drawOverlay).observe($("overlay-top"));
+setInterval(drawOverlay, 250);
+connectOverlay();
+
 $("toggle-demo").onchange = (e) => document.body.classList.toggle("demo", e.target.checked);
 $("toggle-cameras").onchange = () => renderRound();
 $("toggle-music").onchange = (e) => danceMusic.setEnabled(e.target.checked);

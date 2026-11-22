@@ -140,6 +140,9 @@ figcaption { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
 .feed.on img { display: block; }
 .feed .idle { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); }
 .feed.on .idle { display: none; }
+.feed canvas.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+.feed.on canvas.overlay { display: block; }
+.overlay-toggle { float: right; }
 
 .round-head { display: flex; align-items: baseline; gap: 14px; margin: 16px 0 10px; }
 .round-title { font-size: 24px; font-weight: 700; }

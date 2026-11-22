@@ -92,8 +92,10 @@
       <div id="collect-counts" class="collect-counts collect-only"></div>
       <div class="cameras">
         <figure>
-          <figcaption>Top camera</figcaption>
-          <div class="feed" id="feed-top"><img alt="top camera"><div class="idle">Cameras start when a chain runs</div></div>
+          <figcaption>Top camera
+            <label class="toggle overlay-toggle" title="Hand skeleton from the hand tracker; green = open palm offered"><input type="checkbox" id="toggle-hand" checked> ✋ Hand overlay</label>
+          </figcaption>
+          <div class="feed" id="feed-top"><img alt="top camera"><canvas class="overlay" id="overlay-top"></canvas><div class="idle">Cameras start when a chain runs</div></div>
         </figure>
         <figure>
           <figcaption>Wrist camera</figcaption>
