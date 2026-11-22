@@ -17,7 +17,7 @@ From `research/BENCHMARK_DESIGN_TEMPLATE.md`. **This is data collection only; th
 
 ## 1. What we measure
 
-- **In one sentence:** how often, how fast and in what way each of 7 pick models succeeds or fails on the new servo, on the same 8 layouts, with every run recorded.
+- **In one sentence:** how often, how fast and in what way each of 6 pick models succeeds or fails on the new servo, on the same 8 layouts, with every run recorded.
 - **What the data must allow later** (no analysis is fixed here):
   - success per model and per start class (V / P / H);
   - a layout-by-layout comparison between models;
@@ -32,7 +32,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 
 | Short name | Hub repo @ step | Type | Training data | Init from | Training at this checkpoint | Why it is in |
 | --- | --- | --- | --- | --- | --- | --- |
-| `v2` | `Space0code/act_redblue_from_foil_v2@20000` | ACT | all episodes | `molnrb/act_pick_ball_combined` (the foil-scene model) | 20K steps, batch 32, lr 2e-5 | reference: the current demo model |
+| ~~`v2`~~ | `Space0code/act_redblue_from_foil_v2@20000` | ACT | all episodes | `molnrb/act_pick_ball_combined` (the foil-scene model) | 20K steps, batch 32, lr 2e-5 | **left out (v1)**: Tian's model improves on it, which improves on v1 (Tomi), so only the best of the chain is tested |
 | `hidden` | `TianK003/act_hidden_from_v2@002000` | ACT | 40 buried / partly covered episodes | `v2@20000` | +2K steps (of a 3K run), batch 32 | v2 tuned for hidden balls |
 | `v3` | `TianK003/act_redblue_from_foil_v3@030000` | ACT | all episodes | `v2@20000` | +10K steps (step numbers continue from 20K), batch 32 | v2 trained longer |
 | `clean_all` | `jakobnunnendorf/act_clean_from_all@010000` | ACT | 93 clean episodes (10 more held out) | `brouthen/act_so101_pick_striped_all_pretrain_50k@050000`: 50K steps, batch 8, on `brouthen/so101_pick_striped_all` (314 episodes) | 10K steps, batch 32 | broad pretrain + clean fine-tune |
@@ -47,7 +47,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
   - [x] `v2` and `vla` load and get through `select_action`: offline test, PR #69;
   - [x] `hidden` and `v3` resolve without a token (board 7075472893);
   - `clean_all`, `clean_scratch` and `balazs` aren't load-tested; problems are sorted out at the table.
-- **Left out:** `v1` (replaced by `v2`); the old-servo foil models; `brouthen/*` models other than as the init for `clean_all`.
+- **Left out:** `v1` and `v2` (an improvement chain, Tian's model > v2 > v1, per Tomi, so only its best is tested; v2's earlier results are in section 13); the old-servo foil models; `brouthen/*` models other than as the init for `clean_all`.
 - **Cut order if time runs short:** don't drop models; cut layouts instead (section 9).
 
 ## 3. Fixed conditions (the same for every run)
@@ -70,7 +70,6 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 ```
 bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
   --record ~/so101/evals/rec_20261122 --push-to-hub molnrb/so101_eval_pick_20261122 \
-  --policy v2=Space0code/act_redblue_from_foil_v2@20000 \
   --policy hidden=TianK003/act_hidden_from_v2@002000 \
   --policy v3=TianK003/act_redblue_from_foil_v3@030000 \
   --policy clean_all=jakobnunnendorf/act_clean_from_all@010000 \
@@ -98,7 +97,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 
 ## 5. Protocol
 
-- **Design:** every model runs every layout once. 7 models × 8 layouts = **56 runs**.
+- **Design:** every model runs every layout once. 6 models × 8 layouts = **48 runs**.
 - **Order:** layouts in the listed order. The script rotates the model order within a layout, so no model always goes first after a reset.
 - **Before the first run:**
   1. Pull `main` (PRs #69 and #71 are merged).
@@ -113,7 +112,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
   5. The episode saves while the arm holds its pose (about 11 s).
 - **Abort:** someone touches the arm or the balls during the run. Write down why, and rerun that run once at the end.
 - **Invalid:** a camera timeout, a script crash, a wrongly built layout, or a bumped table. Log it, mark it invalid, keep the recording, and rerun it at the end.
-- **Checks every 14 runs (2 layouts):**
+- **Checks every 12 runs (2 layouts):**
   - the gripper reading at rest;
   - servo warmth (touch);
   - a top camera photo compared with `ref_top.jpg`.
@@ -166,7 +165,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 
 ## 8. How much data, and what it can show
 
-- **Runs:** 8 per model, 5 of them hidden; 56 in total.
+- **Runs:** 8 per model, 5 of them hidden; 48 in total.
 - **For orientation:**
   - 4 successes out of 8 has a 95% interval of about 22–78%;
   - 2 out of 5 hidden is about 12–77%.
@@ -176,10 +175,10 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 ## 9. Time budget and safety
 
 - **Time per run:** about 50 s on average (successes take about 20–40 s, failures 90 s), plus about 10 s to save and about 45 s to reset. That's about 1.75 min.
-- **Total:** 56 × 1.75 min ≈ 98 min, plus about 10 min of setup. That's **about 1 h 50 min**, more than the 1.5 h available.
+- **Total:** 48 × 1.75 min ≈ 84 min, plus about 10 min of setup. That's **about 1 h 35 min**, just over the 1.5 h available.
 - **Cut rule:**
   - if layout 4 isn't finished by 50 minutes in, stop after layout 6 (H P H V H P: 3 hidden, 2 partly, 1 visible);
-  - that's 42 runs, about 75 min;
+  - that's 36 runs, about 65 min;
   - cut whole layouts so every model keeps the same layouts. Don't cut models.
 - **Safety:**
   - only the person at the table starts a run, and agents never start one;
@@ -193,22 +192,21 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 
 **Per layout** (`ok` / failure code / abort / invalid):
 
-| Layout | Class | v2 | hidden | v3 | clean_all | clean_scratch | balazs | vla |
+| Layout | Class | hidden | v3 | clean_all | clean_scratch | balazs | vla |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| L1 | H | | | | | | | |
-| L2 | P | | | | | | | |
-| L3 | H | | | | | | | |
-| L4 | V | | | | | | | |
-| L5 | H | | | | | | | |
-| L6 | P | | | | | | | |
-| L7 | H | | | | | | | |
-| L8 | H | | | | | | | |
+| L1 | H | | | | | | |
+| L2 | P | | | | | | |
+| L3 | H | | | | | | |
+| L4 | V | | | | | | |
+| L5 | H | | | | | | |
+| L6 | P | | | | | | |
+| L7 | H | | | | | | |
+| L8 | H | | | | | | |
 
 **Counts per model:**
 
 | Model | V (succ/n) | P | H | Total | Aborts | Invalid |
 | --- | --- | --- | --- | --- | --- | --- |
-| v2 | | | | | | |
 | hidden | | | | | | |
 | v3 | | | | | | |
 | clean_all | | | | | | |
@@ -220,6 +218,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 
 | Time | What changed | Why |
 | --- | --- | --- |
+| 08:08 (before run 1) | `v2` dropped: 6 models, 48 runs | Tomi: improvement chain Tian's model > v2 > v1, so only the best is tested (Jakob) |
 | | | |
 
 ## 12. Notes from the table
