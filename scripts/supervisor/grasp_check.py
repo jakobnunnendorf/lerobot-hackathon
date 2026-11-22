@@ -64,9 +64,9 @@ class GraspCheckSettings:
     window_frames: int = 5         # median of the last frames of the settle
     min_error: float = 3.0
     hold_range: tuple[float, float] = (6.0, 20.0)
-    # |Present_Load| of the gripper servo (0.1% of max torque) for a hold; None = logged only. 2026-11-21 on the arm:
-    # ball 440-500 (500 = the gripper's Max_Torque_Limit), empty 28-44.
-    min_load: float | None = 200.0
+    # |Present_Load| of the gripper servo (0.1% of max torque) for a hold; None = logged only. A squeezed ball reads the
+    # torque cap (200 since 2026-11-22, kb/gripper-torque-limit.md; 440-500 at the old 500), empty 28-44.
+    min_load: float | None = 120.0
     backoff_s: float = 0.5
     open_goal: float | None = None  # None: the widest gripper command of this pick, at least trigger + 10
     watch_frames: int = 5
@@ -180,7 +180,7 @@ class GraspChecked:
         return action
 
     # Lock goal after a hold: lock_margin below the held reading (less stall current than squeezing at close_goal:
-    # at goal 1 the load sat at 500, the gripper's torque limit), at least close_goal, and at most hold_low - 1 so an
+    # at goal 1 the load sits at the gripper's torque cap), at least close_goal, and at most hold_low - 1 so an
     # empty jaw at the lock goal still reads below hold_low and the slip watch is unchanged.
     def lock_goal_for(self, reading: float) -> float:
         return min(max(self.s.close_goal, reading - self.s.lock_margin), self.s.hold_range[0] - 1.0)

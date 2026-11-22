@@ -177,6 +177,15 @@ def install_hooks(record_module, dataset_class, session: Session, control_port: 
             return obs
 
         robot.get_observation = get_observation
+        connect = robot.connect
+
+        def connect_capped(*args, **kwargs):
+            connect(*args, **kwargs)
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "so101"))
+            from gripper_limit import cap_gripper_torque
+            cap_gripper_torque(robot.bus)
+
+        robot.connect = connect_capped
         return robot
 
     def save_episode(self, *args, **kwargs):

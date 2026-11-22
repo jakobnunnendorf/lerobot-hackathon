@@ -120,7 +120,7 @@ def run_interactive(transcribe: speech.Transcribe | None, args: argparse.Namespa
             listen_once(lines, microphone, transcribe, args)
         elif (command := commands.from_key(line)) is not None:
             show(f"KEY {line}", command, "")
-            deliver(command, args)
+            deliver(asdict(command), args)
         discard_pending(lines)
 
 
@@ -206,12 +206,18 @@ def handle_audio(audio: np.ndarray, transcribe: speech.Transcribe | None, args: 
     show(f"HEARD    {transcript!r}  ({seconds:.1f} s)", command, transcript)
     if args.dry_run:
         show_scores(transcript)
-    if command is not None:
-        deliver(command, args)
+    if isinstance(command, commands.Plan):
+        deliver(command.message(), args)
+    elif command is not None:
+        deliver(asdict(command), args)
+    elif commands.wants_bite(transcript):
+        deliver({"bite": True, "transcript": transcript.strip(), "source": "voice"}, args)
 
 
 def show(heading: str, command: commands.Command | commands.Plan | None, transcript: str) -> None:
-    if command is None:
+    if command is None and commands.wants_bite(transcript):
+        result = ">>> BITE"
+    elif command is None:
         result = f"NOT UNDERSTOOD: {commands.rejection_reason(transcript)}"
     elif isinstance(command, commands.Plan):
         steps = ", then ".join(f"{count} {target}" for target, count in command.steps)
@@ -231,8 +237,7 @@ def show_scores(transcript: str) -> None:
     print(f"    ball named: {', '.join(result.colours) or f'none, so {commands.DEFAULT_TARGET}'}")
 
 
-def deliver(command: commands.Command | commands.Plan, args: argparse.Namespace) -> None:
-    message = command.message() if isinstance(command, commands.Plan) else asdict(command)
+def deliver(message: dict, args: argparse.Namespace) -> None:
     if args.dry_run:
         print(f"dry run, not sent: {json.dumps(message)}")
         return

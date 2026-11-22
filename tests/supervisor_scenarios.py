@@ -16,7 +16,7 @@ sys.path[:] = [str(SUPERVISOR)] + [p for p in sys.path if Path(p or ".").resolve
 
 from commands import Commands
 from grasp_check import requery
-from fakes import SCENARIOS, FakeArm, FakeGraspPick, Scenario, World, build, pick_effect, release_effect, scripted
+from fakes import SCENARIOS, FakeArm, FakeClock, FakeGraspPick, Scenario, World, build, pick_effect, release_effect, scripted
 from machine import RealClock, Sensors, Settings, Skills, Supervisor, TransitionLog
 from skills import KEYS, GiveSettings, LoadedPolicy, PolicySkill, Settled, capped, give_sequence, import_from, pose_of
 
@@ -34,7 +34,7 @@ def fake_scenarios(log_path: str) -> None:
     for number, scenario in enumerate(SCENARIOS, 1):
         arm, skills, sensors, settings, abort, clock, world = build(scenario)
         result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(
-            number, scenario.dance)
+            number, scenario.dance, scenario.bite)
         states = [s.value for s in result.states]
         problems = []
         if states != scenario.expected:
@@ -525,7 +525,7 @@ def grasp_check_log(log_path: str) -> None:
     blocked = [c for c in checks if c["phase"] == "release_blocked"]
     check("grasp check lock: every release_blocked line carries the gripper load and the count of blocked commands "
           "since the last line (first line 1, then one line a second)",
-          [b["load"] for b in blocked] == [480.0, 480.0] and blocked[0]["count"] == 1
+          [b["load"] for b in blocked] == [200.0, 200.0] and blocked[0]["count"] == 1
           and 30 <= blocked[1]["count"] <= 31, str(blocked))
     # Slow arm (exp1 R3): record what the grasp check sends against where the arm is measured.
     scenario = next(s for s in SCENARIOS if s.name == "grasp_check_miss_slow_arm_backs_off_from_measured")
@@ -566,9 +566,9 @@ def grasp_check_log(log_path: str) -> None:
           and released[0]["sent"] == 5.0 and end["duration_s"] < 20 and not world.violations,
           f"{pick_end} {released} {end['duration_s']}")
     checks, _, _ = run("grasp_check_low_load_is_miss")
-    check("grasp check: reading in the band but load 120 < 200 -> miss; then load 480 -> held",
+    check("grasp check: reading in the band but load 80 < 120 -> miss; then load 200 (the torque cap) -> held",
           [(c["verdict"], c["in_band"], c["stalled"], c["load"], c["load_ok"]) for c in checks]
-          == [("miss", True, True, 120.0, False), ("held", True, True, 480.0, True)], str(checks))
+          == [("miss", True, True, 80.0, False), ("held", True, True, 200.0, True)], str(checks))
     checks, _, _ = run("grasp_check_load_unreadable_reading_rule")
     check("grasp check: load read fails -> reading rule alone decides, logged as load_rule unavailable",
           [(c["verdict"], c["load"], c["load_rule"]) for c in checks] == [("held", None, "unavailable")]
@@ -618,11 +618,11 @@ def robot_flags() -> None:
     args = parsed()
     settings, cameras = settings_from(args), camera_configs(args)
     grasp = settings.grasp_check
-    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, min load 200, "
+    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, min load 120, "
           "locked after a hold, tip height off); --no-grasp-check turns it off",
           grasp is not None and (grasp.trigger, grasp.settle_s, grasp.min_error, grasp.hold_range, grasp.min_load,
                                  grasp.lock_after_hold, grasp.max_tip_height)
-          == (10.0, 0.4, 3.0, (6.0, 20.0), 200.0, True, None)
+          == (10.0, 0.4, 3.0, (6.0, 20.0), 120.0, True, None)
           and settings_from(parsed("--no-grasp-check")).grasp_check is None, str(grasp))
     check("--no-grasp-lock-after-hold restores the unlocked flow; --grasp-lock-margin (default 4)",
           settings_from(parsed("--no-grasp-lock-after-hold")).grasp_check.lock_after_hold is False
@@ -769,6 +769,174 @@ def dance(log_path: str) -> None:
     check("dance: several episodes play in turn; one whose model tip goes below --dance-min-tip-height is refused at start",
           names == ["dance a:1", "dance b:2", "dance a:1"] and refused and run_supervisor.dance_skill(args, [], DRY_RUN_REST, None) is None,
           str(names))
+
+
+class PointingReceiver:
+    def __init__(self, tips):
+        self.tips, self.calls = [np.array(tip, dtype=float) for tip in tips], 0
+
+    def newest_pointing(self):
+        self.calls += 1
+        return self.calls, list(self.tips)
+
+    def newest_pointing_tips(self):
+        return self.newest_pointing()[1]
+
+
+class OneCommand:
+    def __init__(self, command: dict):
+        self.commands = [command]
+
+    def poll(self) -> dict | None:
+        return self.commands.pop() if self.commands else None
+
+
+# Balazs's folded rest pose (board 7064702491), gripper 30: the real BiteSkill starts from it.
+FOLDED_REST = np.array([-3.69, -103.43, 97.01, -100.26, 1.45, 30.0])
+
+
+def bite(log_path: str, handover_dir: Path) -> None:
+    import run_supervisor
+    from bite import BiteSettings, BiteSkill
+    from commands import TARGET_KEYS
+
+    kinematics = import_from(handover_dir, "kinematics")
+    ready = np.concatenate([kinematics.lerobot_degrees(kinematics.solve(np.array([0.28, 0.0, 0.15]), 0, 0, margin_deg=3)), [60.0]])
+
+    def round_with_bite(receiver, bite_round: bool):
+        abort, world = threading.Event(), World()
+        arm = FakeArm(world, abort, rest=FOLDED_REST)
+        sent, original = [], arm.send
+        arm.send = lambda action: (sent.append(pose_of(action)), original(action))
+        skills = Skills(pick=scripted("pick", world, ["ok"], pick_effect(world), ticks=10),
+                        put_down=scripted("put_down", world, ["ok"], release_effect(world, "ok")),
+                        give=scripted("give", world, ["dropped"], release_effect(world, "dropped")),
+                        bite=lambda: BiteSkill(kinematics, receiver, BiteSettings(max_bites=1), ready))
+        log = TransitionLog(log_path, echo=False)
+        result = Supervisor(arm, skills, Sensors(palms_seen=lambda: True), Settings(), FOLDED_REST, log, abort,
+                            FakeClock(30, abort)).run_round(1, bite=bite_round)
+        log.file.close()
+        events = [json.loads(line) for line in open(log_path)]
+        open(log_path, "w").close()
+        return result, np.array(sent), events
+
+    receiver = PointingReceiver([(0.30, 0.05, 0.15)])
+    result, sent, events = round_with_bite(receiver, True)
+    start = next(e for e in events if e["event"] == "round_start")
+    tips = np.array([kinematics.forward_kinematics(pose[:5]) for pose in sent])
+    check("bite: the real BiteSkill from the folded rest pose: REST -> BITE -> REST -> DONE, 'bit', back at rest",
+          [s.value for s in result.states] == ["REST", "BITE", "REST", "DONE"] and result.outcome == "bit"
+          and start["bite"] is True and np.allclose(sent[-1], FOLDED_REST) and (sent[:, 5] <= 5.0).any(),
+          f"{[s.value for s in result.states]} {result.outcome}, lowest bite tip {tips[:, 2].min():.3f} m")
+    receiver = PointingReceiver([(0.30, 0.05, 0.15)])
+    result, sent, events = round_with_bite(receiver, False)
+    check("bite: a pointing finger seen during a PICK -> GIVE round does nothing (the tips are never read)",
+          result.outcome == "given" and receiver.calls == 0 and "BITE" not in [s.value for s in result.states],
+          f"{result.outcome}, {receiver.calls} reads")
+
+    scenario = next(s for s in SCENARIOS if s.name == "bite_times_out_with_finger_in_jaws_opens")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    sent, original = [], arm.send
+    arm.send = lambda action: (sent.append(pose_of(action)), original(action))
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), TransitionLog(None, echo=False), abort,
+                        clock).run_round(1, bite=True)
+    sent = np.array(sent)
+    closed = int(np.argmax(sent[:, 5] == 5.0))
+    opened = closed + int(np.argmax(sent[closed:, 5] >= 60.0))
+    check("bite: time budget out during SNAP with a finger in the jaws -> the jaws open where the arm is, then REST, no ABORT",
+          [s.value for s in result.states] == ["REST", "BITE", "REST", "DONE"] and result.outcome == "bite_timeout"
+          and opened > closed and np.allclose(sent[opened, :5], sent[closed, :5]) and not world.holding
+          and np.allclose(sent[-1], pose_of(FakeArm(World(), abort).last_sent)),
+          f"{[s.value for s in result.states]} {result.outcome}, closed at send {closed}, opened at {opened}")
+
+    scenario = next(s for s in SCENARIOS if s.name == "bite_unavailable_refused")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    log = TransitionLog(log_path, echo=False)
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1, bite=True)
+    log.file.close()
+    end = next(json.loads(line) for line in open(log_path) if json.loads(line)["event"] == "round_end")
+    open(log_path, "w").close()
+    check("bite: without --bite the round is refused before the arm moves, the reason names --bite",
+          result.outcome == "unsupported_bite" and "--bite" in end["reason"], str(end))
+
+    command = {"bite": True, "transcript": "bite the finger", "source": "chat"}
+    commands = Commands()
+    commands.voice = OneCommand(command)
+    commands.poll_voice()
+    check("bite: a {\"bite\": true} command from the link starts the next round as a bite, once",
+          commands.go.is_set() and commands.take_bite() and not commands.take_bite())
+    link = import_from(SUPERVISOR.parent / "voice", "link")
+    if link.decode(json.dumps(command)) is None:
+        print("SKIP  bite over the command port: this link.py does not accept {\"bite\": true} yet (Task 2)")
+    else:
+        commands = Commands()
+        commands.listen_voice("127.0.0.1", 18773)
+        sent_ok = link.send(command, port=18773)
+        deadline = time.monotonic() + 3
+        while not commands.go.is_set() and time.monotonic() < deadline:
+            time.sleep(1 / 30)
+        check("bite: {\"bite\": true} over the command port starts the next round as a bite, once",
+              sent_ok and commands.go.is_set() and commands.take_bite() and not commands.take_bite())
+        commands.voice.close()
+    commands = Commands()
+    commands.handle_key("f")
+    keyed = commands.take_bite()
+    commands.handle_key("b")
+    check("bite: key f asks for a bite; b still sets the blue target", keyed and commands.target() == TARGET_KEYS["b"] == "blue"
+          and not commands.take_bite())
+    commands.request_bite()
+    arm, skills, sensors, settings, abort, clock, world = build(Scenario("pick_then_give", [], ""))
+    sensors.finish_round = commands.clear
+    Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), TransitionLog(None, echo=False), abort, clock).run_round(1)
+    check("bite: a bite asked for during a PICK round is dropped when the round ends", not commands.take_bite())
+
+    def parsed(*flags):
+        saved = sys.argv
+        sys.argv = ["run_supervisor.py", "--fake", "all", *flags]
+        try:
+            return run_supervisor.parse_args()
+        finally:
+            sys.argv = saved
+
+    ready_flags = ("--bite", "--bite-ready", *map(str, ready))
+    defaults = run_supervisor.bite_settings_from(parsed(*ready_flags))
+    capped_settings = run_supervisor.bite_settings_from(parsed(*ready_flags, "--max-step-deg", "2", "--bite-mode", "zone",
+                                                               "--bite-window", "10", "--bite-max", "1", "--bite-close", "8",
+                                                               "--bite-open", "50", "--bite-standoff", "0.05",
+                                                               "--bite-min-height", "0.18", "--bite-max-pan", "30"))
+    check("bite flags: defaults as the spec; the gripper of --bite-ready is the open value; --max-step-deg caps both steps",
+          (defaults.mode, defaults.window_s, defaults.max_bites, defaults.gripper_close, defaults.gripper_open,
+           defaults.max_step_deg, defaults.lunge_step_deg, defaults.min_height_m, defaults.max_pan_deg)
+          == ("aim", 30.0, 3, 5.0, 60.0, 1.5, 4.0, 0.15, 45.0)
+          and (capped_settings.mode, capped_settings.window_s, capped_settings.max_bites, capped_settings.gripper_close,
+               capped_settings.gripper_open, capped_settings.standoff_m, capped_settings.min_height_m,
+               capped_settings.max_pan_deg, capped_settings.max_step_deg, capped_settings.lunge_step_deg)
+          == ("zone", 10.0, 1, 8.0, 50.0, 0.05, 0.18, 30.0, 1.5, 2.0), f"{defaults} / {capped_settings}")
+    problems = [run_supervisor.bite_problem(parsed(*flags), receiver_ok, kinematics_ok)
+                for flags, receiver_ok, kinematics_ok in
+                (((), False, False), (ready_flags, True, True), (("--bite",), True, True), (ready_flags, False, True),
+                 (ready_flags, True, False))]
+    check("bite flags: no --bite is fine; --bite needs --bite-ready, the hand receiver and kinematics.py",
+          problems[:2] == [None, None] and all(problems[2:]) and "--bite-ready" in problems[2], str(problems))
+    open_in_band = ("--bite", "--bite-ready", *map(str, ready[:5]), "12")
+    refusals = {name: run_supervisor.bite_problem(parsed(*flags), True, True) for name, flags in {
+        "short timeout": (*ready_flags, "--bite-timeout", "40"),
+        "long window": (*ready_flags, "--bite-window", "31"),
+        "ready gripper in band": open_in_band,
+        "open in band": (*ready_flags, "--bite-open", "15"),
+        "open overrides ready gripper": (*open_in_band, "--bite-open", "60"),
+        "close in band is fine": (*ready_flags, "--bite-close", "10"),
+        "window 30, timeout 45": ready_flags}.items()}
+    check("bite flags: refused when --bite-timeout < --bite-window + 15 s, or when the open gripper value is inside the "
+          "holding band (the flag is named); a close value in the band is fine",
+          "--bite-timeout" in (refusals["short timeout"] or "") and "--bite-timeout" in (refusals["long window"] or "")
+          and "--bite-ready" in (refusals["ready gripper in band"] or "") and "--bite-open" in (refusals["open in band"] or "")
+          and refusals["open overrides ready gripper"] is None and refusals["close in band is fine"] is None
+          and refusals["window 30, timeout 45"] is None, str(refusals))
+    available = run_supervisor.available(Skills(pick=lambda: None, put_down=lambda: None, bite=lambda: None))
+    check("bite: status says available.bite only when the robot program has a bite skill",
+          available["bite"] is True and run_supervisor.available(Skills(pick=lambda: None, put_down=lambda: None))["bite"] is False
+          and run_supervisor.budgets(Settings())["BITE"] == Settings().bite_timeout_s == 45.0, str(available))
 
 
 TWO_PALMS = [{"x": 0.20, "y": 0.03, "z": 0.13, "palm_up": True}, {"x": 0.20, "y": 0.09, "z": 0.13, "palm_up": True}]
@@ -1039,8 +1207,8 @@ def hold_needs_load(log_path: str) -> None:
     empty = lambda: 30.0  # noqa: E731
     result, events = run("physics")
     holds = [e for e in events if e["event"] == "transition" and e["source"] == "VERIFY_HOLD"]
-    check("hold rule, grasp check off: a squeezed ball (load 480) still counts as held, the load is logged",
-          result.outcome == "given" and holds[0].get("load") == 480 and holds[0].get("min_load") == 200.0, str(holds[0]))
+    check("hold rule, grasp check off: a squeezed ball (load 200, the torque cap) still counts as held, the load is logged",
+          result.outcome == "given" and holds[0].get("load") == 200 and holds[0].get("min_load") == 120.0, str(holds[0]))
 
     scenario = Scenario("pick_then_give", [], "", picks=["ok", "ok", "ok"])
     arm, skills, sensors, settings, abort, clock, world = build(scenario)
@@ -1072,7 +1240,7 @@ def abort_details(log_path: str) -> None:
     to_abort = next(e for e in events if e["event"] == "transition" and e["target"] == "ABORT")
     check("ABORT on an error logs the error, where it was raised, the state, gripper reading and load",
           result.outcome == "aborted" and to_abort["source"] == "VERIFY_HOLD" and "519.0 ms" in to_abort["error"]
-          and "broken_palms" in to_abort["error_at"] and to_abort["load"] == 480 and to_abort["gripper"] is not None
+          and "broken_palms" in to_abort["error_at"] and to_abort["load"] == 200 and to_abort["gripper"] is not None
           and to_abort["pick_attempts"] == 1, str(to_abort))
 
 
@@ -1194,6 +1362,7 @@ def main() -> None:
         robot_flags()
         speed_cap()
         dance(f"{work}/dance.jsonl")
+        bite(f"{work}/bite.jsonl", Path(args.handover_dir))
         pick_end_rule()
         status_datagram()
         handtrack_dir = Path(args.handtrack_dir)

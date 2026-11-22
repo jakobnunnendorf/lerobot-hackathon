@@ -9,6 +9,7 @@ from multiprocessing import shared_memory
 from pathlib import Path
 
 import numpy as np
+from bite import BiteSettings, BiteSkill
 from commands import Commands
 from drops import DropRule
 from grasp_check import GraspCheckSettings
@@ -89,7 +90,7 @@ class RobotArm:
 
     # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
     # Feetech docs; LeRobot 0.7.0's bus reads any register through rustypot, unnormalised). On the arm 2026-11-21 it
-    # read 28-44 empty and 440-500 on the ball, all positive; the grasp check takes abs() in case the sign bit shows.
+    # read 28-44 empty and the torque cap on the ball (440-500 at 500, 200 at today's 200), all positive; the grasp check takes abs() in case the sign bit shows.
     def gripper_load(self) -> float:
         return float(self.robot.bus.sync_read("Present_Load", "gripper")["gripper"])
 
@@ -150,7 +151,8 @@ def settings_from(args) -> Settings:
                     max_clear_attempts=args.max_clear_attempts, max_pick_attempts=args.max_pick_attempts,
                     pick_timeout_s=args.pick_timeout, clear_timeout_s=args.clear_timeout,
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
-                    dance_timeout_s=args.dance_timeout,
+                    dance_timeout_s=args.dance_timeout, bite_timeout_s=args.bite_timeout,
+                    bite_gripper_open=bite_gripper_open(args),
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     hold_min_load=args.hold_min_load, step_timeout_s=args.step_timeout,
                     max_step_reprompts=args.max_step_reprompts, max_step_grasp_misses=args.max_step_grasp_misses,
@@ -301,6 +303,65 @@ def dance_skill(args, dances: list[tuple[str, np.ndarray]], rest: np.ndarray, ti
     return next_dance
 
 
+def bite_settings_from(args) -> BiteSettings:
+    # The bite plans from its own commanded joints, so its steps stay within --max-step-deg: RobotArm.send must never
+    # cut one short behind its back.
+    def cap(step: float) -> float:
+        return step if args.max_step_deg is None else min(step, args.max_step_deg)
+
+    return BiteSettings(mode=args.bite_mode, window_s=args.bite_window, max_bites=args.bite_max,
+                        gripper_close=args.bite_close, gripper_open=bite_gripper_open(args),
+                        standoff_m=args.bite_standoff, min_height_m=args.bite_min_height, max_pan_deg=args.bite_max_pan,
+                        max_step_deg=cap(BiteSettings.max_step_deg), lunge_step_deg=cap(args.bite_lunge_step_deg))
+
+
+def bite_gripper_open(args) -> float:
+    if args.bite_open is not None:
+        return args.bite_open
+    return args.bite_ready[5] if args.bite_ready else Settings.bite_gripper_open
+
+
+# The arm needs time to reach the mouth pose before the window starts and to finish a bite started at its end.
+BITE_TIMEOUT_MARGIN_S = 15.0
+SO101_DIR = Path(__file__).resolve().parents[1] / "so101"
+
+
+def bite_problem(args, has_receiver: bool, has_kinematics: bool) -> str | None:
+    if not args.bite:
+        return None
+    if args.bite_ready is None:
+        return "--bite needs --bite-ready: the mouth pose's 5 joints + gripper (deg), read with read_pose.py"
+    if args.bite_timeout < args.bite_window + BITE_TIMEOUT_MARGIN_S:
+        return (f"--bite-timeout {args.bite_timeout} must be at least --bite-window {args.bite_window} "
+                f"+ {BITE_TIMEOUT_MARGIN_S:.0f} s, or the round can be cut off mid-bite")
+    # REST reads the gripper: open jaws inside the holding band would look like a hold after every bite.
+    low, high = args.hold_range
+    if low <= bite_gripper_open(args) <= high:
+        flag = "--bite-open" if args.bite_open is not None else "--bite-ready's gripper value"
+        return f"{flag} {bite_gripper_open(args)} is inside the holding band {low}-{high} (--hold-range): open the jaws wider"
+    if not has_receiver:
+        return f"--bite needs the hand receiver: no hand_socket.py in {args.handover_dir}"
+    if not has_kinematics:
+        return f"--bite needs kinematics.py in {args.handover_dir}"
+    return None
+
+
+# Checked before the robot connects, so a mouth pose outside the bite workspace never gets as far as torque on.
+def bite_pose_problem(args, handover_dir: Path) -> str | None:
+    if not args.bite:
+        return None
+    try:
+        BiteSkill(import_from(handover_dir, "kinematics"), None, bite_settings_from(args), np.array(args.bite_ready))
+    except ValueError as error:
+        return f"--bite-ready: {error}"
+    return None
+
+
+def bite_skill(args, kinematics, receiver, log: TransitionLog):
+    settings, ready = bite_settings_from(args), np.array(args.bite_ready)
+    return lambda: BiteSkill(kinematics, receiver, settings, ready, on_event=log.write)
+
+
 def run_robot(args) -> None:
     if not (args.port and args.top_camera and args.wrist_camera):
         sys.exit("--robot needs --port, --top-camera and --wrist-camera")
@@ -314,6 +375,9 @@ def run_robot(args) -> None:
     if follow and not has_loop:
         sys.exit(f"--give-mode follow needs #13's handover_loop.py in {handover_dir}")
     has_receiver = (handover_dir / "hand_socket.py").exists()
+    has_kinematics = (handover_dir / "kinematics.py").exists()
+    if problem := bite_problem(args, has_receiver, has_kinematics) or bite_pose_problem(args, handover_dir):
+        sys.exit(problem)
     commands = Commands()
     commands.listen_keyboard()
     if args.voice:
@@ -399,6 +463,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   clear_policy, wrist_writer=None, dances=(), colour_policies=None) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
+    import_from(SO101_DIR, "gripper_limit").cap_gripper_torque(robot.bus)
     log = TransitionLog(args.log)
     if args.tick_log:
         TICKS.open(tick_log_path(args.log))
@@ -443,6 +508,10 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
         elif args.grasp_max_tip_height is not None:
             sys.exit(f"--grasp-max-tip-height needs #13's kinematics.py in {handover_dir}")
         skills.dance = dance_skill(args, list(dances), rest, tip_height)
+        if args.bite:
+            kinematics = import_from(handover_dir, "kinematics")
+            kinematics.JOINT_LIMITS_DEG.update(kinematics.joint_limits_from_calibration(robot.calibration_fpath))
+            skills.bite = bite_skill(args, kinematics, receiver, log)
         sensors = Sensors(palms_seen=palms_seen, gripper_load=arm.gripper_load, tip_height=tip_height, visible_area=TopCameraVisibility() if args.look or clear_policy else None,
                           destination=commands.destination, plan=commands.plan,
                           target=commands.target, finish_round=commands.clear, held_ball_area=held_check_hook(args),
@@ -460,11 +529,12 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   grasp_check=None if settings.grasp_check is None else vars(settings.grasp_check),
                   n_action_steps=pick_policy.policy.config.n_action_steps, budgets_s=budgets(settings),
                   put_down_pose=args.put_down_pose, dance=args.dance_episode, dance_speed=args.dance_speed,
-                  dance_max_step_deg=dance_cap(args))
+                  dance_max_step_deg=dance_cap(args), bite=vars(bite_settings_from(args)) if args.bite else None,
+                  bite_ready=args.bite_ready)
         publish_status(args, skills, receiver, settings)
         print("Enter starts a round. h/c + Enter: destination hand/container, r/b/s + Enter: target red/blue/striped, "
               "p 3b 2r s h + Enter: plan (3 blue, 2 red into their holes, then striped to the hand), "
-              "d + Enter: dance, x: clear, a: ABORT.", flush=True)
+              f"d + Enter: dance, {'f + Enter: bite, ' if skills.bite else ''}x: clear, a: ABORT.", flush=True)
         for number in range(1, args.rounds + 1):
             if not args.auto:
                 commands.go.clear()
@@ -472,7 +542,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                     supervisor.idle_until(commands.go)
                 except Aborted:
                     break
-            if supervisor.run_round(number, dance=commands.take_dance()).outcome == "aborted":
+            dance, bite = commands.take_dance(), commands.take_bite()
+            if supervisor.run_round(number, dance=dance, bite=bite and not dance).outcome == "aborted":
                 print("ABORT: arm holds its pose with torque on. Hold the arm, then switch the power off.", flush=True)
                 break
     finally:
@@ -488,16 +559,19 @@ def tick_log_path(log: str) -> str:
 
 def budgets(settings: Settings) -> dict:
     return {"PICK": settings.pick_timeout_s, "STEP": settings.step_timeout_s, "GIVE": settings.give_timeout_s,
-            "PUT_DOWN": settings.put_down_timeout_s,
-            "REST": settings.move_timeout_s, "CLEAR_GRAY": settings.clear_timeout_s, "DANCE": settings.dance_timeout_s}
+            "PUT_DOWN": settings.put_down_timeout_s, "REST": settings.move_timeout_s,
+            "CLEAR_GRAY": settings.clear_timeout_s, "DANCE": settings.dance_timeout_s, "BITE": settings.bite_timeout_s}
+
+
+def available(skills: Skills) -> dict:
+    return {"targets": ["striped", *(["red", "blue"] if skills.pick_colour else [])],
+            "destinations": [*(["hand"] if skills.give else []), "container"],
+            "dance": skills.dance is not None, "bite": skills.bite is not None,
+            "plan_colours": sorted(skills.clear_colour)}
 
 
 def publish_status(args, skills: Skills, receiver, settings: Settings) -> None:
-    targets = ["striped", *(["red", "blue"] if skills.pick_colour else [])]
-    destinations = [*(["hand"] if skills.give else []), "container"]
-    STATUS.update(available={"targets": targets, "destinations": destinations, "dance": skills.dance is not None,
-                             "plan_colours": sorted(skills.clear_colour)},
-                  pick_policy=args.pick_policy,
+    STATUS.update(available=available(skills), pick_policy=args.pick_policy,
                   log_path=str(Path(args.log).resolve()) if args.log else None, budgets_s=budgets(settings),
                   hold_range=list(settings.hold_range), min_held_target_area_px=args.min_held_target_area)
     if receiver is not None:
@@ -527,7 +601,8 @@ def run_fake(args) -> None:
     for number, scenario in enumerate(chosen, 1):
         arm, skills, sensors, settings, abort, clock, _world = build(scenario)
         rest = pose_of(arm.last_sent)
-        result = Supervisor(arm, skills, sensors, settings, rest, log, abort, clock).run_round(number, scenario.dance)
+        result = Supervisor(arm, skills, sensors, settings, rest, log, abort, clock).run_round(number, scenario.dance,
+                                                                                              scenario.bite)
         print(f"{scenario.name:32s} {result.outcome:9s} {' -> '.join(s.value for s in result.states)}")
 
 
@@ -619,7 +694,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--put-down-timeout", type=float, default=Settings.put_down_timeout_s)
     p.add_argument("--hold-range", type=float, nargs=2, default=Settings.hold_range)
     p.add_argument("--hold-min-load", type=float, default=Settings.hold_min_load,
-                   help="with --no-grasp-check, a hold also needs |Present_Load| >= this (empty 28-44, ball 440-500); 0: band only")
+                   help="with --no-grasp-check, a hold also needs |Present_Load| >= this (empty 28-44, ball = the torque cap, 200); 0: band only")
     p.add_argument("--hand-wait", type=float, default=Settings.hand_wait_s)
     p.add_argument("--min-visible-area", type=int, default=Settings.min_visible_area_px)
     p.add_argument("--vision-dir", default=str(SCRIPTS / "vision"),
@@ -662,7 +737,7 @@ def parse_args() -> argparse.Namespace:
                    help="grasp check: reading minus goal for a ball stalling the jaw (held closes: p1 5.5, median 12.4)")
     p.add_argument("--grasp-min-load", type=float, default=g.min_load,
                    help="grasp check: |Present_Load| of the gripper servo for a hold, as well as the reading rule "
-                        "(2026-11-21: ball 440-500, empty 28-44); an unreadable load falls back to the reading rule")
+                        "(ball = the torque cap, 200; empty 28-44); an unreadable load falls back to the reading rule")
     p.add_argument("--grasp-lock-margin", type=float, default=g.lock_margin,
                    help="grasp check: after 'held', lock the gripper goal this far below the held reading (at least "
                         "--grasp-close-goal, at most hold low - 1 so the slip watch still sees an empty jaw); less "
@@ -693,6 +768,28 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dance-timeout", type=float, default=Settings.dance_timeout_s)
     p.add_argument("--dance-min-tip-height", type=float, default=0.20,
                    help="refuse a dance whose tip (our kinematic model) goes below this many metres, approach included")
+    b = BiteSettings()
+    p.add_argument("--bite", action="store_true",
+                   help="offer the BITE round (f + Enter, Bite on the dashboard, 'bite the finger'): a pointing finger "
+                        "seen by the top camera gets snapped at. Off by default; needs --bite-ready")
+    p.add_argument("--bite-mode", choices=("aim", "zone"), default=b.mode,
+                   help="aim: turn to the finger, stop short, lunge; zone: bite only a finger right in front of the jaws")
+    p.add_argument("--bite-ready", type=float, nargs=6, metavar="DEG",
+                   help="mouth pose: 5 joints + gripper as read_pose.py prints them; gripper horizontal and open, about "
+                        "28 cm out and 15 cm up, facing away from the bowl (the pan limit around it keeps the arm off it)")
+    p.add_argument("--bite-window", type=float, default=b.window_s, help="seconds a bite round watches for a finger")
+    p.add_argument("--bite-max", type=int, default=b.max_bites, help="bites per round")
+    p.add_argument("--bite-close", type=float, default=b.gripper_close, help="gripper goal of the snap")
+    p.add_argument("--bite-open", type=float, help="gripper goal while watching and after the snap; default: --bite-ready's")
+    p.add_argument("--bite-standoff", type=float, default=b.standoff_m,
+                   help="aim mode: stop this far (m) short of the finger before the lunge")
+    p.add_argument("--bite-min-height", type=float, default=b.min_height_m,
+                   help="no bite target below this (m); the bowl and balls are lower")
+    p.add_argument("--bite-max-pan", type=float, default=b.max_pan_deg,
+                   help="fingers more than this many degrees of pan away from the mouth pose are ignored")
+    p.add_argument("--bite-lunge-step-deg", type=float, default=b.lunge_step_deg,
+                   help="joint speed limit of the lunge (deg/tick); capped by --max-step-deg")
+    p.add_argument("--bite-timeout", type=float, default=Settings.bite_timeout_s)
     return p.parse_args()
 
 

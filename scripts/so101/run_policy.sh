@@ -3,6 +3,7 @@
 # The arm moves by itself after SPACE. Ctrl+C stops it early and the arm goes limp.
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 require_devices "$SO101_FOLLOWER_PORT" "$SO101_CAM_TOP" "$SO101_CAM_WRIST"
+python "$(dirname "${BASH_SOURCE[0]}")/gripper_limit.py" "$SO101_FOLLOWER_PORT" || exit 1
 
 MODEL=${1:?path to .../pretrained_model}
 DUR=${2:-40}

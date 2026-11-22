@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 from drops import DropCounter, DropRule, UntilDrops
 from grasp_check import GraspChecked, GraspCheckSettings, load_magnitude
-from skills import MoveTo, Skill
+from skills import MoveTo, Skill, pose_of
 
 
 class State(Enum):
@@ -26,6 +26,7 @@ class State(Enum):
     SHAKE = "SHAKE"
     PUT_DOWN = "PUT_DOWN"
     DANCE = "DANCE"
+    BITE = "BITE"
     DONE = "DONE"
     ABORT = "ABORT"
 
@@ -45,6 +46,8 @@ class Settings:
     shake_timeout_s: float = 15.0
     put_down_timeout_s: float = 20.0
     dance_timeout_s: float = 120.0
+    bite_timeout_s: float = 45.0
+    bite_gripper_open: float = 60.0
     move_timeout_s: float = 15.0
     hold_range: tuple[float, float] = (6.0, 20.0)
     gripper_hold: float | None = None
@@ -78,8 +81,9 @@ class Settings:
     grasp_check: GraspCheckSettings | None = None
     # With the grasp check off, "holding" also needs |Present_Load| >= this (the grasp check's min_load). The band
     # alone counted an empty gripper at the policy's half-closed goal as a hold (VLA 5K take 2: reading 15, load 32;
-    # board 7067314601). Empty reads 28-44, a squeezed ball 440-500. None: the band alone, as before.
-    hold_min_load: float | None = 200.0
+    # board 7067314601). Empty reads 28-44, a squeezed ball the torque cap (200, kb/gripper-torque-limit.md). None: the band
+    # alone, as before.
+    hold_min_load: float | None = 120.0
     # A plan's red/blue step: one prompt of the colour's clear policy runs until the drop count or this budget; after a
     # timeout with an empty gripper it is prompted again, at most max_step_reprompts times (decisions/multistep-step-state.md).
     step_timeout_s: float = 30.0
@@ -107,6 +111,8 @@ class Skills:
     dance: Callable[[], Skill] | None = None
     # One clear policy per hole colour ("red", "blue") for a plan's steps; a plan naming a colour without one is refused.
     clear_colour: dict[str, Callable[[], Skill]] = field(default_factory=dict)
+    # The finger-biting skill (bite.BiteSkill). None: no --bite, a bite round is refused before the arm moves.
+    bite: Callable[[], Skill] | None = None
 
 
 @dataclass
@@ -192,6 +198,7 @@ class Round:
     prompts: int = 0
     step_misses: int = 0
     drops: DropCounter | None = None
+    bite: Skill | None = None
     states: list[State] = field(default_factory=list)
 
 
@@ -209,20 +216,25 @@ class Supervisor:
         self.hold_load: float | None = None
         self.handlers = {State.REST: self._rest, State.STEP: self._step, State.LOOK: self._look, State.CLEAR_GRAY: self._clear_gray,
                          State.PICK: self._pick, State.VERIFY_HOLD: self._verify_hold, State.GIVE: self._give,
-                         State.SHAKE: self._shake, State.PUT_DOWN: self._put_down, State.DANCE: self._dance}
+                         State.SHAKE: self._shake, State.PUT_DOWN: self._put_down, State.DANCE: self._dance,
+                         State.BITE: self._bite}
 
-    def run_round(self, number: int, dance: bool = False) -> Round:
+    def run_round(self, number: int, dance: bool = False, bite: bool = False) -> Round:
         try:
-            return self._run_round(number, dance)
+            return self._run_round(number, dance, bite)
         finally:
             self.sensors.finish_round()
 
-    def _run_round(self, number: int, dance: bool) -> Round:
+    def _run_round(self, number: int, dance: bool, bite: bool) -> Round:
         if dance:
             self.round = Round(number, self.clock.now(), after_rest=State.DANCE,
                                dance=self.skills.dance() if self.skills.dance else None)
             self.log.write(event="round_start", round=number, target=None, destination=None,
                            dance=self.round.dance.name if self.round.dance else "unavailable")
+        elif bite:
+            self.round = Round(number, self.clock.now(), after_rest=State.BITE,
+                               bite=self.skills.bite() if self.skills.bite else None)
+            self.log.write(event="round_start", round=number, target=None, destination=None, bite=True)
         else:
             plan = self.sensors.plan()
             self.round = Round(number, self.clock.now(), target=self.sensors.target(), plan=plan,
@@ -231,7 +243,7 @@ class Supervisor:
             self.log.write(event="round_start", round=number, target=self.round.target, destination=self.sensors.destination(),
                            **({"plan": [list(step) for step in plan]} if plan else {}))
         state = State.REST
-        refusal = self._refusal(dance)
+        refusal = self._refusal(dance, bite)
         if refusal:
             self.round.outcome, reason = refusal
             self.log.write(event="round_end", round=number, outcome=self.round.outcome, pick_attempts=0, clear_attempts=0,
@@ -256,15 +268,20 @@ class Supervisor:
                        **({"drops": dict(self.round.drops.counts)} if self.round.drops else {}))
         return self.round
 
-    def _refusal(self, dance: bool) -> tuple[str, str] | None:
+    def _refusal(self, dance: bool, bite: bool) -> tuple[str, str] | None:
         missing = [c for c, _ in self.round.plan or () if c != "striped" and c not in self.skills.clear_colour]
-        if not dance and missing:
+        if not (dance or bite) and missing:
             return "unsupported_plan", f"no clear policy for {missing[0]!r} (--clear-{missing[0]}-policy): plan refused"
-        if not dance and self.round.target in COLOURS and self.skills.pick_colour is None:
+        if not (dance or bite) and self.round.target in COLOURS and self.skills.pick_colour is None:
             return "unsupported_target", f"no pick skill for {self.round.target!r} yet"
         if dance and self.round.dance is None:
             return "unsupported_dance", "no dance episode in this robot program (--dance-episode)"
+        if bite and self.round.bite is None:
+            return "unsupported_bite", "no bite in this robot program: start it with --bite"
         return None
+
+    def _empty_gripper_round(self) -> str | None:
+        return "dance" if self.round.dance else "bite" if self.round.bite else None
 
     # The state's own details are lost when it raises (VLA 5K take 2: the held-check verdict), so log what is known.
     def _error_details(self, error: Exception) -> dict:
@@ -429,12 +446,18 @@ class Supervisor:
 
     def _rest(self):
         holding, reading = self.holding()
-        # A dance swings the arm at speed, so it starts only from an empty gripper, refused before anything moves.
-        if holding and self.round.dance and self.round.outcome is None:
+        # A dance swings the arm at speed and a bite snaps the jaws, so both start only from an empty gripper, refused
+        # before anything moves.
+        special = self._empty_gripper_round()
+        if holding and special and self.round.outcome is None:
             self.round.outcome = "refused_holding"
-            return State.DONE, "the gripper holds something: empty it before a dance", {"reading": reading}
-        if holding and self.round.dance:
-            return State.ABORT, "gripper reads holding after the dance", {"reading": reading}
+            return State.DONE, f"the gripper holds something: empty it before a {special}", {"reading": reading}
+        # After a bite a hold can only be a finger (a ball refuses the round): open, never ABORT, which would keep it.
+        if holding and self.round.bite:
+            self.log.write(event="bite_jaws_opened", round=self.round.number, reading=reading, move=self._open_bite_jaws())
+            holding = False
+        if holding and special:
+            return State.ABORT, f"gripper reads holding after the {special}", {"reading": reading}
         if holding:
             result = self._move_to_rest(holding=True)
             return State.VERIFY_HOLD, "gripper reads holding at REST", {"move": result, "reading": reading}
@@ -616,6 +639,20 @@ class Supervisor:
         self.round.outcome = "danced" if result == "replayed" else f"dance_{result}"
         self.round.after_rest = State.DONE
         return State.REST, f"dance: {result}", {"skill": result, "dance": self.round.dance.name}
+
+    def _bite(self):
+        result = self.run_skill(self.round.bite, self.s.bite_timeout_s)
+        self.round.outcome = result if result in ("bit", "no_finger") else f"bite_{result}"
+        self.round.after_rest = State.DONE
+        details = {"skill": result}
+        if result not in ("bit", "no_finger"):
+            details["jaws_opened"] = self._open_bite_jaws()
+        return State.REST, f"bite: {result}", details
+
+    # Cut off mid-bite, the jaws may be shut on a finger: open them where the arm is, in one step, before it moves.
+    def _open_bite_jaws(self) -> str:
+        opened = np.concatenate([pose_of(self.arm.last_sent)[:5], [self.s.bite_gripper_open]])
+        return self.run_skill(MoveTo("bite_open", opened, gripper_step=100.0), self.s.move_timeout_s)
 
     def _shake(self):
         result = self.run_skill(self.skills.shake(), self.s.shake_timeout_s)

@@ -51,6 +51,7 @@ class Commands:
         self._target: str | None = None
         self._plan: Plan | None = None
         self._dance = False
+        self._bite = False
         self.voice = None
 
     def set_destination(self, destination: str | None) -> None:
@@ -90,32 +91,48 @@ class Commands:
             wanted, self._dance = self._dance, False
             return wanted
 
+    def request_bite(self) -> None:
+        with self._lock:
+            self._bite = True
+        self.go.set()
+
+    def take_bite(self) -> bool:
+        with self._lock:
+            wanted, self._bite = self._bite, False
+            return wanted
+
     # A command is for one round: the supervisor calls this when the round ends, so the next round does not reuse a
-    # stale "hand" or "container" (or a colour), and a dance asked for during a round does not start after it.
+    # stale "hand" or "container" (or a colour), and a dance or bite asked for during a round does not start after it.
     def clear(self) -> None:
         with self._lock:
             self._destination = self._target = self._plan = None
-            self._dance = False
+            self._dance = self._bite = False
+
+    # Bite is "f" (finger): "b" already sets the blue target. Takes the whole line: a plan ("p 3b 2r s h") needs it.
+    def handle_key(self, line: str) -> None:
+        key = line.strip().lower()[:1]
+        if key == "p":
+            if not self._plan_line(line):
+                return
+        elif key in ("a", "q"):
+            self.abort.set()
+        elif key in DESTINATION_KEYS:
+            self.set_destination(DESTINATION_KEYS[key])
+        elif key in TARGET_KEYS:
+            self.set_target(TARGET_KEYS[key])
+        elif key == "x":
+            self.clear()
+        elif key == "d":
+            self.request_dance()
+        elif key == "f":
+            self.request_bite()
+        self.go.set()
 
     # Line-based (key + Enter) so it works the same in a Windows console, WSL and macOS.
     def listen_keyboard(self) -> None:
         def read():
             for line in sys.stdin:
-                key = line.strip().lower()[:1]
-                if key == "p":
-                    if not self._plan_line(line):
-                        continue
-                elif key in ("a", "q"):
-                    self.abort.set()
-                elif key in DESTINATION_KEYS:
-                    self.set_destination(DESTINATION_KEYS[key])
-                elif key in TARGET_KEYS:
-                    self.set_target(TARGET_KEYS[key])
-                elif key == "x":
-                    self.clear()
-                elif key == "d":
-                    self.request_dance()
-                self.go.set()
+                self.handle_key(line)
         threading.Thread(target=read, daemon=True).start()
 
     def _plan_line(self, line: str) -> bool:
@@ -141,13 +158,15 @@ class Commands:
         threading.Thread(target=poll_forever, daemon=True).start()
 
     # Voice, the dashboard and link.py send {"target", "destination"} or {"plan", "destination"}; the dashboard's ABORT
-    # sends {"abort": true} and its Dance {"dance": true}.
+    # sends {"abort": true}, its Dance {"dance": true} and its Bite {"bite": true}.
     def poll_voice(self) -> None:
         command = self.voice.poll() if self.voice is not None else None
         if command is not None and command.get("abort"):
             self.abort.set()
         elif command is not None and command.get("dance") is True:
             self.request_dance()
+        elif command is not None and command.get("bite") is True:
+            self.request_bite()
         elif command is not None and "plan" in command:
             plan = valid_plan(command["plan"])
             if plan is None:

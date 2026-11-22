@@ -18,6 +18,7 @@ Everything goes through `scripts/so101/`. Do not hand-build `lerobot-*` command 
 - Teleop, recording and policy runs move the arm. CLAUDE.md's rule holds: prepare the command (the table below) and hand it to the person at the table to run.
 - Before anything that holds the arm is stopped, the follower must be held: stopping switches torque off and the arm goes limp.
 - Policy runs wait for SPACE pressed by the person; never bypass that.
+- **Follower gripper torque: 200 of 1000, never more.** LeRobot's 500 stripped the gripper's gears on 2026-11-22. The scripts here cap it after every connect (`gripper_limit.py`); a bare `lerobot-*` command after a power cycle does not, so run `python scripts/so101/gripper_limit.py /dev/so101_follower` before it. `kb/gripper-torque-limit.md`.
 
 ## Starting a robot program
 

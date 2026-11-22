@@ -66,7 +66,8 @@ def decode(line: str) -> dict | None:
     except json.JSONDecodeError:
         return None
     if isinstance(command, dict) and ({"target", "destination"} <= command.keys() or command.get("abort") is True
-                                      or command.get("dance") is True or isinstance(command.get("plan"), list)):
+                                      or command.get("dance") is True or command.get("bite") is True
+                                      or isinstance(command.get("plan"), list)):
         return command
     return None
 

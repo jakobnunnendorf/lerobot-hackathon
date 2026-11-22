@@ -6,10 +6,10 @@ It runs inside the demo chain program (`demo_chain.sh`). The dashboard has a **ð
 
 ## 0. Once: code and the dance data (WSL, about 5 min)
 
-Until `TianK003/dance` is merged into `TianK003/demo-chain`:
+Update the demo checkout to `main` (the dance is part of the demo chain since #47):
 
 ```bash
-cd ~/demo && git fetch origin && git checkout --detach origin/TianK003/demo-chain
+cd ~/demo && git fetch origin && git checkout --detach origin/main
 ```
 
 Fetch the dance before the first run, so the robot program does not download about 400 MB of video while the arm waits:

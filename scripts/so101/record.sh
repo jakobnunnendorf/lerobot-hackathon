@@ -4,6 +4,7 @@
 # Needs the LeRobot patch once per install: python scripts/so101/patch_record.py
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 require_devices "$SO101_FOLLOWER_PORT" "$SO101_LEADER_PORT" "$SO101_CAM_TOP" "$SO101_CAM_WRIST"
+python "$(dirname "${BASH_SOURCE[0]}")/gripper_limit.py" "$SO101_FOLLOWER_PORT" || exit 1
 
 NAME=${1:?dataset name}
 NUM=${2:?number of episodes}

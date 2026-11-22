@@ -213,6 +213,32 @@ class FakeClear:
         return "ran"
 
 
+# A bite whose jaws close on a finger and that never finishes (its time budget runs out during SNAP): the gripper reads
+# a hold (13, load 200) until it opens again.
+class FingerCaughtBite:
+    name = "bite"
+
+    def __init__(self, world: World):
+        self.world = world
+
+    def start(self, obs, last_sent, now):
+        self.pose, self.count = pose_of(last_sent), 0
+
+    def step(self, obs, now):
+        self.count += 1
+        self.pose[0] = min(self.pose[0] + 1.0, DRY_RUN_REST[0] + 20.0)
+        if self.count == 20:
+            self.pose[5] = 5.0
+            self.world.holding, self.world.hold_goal, self.world.release_ok = True, 5.0, True
+        return action_of(self.pose)
+
+    def done(self, obs, now):
+        return False
+
+    def result(self):
+        return "snapping"
+
+
 def scripted(name: str, world: World, outcomes: list[str], effect, ticks: int = 30):
     remaining = list(outcomes)
     return lambda: ScriptedSkill(name, world, remaining.pop(0) if len(remaining) > 1 else remaining[0], effect, ticks)
@@ -301,7 +327,7 @@ class Scenario:
     lag_deg: float | None = None
     lift_floor: float | None = None
     stuck_after_miss_ticks: int = 0
-    # Gripper servo load: "physics" (480 holding, 120 for a "light" hold, 30 empty), "raises" (read fails).
+    # Gripper servo load: "physics" (200 holding = the torque cap, 80 for a "light" hold, 30 empty), "raises" (read fails).
     load: str = "physics"
     # A dance round (run_round(dance=True)) with the synthetic dance below, or none (no --dance-episode).
     dance: bool = False
@@ -312,6 +338,11 @@ class Scenario:
     plan: tuple[tuple[str, int], ...] | None = None
     clear_colours: tuple[str, ...] = ("red", "blue")
     clears: list[str] = field(default_factory=list)
+    # A bite round (run_round(bite=True)) with a scripted bite skill, or none (no --bite).
+    bite: bool = False
+    bite_available: bool = True
+    bites: list[str] = field(default_factory=lambda: ["bit"])
+    finger_caught: bool = False
 
 
 DANCE_SPEED = 0.5
@@ -348,7 +379,7 @@ def fake_gripper_load(world: World, mode: str):
     def load():
         if mode == "raises":
             raise RuntimeError("no Present_Load")
-        return (120.0 if world.light else 480.0) if world.holding else 30.0
+        return (80.0 if world.light else 200.0) if world.holding else 30.0
     return load
 
 
@@ -376,6 +407,8 @@ def build(scenario: Scenario):
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
         dance=synthetic_dance(scenario.dance_max_step_deg) if scenario.dance_available else None,
         clear_colour={colour: (lambda colour=colour: FakeClear(world, colour)) for colour in scenario.clear_colours},
+        bite=None if not scenario.bite_available else (lambda: FingerCaughtBite(world)) if scenario.finger_caught
+        else scripted("bite", world, scenario.bites, lambda outcome, last_sent: _with_gripper(last_sent, 60.0)),
     )
     sensors = Sensors(target=lambda: scenario.target, plan=lambda: scenario.plan, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
@@ -392,7 +425,7 @@ def build(scenario: Scenario):
 
 
 R, P, V, G, U, D, A = "REST", "PICK", "VERIFY_HOLD", "GIVE", "PUT_DOWN", "DONE", "ABORT"
-L, C, S, DA, ST = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE", "STEP"
+L, C, S, DA, ST, BI = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE", "STEP", "BITE"
 RED2_BLUE1_STRIPED = (("red", 2), ("blue", 1), ("striped", 1))
 
 SCENARIOS = [
@@ -505,4 +538,12 @@ SCENARIOS = [
     Scenario("plan_without_striped_ends_cleared", [R, ST, R, D], "cleared", plan=(("blue", 1),), clears=["blue"]),
     Scenario("plan_refused_without_blue_policy", [], "unsupported_plan", plan=RED2_BLUE1_STRIPED,
              clear_colours=("red",)),
+    Scenario("bite_from_rest", [R, BI, R, D], "bit", bite=True),
+    Scenario("bite_no_finger_in_window", [R, BI, R, D], "no_finger", bite=True, bites=["no_finger"]),
+    Scenario("bite_times_out", [R, BI, R, D], "bite_timeout", bite=True, bites=["hang"], settings={"bite_timeout_s": 2.0}),
+    Scenario("bite_refused_while_holding", [R, D], "refused_holding", bite=True, holding_at_start=True),
+    Scenario("bite_unavailable_refused", [], "unsupported_bite", bite=True, bite_available=False),
+    Scenario("abort_key_during_bite", [R, BI, A], "aborted", bite=True, bites=["hang"], abort_at_tick=40),
+    Scenario("bite_times_out_with_finger_in_jaws_opens", [R, BI, R, D], "bite_timeout", bite=True, finger_caught=True,
+             settings={"bite_timeout_s": 2.0}),
 ]
