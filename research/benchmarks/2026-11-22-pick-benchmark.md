@@ -9,9 +9,7 @@ From `research/BENCHMARK_DESIGN_TEMPLATE.md`. **This is data collection only; th
 | Board posts | earlier plans 7075454867 and 7075469917 (this file replaces them); data: – |
 | Code | `main` with PR #69 (SmolVLA + `--record`) and PR #71 (motor telemetry + timestamps), merge commit acbdb77 |
 
-**Open before the first run:**
-1. `balazs` training details (section 2): asked on the board, 7075644974.
-2. The recording dataset repo (section 7): asked on the board, 7075644974.
+**Open before the first run:** none (answered in 7075859319). Runs on `main` at 58644fc.
 
 ---
 
@@ -37,7 +35,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 | `v3` | `TianK003/act_redblue_from_foil_v3@030000` | ACT | all episodes | `v2@20000` | +10K steps (step numbers continue from 20K), batch 32 | v2 trained longer |
 | `clean_all` | `jakobnunnendorf/act_clean_from_all@010000` | ACT | 93 clean episodes (10 more held out) | `brouthen/act_so101_pick_striped_all_pretrain_50k@050000`: 50K steps, batch 8, on `brouthen/so101_pick_striped_all` (314 episodes) | 10K steps, batch 32 | broad pretrain + clean fine-tune |
 | `clean_scratch` | `jakobnunnendorf/act_clean_scratch@030000` | ACT | the same 93 clean episodes | none (from scratch) | 30K steps, batch 32 | clean data alone; compare with `clean_all` |
-| `balazs` | `molnrb/act_pick_rb_mixed@080000` | ACT | **open item 1** | **open item 1** | 80K | fastest in the 02:15 test (9–15 s on visible balls, old servo) |
+| `balazs` | `molnrb/act_pick_rb_mixed@080000` | ACT | all episodes as of Saturday afternoon (no revision pinned) | none (from scratch) | 80K steps, batch 8, lr 1e-5, seed 1000; chunk 100 | fastest in the 02:15 test (9–15 s on visible balls, old servo) |
 | `vla` | `jakobnunnendorf/smolvla_redblue_v2@003000` | SmolVLA | all episodes | `lerobot/smolvla_base` | 3K steps (of a 10K run, only 1K/2K/3K uploaded), batch 64, lr 1e-4; chunk 50 | the only VLA |
 
 - **SmolVLA specifics:**
@@ -152,7 +150,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 | --- | --- | --- |
 | One CSV row per run: run, layout, episode_index, policy, checkpoint, started, n_action_steps, cap_s, seconds, end, gripper_end, left_home, late_ticks_pct, start_state, result | automatic | `~/so101/evals/eval_20261122_*.csv` |
 | Every run as a LeRobot dataset episode: top + wrist video, joint state, action, 30 fps, task sentence | automatic, `--record` |
-| Per tick: motor current and load (every tick); temperature and voltage (once per second); `wall_time` since run start; `tick_ms` | automatic, `--record` (off with `--no-telemetry`) | same dataset | `~/so101/evals/rec_20261122`, then `molnrb/so101_eval_pick_20261122` (open item 2) |
+| Per tick: motor current and load (every tick); temperature and voltage (once per second); `wall_time` since run start; `tick_ms` | automatic, `--record` (off with `--no-telemetry`) | same dataset | `~/so101/evals/rec_20261122`, then `molnrb/so101_eval_pick_20261122` (private; access for the analysis on request) |
 | Per episode: row + policy type + git commit + tick_ms mean/max + motor temperature at start and end | automatic | `rec_20261122/runs.jsonl` |
 | Failure code, number of grasp attempts, note | by hand | `fails.csv`: `run,policy,layout,fail,attempts,note` |
 | Layout photos `L1..L8.jpg`, reference photos | phone | uploaded with the logs |
