@@ -245,6 +245,9 @@ def connect_robot(port: str, robot_id: str, top_camera: str):
     robot = SO101Follower(SO101FollowerConfig(port=port, id=robot_id, cameras=cameras, disable_torque_on_disconnect=False))
     sync_goal_to_present(robot.bus)
     robot.connect()
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "so101"))
+    from gripper_limit import cap_gripper_torque
+    cap_gripper_torque(robot.bus)
     kinematics.JOINT_LIMITS_DEG.update(kinematics.joint_limits_from_calibration(robot.calibration_fpath))
     return robot
 

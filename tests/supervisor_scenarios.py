@@ -375,7 +375,7 @@ def grasp_check_log(log_path: str) -> None:
     blocked = [c for c in checks if c["phase"] == "release_blocked"]
     check("grasp check lock: every release_blocked line carries the gripper load and the count of blocked commands "
           "since the last line (first line 1, then one line a second)",
-          [b["load"] for b in blocked] == [480.0, 480.0] and blocked[0]["count"] == 1
+          [b["load"] for b in blocked] == [200.0, 200.0] and blocked[0]["count"] == 1
           and 30 <= blocked[1]["count"] <= 31, str(blocked))
     # Slow arm (exp1 R3): record what the grasp check sends against where the arm is measured.
     scenario = next(s for s in SCENARIOS if s.name == "grasp_check_miss_slow_arm_backs_off_from_measured")
@@ -416,9 +416,9 @@ def grasp_check_log(log_path: str) -> None:
           and released[0]["sent"] == 5.0 and end["duration_s"] < 20 and not world.violations,
           f"{pick_end} {released} {end['duration_s']}")
     checks, _, _ = run("grasp_check_low_load_is_miss")
-    check("grasp check: reading in the band but load 120 < 200 -> miss; then load 480 -> held",
+    check("grasp check: reading in the band but load 80 < 120 -> miss; then load 200 (the torque cap) -> held",
           [(c["verdict"], c["in_band"], c["stalled"], c["load"], c["load_ok"]) for c in checks]
-          == [("miss", True, True, 120.0, False), ("held", True, True, 480.0, True)], str(checks))
+          == [("miss", True, True, 80.0, False), ("held", True, True, 200.0, True)], str(checks))
     checks, _, _ = run("grasp_check_load_unreadable_reading_rule")
     check("grasp check: load read fails -> reading rule alone decides, logged as load_rule unavailable",
           [(c["verdict"], c["load"], c["load_rule"]) for c in checks] == [("held", None, "unavailable")]
@@ -468,11 +468,11 @@ def robot_flags() -> None:
     args = parsed()
     settings, cameras = settings_from(args), camera_configs(args)
     grasp = settings.grasp_check
-    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, min load 200, "
+    check("robot defaults: grasp check on (trigger 10, settle 0.4 s, min error 3, band 6-20, min load 120, "
           "locked after a hold, tip height off); --no-grasp-check turns it off",
           grasp is not None and (grasp.trigger, grasp.settle_s, grasp.min_error, grasp.hold_range, grasp.min_load,
                                  grasp.lock_after_hold, grasp.max_tip_height)
-          == (10.0, 0.4, 3.0, (6.0, 20.0), 200.0, True, None)
+          == (10.0, 0.4, 3.0, (6.0, 20.0), 120.0, True, None)
           and settings_from(parsed("--no-grasp-check")).grasp_check is None, str(grasp))
     check("--no-grasp-lock-after-hold restores the unlocked flow; --grasp-lock-margin (default 4)",
           settings_from(parsed("--no-grasp-lock-after-hold")).grasp_check.lock_after_hold is False
@@ -1042,8 +1042,8 @@ def hold_needs_load(log_path: str) -> None:
     empty = lambda: 30.0  # noqa: E731
     result, events = run("physics")
     holds = [e for e in events if e["event"] == "transition" and e["source"] == "VERIFY_HOLD"]
-    check("hold rule, grasp check off: a squeezed ball (load 480) still counts as held, the load is logged",
-          result.outcome == "given" and holds[0].get("load") == 480 and holds[0].get("min_load") == 200.0, str(holds[0]))
+    check("hold rule, grasp check off: a squeezed ball (load 200, the torque cap) still counts as held, the load is logged",
+          result.outcome == "given" and holds[0].get("load") == 200 and holds[0].get("min_load") == 120.0, str(holds[0]))
 
     scenario = Scenario("pick_then_give", [], "", picks=["ok", "ok", "ok"])
     arm, skills, sensors, settings, abort, clock, world = build(scenario)
@@ -1075,7 +1075,7 @@ def abort_details(log_path: str) -> None:
     to_abort = next(e for e in events if e["event"] == "transition" and e["target"] == "ABORT")
     check("ABORT on an error logs the error, where it was raised, the state, gripper reading and load",
           result.outcome == "aborted" and to_abort["source"] == "VERIFY_HOLD" and "519.0 ms" in to_abort["error"]
-          and "broken_palms" in to_abort["error_at"] and to_abort["load"] == 480 and to_abort["gripper"] is not None
+          and "broken_palms" in to_abort["error_at"] and to_abort["load"] == 200 and to_abort["gripper"] is not None
           and to_abort["pick_attempts"] == 1, str(to_abort))
 
 

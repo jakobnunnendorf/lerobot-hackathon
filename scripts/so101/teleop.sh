@@ -3,6 +3,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 require_devices "$SO101_FOLLOWER_PORT" "$SO101_LEADER_PORT"
 [ "${1:-}" != "--no-cams" ] && require_devices "$SO101_CAM_TOP" "$SO101_CAM_WRIST"
+python "$(dirname "${BASH_SOURCE[0]}")/gripper_limit.py" "$SO101_FOLLOWER_PORT" || exit 1
 
 clear
 banner "30;42" "TELEOPERATION - nothing is recorded"

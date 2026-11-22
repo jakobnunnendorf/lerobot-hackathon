@@ -171,7 +171,7 @@ class FakeGraspPick:
 
 
 # A bite whose jaws close on a finger and that never finishes (its time budget runs out during SNAP): the gripper reads
-# a hold (13, load 480) until it opens again.
+# a hold (13, load 200) until it opens again.
 class FingerCaughtBite:
     name = "bite"
 
@@ -284,7 +284,7 @@ class Scenario:
     lag_deg: float | None = None
     lift_floor: float | None = None
     stuck_after_miss_ticks: int = 0
-    # Gripper servo load: "physics" (480 holding, 120 for a "light" hold, 30 empty), "raises" (read fails).
+    # Gripper servo load: "physics" (200 holding = the torque cap, 80 for a "light" hold, 30 empty), "raises" (read fails).
     load: str = "physics"
     # A dance round (run_round(dance=True)) with the synthetic dance below, or none (no --dance-episode).
     dance: bool = False
@@ -332,7 +332,7 @@ def fake_gripper_load(world: World, mode: str):
     def load():
         if mode == "raises":
             raise RuntimeError("no Present_Load")
-        return (120.0 if world.light else 480.0) if world.holding else 30.0
+        return (80.0 if world.light else 200.0) if world.holding else 30.0
     return load
 
 
