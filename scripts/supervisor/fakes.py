@@ -265,6 +265,10 @@ class Scenario:
     dance_available: bool = True
     dance_max_step_deg: float | None = 3.0
     holding_at_start: bool = False
+    # A bite round (run_round(bite=True)) with a scripted bite skill, or none (no --bite).
+    bite: bool = False
+    bite_available: bool = True
+    bites: list[str] = field(default_factory=lambda: ["bit"])
 
 
 DANCE_SPEED = 0.5
@@ -328,6 +332,8 @@ def build(scenario: Scenario):
         if scenario.colour_pick else None,
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
         dance=synthetic_dance(scenario.dance_max_step_deg) if scenario.dance_available else None,
+        bite=scripted("bite", world, scenario.bites, lambda outcome, last_sent: _with_gripper(last_sent, 60.0))
+        if scenario.bite_available else None,
     )
     sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
@@ -344,7 +350,7 @@ def build(scenario: Scenario):
 
 
 R, P, V, G, U, D, A = "REST", "PICK", "VERIFY_HOLD", "GIVE", "PUT_DOWN", "DONE", "ABORT"
-L, C, S, DA = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE"
+L, C, S, DA, BI = "LOOK", "CLEAR_GRAY", "SHAKE", "DANCE", "BITE"
 
 SCENARIOS = [
     Scenario("pick_then_give", [R, P, V, G, R, D], "given"),
@@ -432,4 +438,10 @@ SCENARIOS = [
     Scenario("dance_refused_while_holding", [R, D], "refused_holding", dance=True, holding_at_start=True),
     Scenario("dance_unavailable_refused", [], "unsupported_dance", dance=True, dance_available=False),
     Scenario("abort_key_during_dance", [R, DA, A], "aborted", dance=True, abort_at_tick=80),
+    Scenario("bite_from_rest", [R, BI, R, D], "bit", bite=True),
+    Scenario("bite_no_finger_in_window", [R, BI, R, D], "no_finger", bite=True, bites=["no_finger"]),
+    Scenario("bite_times_out", [R, BI, R, D], "bite_timeout", bite=True, bites=["hang"], settings={"bite_timeout_s": 2.0}),
+    Scenario("bite_refused_while_holding", [R, D], "refused_holding", bite=True, holding_at_start=True),
+    Scenario("bite_unavailable_refused", [], "unsupported_bite", bite=True, bite_available=False),
+    Scenario("abort_key_during_bite", [R, BI, A], "aborted", bite=True, bites=["hang"], abort_at_tick=40),
 ]
