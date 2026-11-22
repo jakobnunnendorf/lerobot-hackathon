@@ -43,6 +43,7 @@ MIN_VOICE_S = 0.3
 SILENCE_PEAK = 0.01
 VOICE_PAD_S = 0.5
 COMMAND_SETTLE_S = 3.0
+MAX_PICK_LIMIT = 20
 VIDEO_FPS = 15
 VIDEO_TAIL_S = 2.0
 COLLECT_CONTROLS = ("next", "discard", "stop")
@@ -656,6 +657,18 @@ def build_app(args) -> FastAPI:
     @app.post("/api/abort")
     def abort():
         return {"ok": link.send({"abort": True}, port=args.command_port)}
+
+    # Allowed during a round on purpose: when the ball is buried deep the tester gives the running round more picks.
+    @app.post("/api/max_picks")
+    async def max_picks(request: Request):
+        try:
+            value = int((await request.json()).get("value"))
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "the pick limit must be a number"}
+        if not 1 <= value <= MAX_PICK_LIMIT:
+            return {"ok": False, "reason": f"pick limit: 1 to {MAX_PICK_LIMIT}"}
+        sent = link.send({"max_pick_attempts": value}, port=args.command_port)
+        return {"ok": sent, "value": value, "reason": None if sent else "robot program is not listening on 8765"}
 
     @app.get("/api/collect/datasets")
     def collect_datasets():

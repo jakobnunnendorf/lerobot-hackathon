@@ -224,7 +224,7 @@ def main() -> None:
                                                                                     "bite": not args.no_bite},
                   pick_policy="FAKE Space0code/act_redblue_from_foil@015000", log_path=str(log_path.resolve()),
                   budgets_s=BUDGETS, hold_range=[6.0, 20.0], min_held_target_area_px=120, gripper=30.0, joints=REST,
-                  observes=0, fake=True)
+                  observes=0, max_pick_attempts=3, fake=True)
     started = time.monotonic()
     status.add_reader(lambda: {"observes": int((time.monotonic() - started) * 30)})
     status.start(port=args.status_port)
@@ -242,6 +242,8 @@ def main() -> None:
             command = receiver.poll()
             if command is not None and command.get("abort"):
                 robot.abort.set()
+            elif command is not None and "max_pick_attempts" in command:
+                status.update(max_pick_attempts=command["max_pick_attempts"])
             elif command is not None:
                 pending.append(command)
             time.sleep(0.05)
