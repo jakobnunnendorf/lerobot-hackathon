@@ -63,7 +63,8 @@ B is a superset of A: with aiming switched off, B becomes A. Tian handed the cho
 A new state `BITE` and round flag, built like DANCE:
 
 - `commands.py`: `request_bite()` / `take_bite()`, key `b`, link message `{"bite": true}`; cleared by `Commands.clear` like the dance, so a request during another round never starts later.
-- `machine.py`: `run_round(number, bite=True)` → `REST → BITE → REST → DONE`. Refused before anything moves when there is no bite skill (no calibration or no kinematics) or the gripper reads holding (same check as the dance). Outcomes: `bit` (at least one bite), `no_finger` (window ran out), `bite_<result>` otherwise.
+- `run_supervisor.py`: the bite skill exists only when the robot program is started with `--bite` (off by default, like the dance needs `--dance-episode`), plus the calibration and `kinematics.py`. Without it the tile is greyed out and voice, chat and the key are refused, so the main demo cannot start a bite by accident.
+- `machine.py`: `run_round(number, bite=True)` → `REST → BITE → REST → DONE`. Refused before anything moves when there is no bite skill or the gripper reads holding (same check as the dance). Outcomes: `bit` (at least one bite), `no_finger` (window ran out), `bite_<result>` otherwise.
 - `skills.py`: `BiteSkill`, one `Skill` with its own small state machine, in the 30 Hz supervisor loop:
 
 | Phase | What the arm does | Leaves when |
@@ -78,7 +79,7 @@ A new state `BITE` and round flag, built like DANCE:
 
 In mode `zone`, AIM is skipped. WATCH fires only when the fingertip is within `--bite-zone` (default 8 cm) of the point 4 cm in front of the jaws, and LUNGE goes straight forward from the mouth pose.
 
-**Bite workspace (all targets clamped or refused):** tip at least `--bite-min-height` above the table (default 0.12 m), 0.20-0.38 m from the pan axis, pan within `--bite-max-pan` of the mouth pose (default 45°) so the arm never swings round over the bowl. A target outside it is ignored (no aim, no lunge). Each joint step is guarded against the table and the base like `handover_loop.guarded_step`.
+**Bite workspace (all targets clamped or refused):** tip at least `--bite-min-height` above the table (default 0.15 m; the bowl and balls are below that, grasps are at 0.02-0.16 m), 0.20-0.38 m from the pan axis, pan within `--bite-max-pan` of the mouth pose (default 45°). The person at the table chooses the mouth pose facing away from the bowl and containers, so this pan limit is the keep-out: the arm never swings round over the bowl. A target outside it is ignored (no aim, no lunge). Each joint step is guarded against the table and the base like `handover_loop.guarded_step`.
 
 **ABORT** works as in every skill: `_observe` raises, nothing more is sent, the arm holds with torque on.
 
@@ -98,7 +99,7 @@ In mode `zone`, AIM is skipped. WATCH fires only when the fingertip is within `-
 
 ### 5. At the table (runbook `docs/finger-biting.md`, run by the person at the arm)
 
-1. Tracker only, arm still: point at the camera; the tracker prints `pointing` and the fingertip position. Check it against a ruler at 2-3 spots; adjust `--finger-z` to where people actually hold their finger.
+1. Tracker only, arm still: hold a pointing hand where the mouth pose will face, at bite height; check the top camera sees it there (not outside the frame, not behind the arm). Point at the camera; the tracker prints `pointing` and the fingertip position. Check it against a ruler at 2-3 spots; adjust `--finger-z` to where people actually hold their finger.
 2. Read the mouth pose: put the arm by hand (torque off, `read_pose.py`) into a horizontal, open gripper facing the play area; note the joints for `--bite-ready`.
 3. First run in mode `zone`, half speed, someone with a hand on the power switch, an adult finger first.
 4. Then mode `aim`.
@@ -110,6 +111,7 @@ In mode `zone`, AIM is skipped. WATCH fires only when the fingertip is within `-
 - Grip force is not a concern; the existing gripper limit is fine.
 - It is an optional demo add-on, kept only if it works well enough at the table.
 - It is in the dashboard and can be started by voice, "bite the finger".
+- There is time to build it while the others train; it will be tested at the arm when there is a slot. It stays on its branch and is merged only if Tian says so after the test (feature freeze rules).
 
 ## Calls made by the agent (Tian can overrule)
 
@@ -118,6 +120,7 @@ In mode `zone`, AIM is skipped. WATCH fires only when the fingertip is within `-
 - Up to 3 bites per round within a 30 s window.
 - Gripper horizontal ("mouth") with a radial lunge, not a top-down bite.
 - Thresholds, distances and speeds above are starting values to tune at the table.
+- Off by default behind `--bite`; minimum bite height 0.15 m; the pan limit around the mouth pose as the bowl keep-out (after the builder check).
 
 ## Left to the builder
 
