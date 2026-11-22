@@ -1,6 +1,7 @@
 # Dashboard server against scripts/dashboard/fake_robot.py on spare ports: streams, commands, refusals, abort,
-# results and the board summary. Needs the dashboard environment (scripts/dashboard/requirements.txt).
+# results, the board summary and the hand overlay. Needs the dashboard environment (scripts/dashboard/requirements.txt).
 import json
+import socket
 import subprocess
 import sys
 import tempfile
@@ -10,7 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = "http://127.0.0.1:18080"
-PORTS = ["--command-port", "18865", "--status-port", "18867", "--top-shm", "smoke_top", "--wrist-shm", "smoke_wrist"]
+OVERLAY_PORT = 18871
+PORTS = ["--command-port", "18865", "--status-port", "18867", "--top-shm", "smoke_top", "--wrist-shm", "smoke_wrist",
+         "--overlay-port", str(OVERLAY_PORT)]
 failures = []
 
 
@@ -28,8 +31,8 @@ def call(path: str, body=None):
     return json.loads(text) if text.startswith(("{", "[")) else text
 
 
-def first_event() -> dict:
-    with urllib.request.urlopen(SERVER + "/events", timeout=10) as response:
+def first_event(path: str = "/events") -> dict:
+    with urllib.request.urlopen(SERVER + path, timeout=10) as response:
         for line in response:
             if line.startswith(b"data: "):
                 return json.loads(line[6:])
@@ -60,6 +63,7 @@ def main() -> None:
             with urllib.request.urlopen(SERVER + "/stream/top", timeout=10) as response:
                 chunk = response.read(4000)
             check("top stream: MJPEG part with a JPEG", chunk.startswith(b"--frame") and b"\xff\xd8" in chunk)
+            hand_overlay()
             max_picks()
             refused = call("/api/command", {"target": "red", "destination": "hand"})
             check("red is refused (no red pick skill)", not refused["ok"] and "red" in refused["reason"], refused["reason"])
@@ -91,10 +95,11 @@ def main() -> None:
             # other frame blocks: the server still holds the first robot's, and Windows keeps a block while it is open
             robot = subprocess.Popen([sys.executable, "-u", str(ROOT / "scripts/dashboard/fake_robot.py"), "--log-dir", logs,
                                       "--speed", "6", "--no-bite", *PORTS[:4], "--top-shm", "smoke_top2", "--wrist-shm",
-                                      "smoke_wrist2"])
+                                      "smoke_wrist2", "--overlay-port", str(OVERLAY_PORT)])
             no_bite_program()
             sys.path.insert(0, str(ROOT / "scripts/dashboard"))
             no_overwrite(Path(logs))
+            overlay_off()
             stale_status_keeps_log(Path(logs))
             refused = call("/api/collect/start", {"name": "smoke_set", "task": "Pick", "episodes": 2, "episode_s": 30})
             check("collect: refused while the robot program runs", not refused["ok"] and "robot program" in refused["reason"],
@@ -109,6 +114,41 @@ def main() -> None:
                 process.wait(timeout=10)
     print("FAIL" if failures else "PASS")
     sys.exit(1 if failures else 0)
+
+
+def served_overlay(seconds: float):
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        message = _try(lambda: first_event("/overlay")) or {}
+        if message.get("overlay"):
+            return message["overlay"]
+        time.sleep(0.05)
+    return None
+
+
+def hand_overlay() -> None:
+    page = call("/") + call("/static/app.js")
+    check("page: a hand overlay canvas on the top camera, fed by /overlay", 'id="overlay-top"' in page
+          and 'EventSource("/overlay")' in page)
+    hand = {"handedness": "Right", "landmarks": [[0.5, 0.5]] * 21, "palm_centre": [0.5, 0.55], "offering": True}
+    sent = {"t": round(time.time(), 3), "width": 640, "height": 480, "hands": [hand]}
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.sendto(json.dumps(sent).encode(), ("127.0.0.1", OVERLAY_PORT))
+    started = time.monotonic()
+    served = served_overlay(1.0)
+    check("overlay: a datagram on the overlay port reaches the page within 1 s", served == sent,
+          f"{time.monotonic() - started:.2f} s")
+    time.sleep(0.7)
+    stale = first_event("/overlay")
+    check("overlay: 0.7 s later it is reported as gone", stale["overlay"] is None and stale["age"] > 0.5, str(stale))
+
+
+def overlay_off() -> None:
+    from server import OverlayListener
+
+    message = OverlayListener(0).message()
+    check("overlay: --overlay-port 0 listens to nothing and serves no hand",
+          message == {"overlay": None, "age": None, "listening": False}, str(message))
 
 
 def max_picks() -> None:

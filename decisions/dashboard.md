@@ -31,6 +31,10 @@ A browser page, `scripts/dashboard/server.py`, runs in WSL on the robot laptop a
 - **Every round is filmed by the dashboard, not the supervisor** (Jakob, board 7066848083). It writes `<log stem>_roundNN.mp4` next to the log: top | wrist, 15 fps, with a time bar under the frames. A `.frames.csv` gives each frame's capture time on the log's UTC clock, converted from the writers' `perf_counter_ns` stamps (one monotonic clock per machine). Jakob lined up phone footage of exp1 with the log by hand to within 1-3 s; on the fake robot, the file's first frame is 0.05-0.15 s after `round_start`.
   - Codec `mp4v`: the pip OpenCV in the `dashboard` env could not open an `avc1` or `H264` writer (checked 2026-11-21). VLC plays it; browsers may not.
   - The per-tick numbers come from the supervisor's `--tick-log` (`scripts/supervisor/ticks.py`). That is a JSON line per tick, with no image work, so the loop stays at 30 Hz.
+- **The hand overlay comes from the tracker over its own UDP port (8771)**, one datagram per frame with the 21 normalised landmarks, the palm centre and `offering` (2026-11-22). The page draws them on a canvas over the top camera, from its own SSE stream (`/overlay`, up to 30 Hz).
+  - Rejected: adding the landmarks to the TCP lines on 8766. That contract with the robot program was agreed on the board and is left as it is.
+  - Rejected: sending them in `/events`. It ticks at 4 Hz, too slow for a skeleton that follows a moving hand.
+  - Rejected: drawing on the JPEG in the server. It would have to match tracker results to frames, and the page could not switch the overlay off.
 - **Red and blue tiles are greyed out.** The only training data is "Pick up the striped ball from the bowl of red and blue balls" (`molnrb/so101_pick_rb_mixed`), so there is no red or blue pick skill. The tiles turn on when the supervisor reports a `pick_colour` skill.
 
 ## Alternatives

@@ -7,6 +7,7 @@ import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -16,6 +17,9 @@ sys.path[:0] = [str(SCRIPTS / "voice"), str(SCRIPTS / "handtrack"), str(SCRIPTS 
 
 import link  # noqa: E402
 from frame_link import FrameWriter  # noqa: E402
+from hand_features import PALM  # noqa: E402
+from overlay_link import PORT as OVERLAY_PORT  # noqa: E402
+from overlay_link import OverlaySender, overlay_message  # noqa: E402
 from status import Status  # noqa: E402
 
 REST = [-5.6, -102.8, 96.6, -100.1, -5.2]
@@ -23,6 +27,11 @@ BUDGETS = {"PICK": 90.0, "GIVE": 45.0, "PUT_DOWN": 20.0, "REST": 15.0, "DANCE": 
 DANCE = "dance FAKE/so101_gestures_dance:1"
 DANCE_POSES = ([10, -60, 0, 80, 0], [-10, -55, 5, 90, 20], [0, -58, -8, 84, 0])
 BITE_POSES = ([0, -40, 30, -10, 0], [20, -40, 30, -10, 0], [20, -30, 25, -10, 0])
+OPEN_HAND = ((0.0, 0.10), (-0.04, 0.08), (-0.07, 0.05), (-0.09, 0.02), (-0.11, 0.0),
+             (-0.03, 0.0), (-0.035, -0.04), (-0.04, -0.07), (-0.045, -0.10),
+             (-0.01, -0.005), (-0.01, -0.05), (-0.01, -0.085), (-0.01, -0.115),
+             (0.015, 0.0), (0.017, -0.04), (0.019, -0.07), (0.021, -0.10),
+             (0.035, 0.01), (0.042, -0.02), (0.047, -0.045), (0.052, -0.07))
 
 
 class Log:
@@ -52,7 +61,7 @@ class FakeRobot:
     def __init__(self, log: Log, status: FakeStatus, speed: float, quiet_pick_s: float = 0.0):
         self.log, self.status, self.speed, self.quiet_pick_s = log, status, speed, quiet_pick_s
         self.abort = threading.Event()
-        self.state, self.round, self.gripper = "REST", 0, 30.0
+        self.state, self.round, self.gripper, self.palms = "REST", 0, 30.0, 0
 
     def wait(self, seconds: float, **live) -> None:
         end = time.monotonic() + seconds / self.speed
@@ -61,6 +70,7 @@ class FakeRobot:
                 raise Aborted
             self.status.update(**live)
             self.gripper = live.get("gripper", self.gripper)
+            self.palms = live.get("palms", self.palms)
             time.sleep(0.05)
 
     def go(self, target_state: str, reason: str, **details) -> None:
@@ -190,6 +200,23 @@ def pattern(label: str, t: float) -> np.ndarray:
     return image
 
 
+def fake_hand(t: float, offering: bool) -> dict:
+    cx, cy = 0.5 + 0.12 * np.cos(0.8 * t), 0.55 + 0.08 * np.sin(1.1 * t)
+    landmarks = [SimpleNamespace(x=cx + dx, y=cy + dy) for dx, dy in OPEN_HAND]
+    palm = np.mean([[landmarks[i].x * 640, landmarks[i].y * 480] for i in PALM], axis=0)
+    hand = {"handedness": "Right", "palm_centre_px": tuple(palm), "palm_facing_camera": offering,
+            "extended": ["index", "middle", "ring", "pinky", "thumb"]}
+    return overlay_message(round(time.time(), 3), 640, 480, [landmarks], [hand])
+
+
+# A synthetic hand over the top camera during GIVE: offered while the status counts a palm, amber while it is lost.
+def feed_overlay(robot: FakeRobot, sender: OverlaySender) -> None:
+    while True:
+        if robot.state == "GIVE":
+            sender.send(fake_hand(time.monotonic(), robot.palms > 0))
+        time.sleep(1 / 15)
+
+
 def feed_frames(writers: dict, webcam: int | None) -> None:
     capture = cv2.VideoCapture(webcam) if webcam is not None else None
     while True:
@@ -211,6 +238,7 @@ def main() -> None:
     p.add_argument("--status-port", type=int, default=8767)
     p.add_argument("--top-shm", default="top_camera_frames")
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
+    p.add_argument("--overlay-port", type=int, default=OVERLAY_PORT, help="dashboard's hand overlay port; 0 = off")
     p.add_argument("--quiet-pick", type=float, default=0.0, help="seconds without a status in each PICK")
     p.add_argument("--no-dance", action="store_true", help="as a robot program started without --dance-episode")
     p.add_argument("--no-bite", action="store_true", help="as a robot program started without --bite")
@@ -231,6 +259,7 @@ def main() -> None:
     writers = {"top": FrameWriter(args.top_shm), "wrist": FrameWriter(args.wrist_shm)}
     threading.Thread(target=feed_frames, args=(writers, args.webcam), daemon=True).start()
     robot = FakeRobot(log, status, args.speed, args.quiet_pick)
+    threading.Thread(target=feed_overlay, args=(robot, OverlaySender(args.overlay_port)), daemon=True).start()
     log.write(event="start", pick_policy="FAKE", budgets_s=BUDGETS, fake=True)
     receiver = link.CommandReceiver("127.0.0.1", args.command_port)
     print(f"fake robot: commands on {args.command_port}, status on {args.status_port}, log {log_path}. Ctrl+C stops.",

@@ -95,6 +95,8 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 
 Terminal 3, the dashboard: `python scripts/dashboard/server.py` (env `dashboard`), page at http://localhost:8080. The header must say `Robot program: running`.
 
+Hand overlay: on by default. With the tracker running, the top camera shows the hand skeleton, the palm centre and a label: green with `offering` for an open palm up, amber otherwise. It goes from tracker to dashboard over UDP 8771. To turn it off, untick **✋ Hand overlay** above the top camera, or start the tracker or the dashboard with `--overlay-port 0`. `fake_robot.py` draws a synthetic hand during Hand over.
+
 What lands in `~/so101/demo/` per start of `demo_chain.sh`:
 - `chain_<time>.jsonl`: the events (transitions, grasp checks, round results).
 - `chain_<time>.ticks.jsonl`: one line per control tick (policy action, command, goal sent, measured joints, gripper load).

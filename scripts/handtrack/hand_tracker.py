@@ -9,6 +9,8 @@ import mediapipe as mp
 from frame_link import SHAPE, FrameReader
 from hand_features import describe, is_offering, is_pointing
 from hand_link import HandLineSender
+from overlay_link import PORT as OVERLAY_PORT
+from overlay_link import OverlaySender, overlay_message
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "calib"))
 from common import camera_settings, load_config, open_camera  # noqa: E402
@@ -102,6 +104,8 @@ def main():
     parser.add_argument("--finger-z", type=float, default=0.15, help="assumed fingertip height above the table, metres")
     parser.add_argument("--only-open", action="store_true", help="send only hands that are open with the palm up")
     parser.add_argument("--port", type=int, default=8766)
+    parser.add_argument("--overlay-port", type=int, default=OVERLAY_PORT,
+                        help="UDP port of the dashboard's hand overlay; 0 = off")
     parser.add_argument("--seconds", type=float, default=0, help="stop after this long; 0 runs until Ctrl+C")
     parser.add_argument("--camera", nargs="?", const="", help="open the top camera directly instead of the robot "
                         "program's frames (robot program must be stopped); no value = the path in calib/config.yaml")
@@ -110,6 +114,7 @@ def main():
 
     geometry = load_geometry(args.intrinsics, args.extrinsics)
     sender = HandLineSender(port=args.port)
+    overlay = OverlaySender(port=args.overlay_port)
     own_camera = args.camera is not None
     reader = CameraFrames(args.camera) if own_camera else open_frames(args.shm_name)
     last_frame = last_print = time.monotonic()
@@ -134,9 +139,10 @@ def main():
         last_ms = max(captured_ns // 1_000_000, last_ms + 1)
         result = landmarker.detect_for_video(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb), last_ms)
         hands = [describe(result, i, rgb.shape[1], rgb.shape[0]) for i in range(len(result.hand_landmarks))]
+        captured_epoch = round(time.time() - (time.perf_counter_ns() - captured_ns) / 1e9, 3)
+        overlay.send(overlay_message(captured_epoch, rgb.shape[1], rgb.shape[0], result.hand_landmarks, hands))
         if args.only_open:
             hands = [h for h in hands if is_offering(h)]
-        captured_epoch = round(time.time() - (time.perf_counter_ns() - captured_ns) / 1e9, 3)
         message = frame_message(hands, geometry, args.hand_z, args.finger_z, captured_epoch)
         sender.send(message)
         if args.print_every and time.monotonic() - last_print >= args.print_every:

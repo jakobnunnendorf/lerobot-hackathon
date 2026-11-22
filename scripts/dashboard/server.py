@@ -33,8 +33,11 @@ import commands as voice  # noqa: E402
 import link  # noqa: E402
 import speech  # noqa: E402
 from frame_link import FrameReader  # noqa: E402
+from overlay_link import PORT as OVERLAY_PORT  # noqa: E402
 
 STATUS_FRESH_S = 2.0
+OVERLAY_FRESH_S = 0.5
+OVERLAY_FPS = 30
 STATUS_GAP_S = 1.0
 CAMERA_FPS = 15
 CAMERA_STALE_S = 3.0
@@ -92,6 +95,32 @@ class StatusListener:
     def fresh(self) -> bool:
         age = self.age()
         return age is not None and age < STATUS_FRESH_S
+
+
+class OverlayListener:
+    def __init__(self, port: int):
+        self.listening = bool(port)
+        self.newest: tuple[dict | None, float] = (None, 0.0)
+        self.version = 0
+        if port:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind(("127.0.0.1", port))
+            threading.Thread(target=self._listen, args=(sock,), daemon=True).start()
+
+    def _listen(self, sock: socket.socket) -> None:
+        while True:
+            data = sock.recv(65536)
+            try:
+                self.newest = (json.loads(data), time.time())
+            except ValueError:
+                continue
+            self.version += 1
+
+    def message(self) -> dict:
+        overlay, received_at = self.newest
+        age = None if overlay is None else time.time() - received_at
+        fresh = age is not None and age < OVERLAY_FRESH_S
+        return {"overlay": overlay if fresh else None, "age": age, "listening": self.listening}
 
 
 class LogTail:
@@ -504,6 +533,7 @@ class Collector:
 
 def build_app(args) -> FastAPI:
     status = StatusListener(args.status_port)
+    overlay = OverlayListener(args.overlay_port)
     log = LogTail(Path(args.log_dir).expanduser(), status)
     cameras = {"top": Camera(args.top_shm, "top"), "wrist": Camera(args.wrist_shm, "wrist")}
     recorder = None if args.no_video else RoundRecorder(log, cameras, args.video_fps,
@@ -636,6 +666,22 @@ def build_app(args) -> FastAPI:
 
         return StreamingResponse(feed(), media_type="text/event-stream")
 
+    # Its own stream: /events ticks at 4 Hz, too slow for a skeleton that follows a moving hand.
+    @app.get("/overlay")
+    async def overlay_events(request: Request):
+        async def feed():
+            sent, sent_at = None, 0.0
+            while not await request.is_disconnected():
+                version = overlay.version
+                message = overlay.message()
+                key = (version, message["overlay"] is None)
+                if key != sent or time.monotonic() - sent_at > 1.0:
+                    sent, sent_at = key, time.monotonic()
+                    yield f"data: {json.dumps(message)}\n\n"
+                await asyncio.sleep(1 / OVERLAY_FPS)
+
+        return StreamingResponse(feed(), media_type="text/event-stream")
+
     @app.post("/api/command")
     async def command(request: Request):
         body = await request.json()
@@ -757,6 +803,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log-dir", default="~/so101/demo", help="where demo_chain.sh writes chain_*.jsonl")
     p.add_argument("--command-port", type=int, default=link.PORT)
     p.add_argument("--status-port", type=int, default=8767)
+    p.add_argument("--overlay-port", type=int, default=OVERLAY_PORT,
+                   help="UDP port for the hand tracker's landmarks, drawn over the top camera; 0 = off")
     p.add_argument("--top-shm", default="top_camera_frames")
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
     p.add_argument("--speech", default="parakeet-en", choices=sorted(speech.BACKENDS))
