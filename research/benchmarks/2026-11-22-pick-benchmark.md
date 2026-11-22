@@ -30,7 +30,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 
 | Short name | Hub repo @ step | Type | Training data | Init from | Training at this checkpoint | Why it is in |
 | --- | --- | --- | --- | --- | --- | --- |
-| ~~`v2`~~ | `Space0code/act_redblue_from_foil_v2@20000` | ACT | all episodes | `molnrb/act_pick_ball_combined` (the foil-scene model) | 20K steps, batch 32, lr 2e-5 | **left out (v1)**: Tian's model improves on it, which improves on v1 (Tomi), so only the best of the chain is tested |
+| `v2` | `Space0code/act_redblue_from_foil_v2@20000` | ACT | all episodes | `molnrb/act_pick_ball_combined` (the foil-scene model) | 20K steps, batch 32, lr 2e-5 | **left out (v1)**: Tian's model improves on it, which improves on v1 (Tomi), so only the best of the chain is tested |
 | `hidden` | `TianK003/act_hidden_from_v2@002000` | ACT | 40 buried / partly covered episodes | `v2@20000` | +2K steps (of a 3K run), batch 32 | v2 tuned for hidden balls |
 | `v3` | `TianK003/act_redblue_from_foil_v3@030000` | ACT | all episodes | `v2@20000` | +10K steps (step numbers continue from 20K), batch 32 | v2 trained longer |
 | `clean_all` | `jakobnunnendorf/act_clean_from_all@010000` | ACT | 93 clean episodes (10 more held out) | `brouthen/act_so101_pick_striped_all_pretrain_50k@050000`: 50K steps, batch 8, on `brouthen/so101_pick_striped_all` (314 episodes) | 10K steps, batch 32 | broad pretrain + clean fine-tune |
@@ -70,6 +70,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 ```
 bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
   --record ~/so101/evals/rec_20261122 --push-to-hub molnrb/so101_eval_pick_20261122 \
+  --policy v2=Space0code/act_redblue_from_foil_v2@20000 \
   --policy hidden=TianK003/act_hidden_from_v2@002000 \
   --policy v3=TianK003/act_redblue_from_foil_v3@030000 \
   --policy clean_all=jakobnunnendorf/act_clean_from_all@010000 \
@@ -219,6 +220,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 | Time | What changed | Why |
 | --- | --- | --- |
 | 08:08 (before run 1) | `v2` dropped: 6 models, 48 runs | Tomi: improvement chain Tian's model > v2 > v1, so only the best is tested (Jakob) |
+| 08:27 | `v2@20000` back in, as the first model (7 models) | Tomi via Jakob |
 | 08:13 (before run 1) | `hidden` is the priority; `v2` only as an extra block if time is left; stop time decided at the table | Jakob |
 | | | |
 
