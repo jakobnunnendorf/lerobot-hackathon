@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "lerobot[all,core-scripts,feetech,smolvla,training]==0.7.0",
+    "modal>=1.6.4",
     "torch",
     "torchvision",
 ]

@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <pattern id="stripes" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(35)">
+      <rect width="10" height="10" fill="#E8BE3A"/>
+      <rect width="5" height="10" fill="#4E9A55"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L9,5 L0,9" fill="none" stroke="#1E1C19" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    </marker>
+    <marker id="arrowMute" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="11" markerHeight="11" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L9,5 L0,9" fill="none" stroke="#7D776C" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    </marker>
+    <style>
+      .h1   { font-family: 'Inter'; font-weight: 600; font-size: 52px; fill: #1E1C19; letter-spacing: -0.6px; }
+      .h2   { font-family: 'Inter'; font-weight: 600; font-size: 34px; fill: #1E1C19; letter-spacing: -0.3px; }
+      .h3   { font-family: 'Inter'; font-weight: 600; font-size: 28px; fill: #1E1C19; }
+      .body { font-family: 'Inter'; font-weight: 400; font-size: 21px; fill: #4A463F; }
+      .node { font-family: 'Inter'; font-weight: 500; font-size: 20px; fill: #1E1C19; }
+      .quote{ font-family: 'Inter'; font-style: italic; font-size: 24px; fill: #1E1C19; }
+      .kick { font-family: 'Noto Sans Mono'; font-size: 17px; fill: #7D776C; letter-spacing: 3px; }
+      .lab  { font-family: 'Noto Sans Mono'; font-size: 17px; fill: #7D776C; }
+      .chip { font-family: 'Noto Sans Mono'; font-size: 18px; fill: #1E1C19; }
+      .card { fill: #FBFAF6; stroke: #DCD5C8; stroke-width: 1.5; }
+      .ink  { fill: none; stroke: #1E1C19; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+      .flow { fill: none; stroke: #1E1C19; stroke-width: 1.8; }
+      .dash { fill: none; stroke: #7D776C; stroke-width: 1.6; stroke-dasharray: 7 6; }
+      .box  { fill: #FFFFFF; stroke: #1E1C19; stroke-width: 1.8; }
+      .ball { stroke: #1E1C19; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1920" height="1080" fill="#F3F0E8"/>
+<g transform="translate(0,22)">
+
+  <text x="96" y="140" class="h1">Find the striped ball, then hand it over</text>
+
+  <!-- 01 voice -->
+  <rect x="96" y="220" width="400" height="480" rx="16" class="card"/>
+  <text x="128" y="266" class="kick">01</text>
+  <text x="128" y="312" class="h2">Voice</text>
+
+  <g transform="translate(296,0)">
+    <rect x="-20" y="372" width="40" height="68" rx="20" class="ink"/>
+    <path d="M-36 414 a36 36 0 0 0 72 0" class="ink"/>
+    <line x1="0" y1="450" x2="0" y2="468" class="ink"/>
+    <line x1="-16" y1="468" x2="16" y2="468" class="ink"/>
+  </g>
+  <rect x="146" y="500" width="300" height="60" rx="30" class="box"/>
+  <text x="296" y="538" class="quote" text-anchor="middle">“give me the ball”</text>
+
+  <line x1="296" y1="568" x2="296" y2="602" class="flow" marker-end="url(#arrow)"/>
+  <rect x="124" y="610" width="164" height="44" rx="22" fill="none" stroke="#1E1C19" stroke-width="1.6"/>
+  <text x="206" y="639" class="chip" text-anchor="middle">pick up ball</text>
+  <rect x="304" y="610" width="164" height="44" rx="22" fill="none" stroke="#1E1C19" stroke-width="1.6"/>
+  <text x="386" y="639" class="chip" text-anchor="middle">give me ball</text>
+
+  <line x1="496" y1="470" x2="570" y2="470" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- 02 learned -->
+  <rect x="576" y="220" width="680" height="480" rx="16" class="card"/>
+  <text x="608" y="266" class="kick">02  LEARNED</text>
+  <text x="608" y="312" class="h2">Search &amp; pick · ACT</text>
+
+  <path d="M612 480 Q722 458 832 480" fill="none" stroke="#1E1C19" stroke-width="1.8"/>
+  <circle cx="652" cy="472" r="16" fill="#CC4B3B" class="ball"/>
+  <circle cx="790" cy="472" r="16" fill="#3D63B8" class="ball"/>
+  <circle cx="738" cy="453" r="16" fill="url(#stripes)" class="ball"/>
+  <circle cx="680" cy="458" r="16" fill="#3D63B8" class="ball"/>
+  <circle cx="710" cy="442" r="16" fill="#CC4B3B" class="ball"/>
+  <circle cx="763" cy="461" r="16" fill="#3D63B8" class="ball"/>
+  <circle cx="712" cy="472" r="16" fill="#CC4B3B" class="ball"/>
+  <path d="M612 480 Q722 502 832 480 C828 550 782 576 722 576 C662 576 616 550 612 480 Z" fill="#FBFAF6" stroke="#1E1C19" stroke-width="2" stroke-linejoin="round"/>
+
+  <ellipse cx="672" cy="644" rx="36" ry="11" fill="#1E1C19" stroke="#CC4B3B" stroke-width="4"/>
+  <ellipse cx="772" cy="644" rx="36" ry="11" fill="#1E1C19" stroke="#3D63B8" stroke-width="4"/>
+  <path d="M700 584 Q684 606 676 626" fill="none" stroke="#CC4B3B" stroke-width="1.8" stroke-dasharray="3 4" marker-end="url(#arrowMute)"/>
+  <path d="M744 584 Q760 606 768 626" fill="none" stroke="#3D63B8" stroke-width="1.8" stroke-dasharray="3 4" marker-end="url(#arrowMute)"/>
+
+  <line x1="846" y1="480" x2="906" y2="480" class="flow" marker-end="url(#arrow)"/>
+
+  <path d="M912 480 L990 422 L1068 480 L990 538 Z" class="box" stroke-linejoin="round"/>
+  <text x="990" y="488" class="node" text-anchor="middle">visible?</text>
+
+  <line x1="1068" y1="480" x2="1100" y2="480" class="flow" marker-end="url(#arrow)"/>
+  <rect x="1106" y="452" width="124" height="56" rx="10" class="box"/>
+  <text x="1168" y="487" class="node" text-anchor="middle">pick</text>
+
+  <line x1="990" y1="538" x2="990" y2="572" class="flow" marker-end="url(#arrow)"/>
+  <rect x="922" y="578" width="136" height="56" rx="10" class="box"/>
+  <text x="990" y="613" class="node" text-anchor="middle">sort</text>
+  <path d="M922 612 Q866 628 822 640" class="flow" marker-end="url(#arrow)"/>
+  <text x="1084" y="464" class="lab" text-anchor="middle">yes</text>
+  <text x="1004" y="562" class="lab">no</text>
+
+  <line x1="1230" y1="480" x2="1330" y2="480" class="flow" marker-end="url(#arrow)"/>
+
+  <!-- 03 classical -->
+  <rect x="1336" y="220" width="488" height="480" rx="16" class="card"/>
+  <text x="1368" y="266" class="kick">03  CLASSICAL</text>
+  <text x="1368" y="312" class="h2">Hand-over · IK</text>
+
+  <rect x="1368" y="392" width="176" height="140" rx="10" class="box" stroke-width="1.5"/>
+  <g transform="translate(1456,468) scale(1.15)" stroke="#1E1C19" stroke-width="1.3" fill="none" stroke-linecap="round">
+    <polyline points="0,40 -14,32 -26,20 -34,8 -40,-2"/>
+    <polyline points="0,40 -14,0 -17,-16 -19,-27 -20,-36"/>
+    <polyline points="-14,0 -3,-3 -3,-21 -3,-33 -3,-43"/>
+    <polyline points="-3,-3 8,-1 10,-17 11,-28 12,-37"/>
+    <polyline points="8,-1 18,4 22,-8 24,-17 26,-25"/>
+    <line x1="0" y1="40" x2="18" y2="4"/>
+    <g fill="#1E1C19" stroke="none">
+      <circle cx="0" cy="40" r="2"/><circle cx="-14" cy="32" r="2"/><circle cx="-26" cy="20" r="2"/><circle cx="-34" cy="8" r="2"/><circle cx="-40" cy="-2" r="2"/>
+      <circle cx="-14" cy="0" r="2"/><circle cx="-17" cy="-16" r="2"/><circle cx="-19" cy="-27" r="2"/><circle cx="-20" cy="-36" r="2"/>
+      <circle cx="-3" cy="-3" r="2"/><circle cx="-3" cy="-21" r="2"/><circle cx="-3" cy="-33" r="2"/><circle cx="-3" cy="-43" r="2"/>
+      <circle cx="8" cy="-1" r="2"/><circle cx="10" cy="-17" r="2"/><circle cx="11" cy="-28" r="2"/><circle cx="12" cy="-37" r="2"/>
+      <circle cx="18" cy="4" r="2"/><circle cx="22" cy="-8" r="2"/><circle cx="24" cy="-17" r="2"/><circle cx="26" cy="-25" r="2"/>
+    </g>
+    <g stroke="#CC4B3B" stroke-width="1.4">
+      <circle cx="2" cy="14" r="7"/>
+      <line x1="2" y1="3" x2="2" y2="25"/><line x1="-9" y1="14" x2="13" y2="14"/>
+    </g>
+  </g>
+  <text x="1456" y="560" class="lab" text-anchor="middle">track hand</text>
+
+  <line x1="1572" y1="610" x2="1808" y2="610" stroke="#B9B2A4" stroke-width="1.5"/>
+  <rect x="1758" y="594" width="40" height="16" rx="3" fill="#1E1C19"/>
+  <polyline points="1778,594 1756,480 1670,436 1650,460" class="ink" stroke-width="3.2"/>
+  <circle cx="1778" cy="594" r="6" fill="#FBFAF6" stroke="#1E1C19" stroke-width="2"/>
+  <circle cx="1756" cy="480" r="6" fill="#FBFAF6" stroke="#1E1C19" stroke-width="2"/>
+  <circle cx="1670" cy="436" r="6" fill="#FBFAF6" stroke="#1E1C19" stroke-width="2"/>
+  <path d="M1638 462 h24 M1638 462 l-3 22 M1662 462 l3 22" class="ink" stroke-width="3.2"/>
+  <circle cx="1650" cy="488" r="12" fill="url(#stripes)" class="ball"/>
+  <line x1="1650" y1="506" x2="1650" y2="562" stroke="#7D776C" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#arrowMute)"/>
+  <g stroke="#CC4B3B" stroke-width="1.8" fill="none">
+    <ellipse cx="1650" cy="576" rx="22" ry="7"/>
+    <line x1="1650" y1="564" x2="1650" y2="588"/>
+    <line x1="1622" y1="576" x2="1678" y2="576"/>
+  </g>
+  <path d="M1546 500 C1590 520 1590 576 1618 576" class="dash" marker-end="url(#arrowMute)"/>
+  <text x="1690" y="650" class="lab" text-anchor="middle">drop in hand</text>
+
+  <!-- offline -->
+  <text x="96" y="774" class="kick">OFFLINE</text>
+  <line x1="204" y1="768" x2="1824" y2="768" stroke="#CFC7B8" stroke-width="1" stroke-dasharray="2 6"/>
+
+  <rect x="96" y="810" width="400" height="140" rx="14" fill="none" stroke="#7D776C" stroke-width="1.6" stroke-dasharray="7 6"/>
+  <text x="128" y="864" class="h3">Pretrain</text>
+  <text x="128" y="904" class="body">ball-manipulation tasks</text>
+
+  <line x1="496" y1="880" x2="570" y2="880" class="dash" marker-end="url(#arrowMute)"/>
+
+  <rect x="576" y="810" width="680" height="140" rx="14" fill="none" stroke="#7D776C" stroke-width="1.6" stroke-dasharray="7 6"/>
+  <text x="608" y="864" class="h3">Fine-tune ACT</text>
+  <text x="608" y="904" class="body">200 ball-search episodes</text>
+  <line x1="990" y1="832" x2="990" y2="928" stroke="#DCD5C8" stroke-width="1.2"/>
+  <text x="1018" y="858" class="lab" fill="#1E1C19">+ augmentation</text>
+  <g transform="translate(1018,876)">
+    <rect x="0" y="0" width="64" height="46" rx="4" fill="#EDE8DD" stroke="#B9B2A4"/>
+    <circle cx="32" cy="23" r="11" fill="url(#stripes)" stroke="#1E1C19" stroke-width="0.9"/>
+    <rect x="76" y="0" width="64" height="46" rx="4" fill="#CFC7B7" stroke="#B9B2A4"/>
+    <circle cx="108" cy="23" r="11" fill="url(#stripes)" stroke="#1E1C19" stroke-width="0.9" opacity="0.75"/>
+    <rect x="152" y="0" width="64" height="46" rx="4" fill="#EDE8DD" stroke="#B9B2A4"/>
+    <path d="M152 46 L190 0 H216 V46 Z" fill="#1E1C19" opacity="0.12"/>
+    <circle cx="180" cy="25" r="11" fill="url(#stripes)" stroke="#1E1C19" stroke-width="0.9"/>
+  </g>
+  <line x1="760" y1="810" x2="760" y2="708" class="dash" marker-end="url(#arrowMute)"/>
+
+  <rect x="1336" y="810" width="488" height="140" rx="14" fill="none" stroke="#7D776C" stroke-width="1.6" stroke-dasharray="7 6"/>
+  <text x="1368" y="864" class="h3">Calibrate camera</text>
+  <text x="1368" y="904" class="body">no training needed</text>
+  <line x1="1580" y1="810" x2="1580" y2="708" class="dash" marker-end="url(#arrowMute)"/>
+</g>
+</svg>
