@@ -444,7 +444,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   clear_policy, wrist_writer=None, dances=()) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
-    import_from(SO101_DIR, "gripper_limit").cap_gripper_torque(robot.bus)
+    cap_gripper_torque = import_from(SO101_DIR, "gripper_limit").cap_gripper_torque
+    cap_gripper_torque(robot.bus)
     log = TransitionLog(args.log)
     if args.tick_log:
         TICKS.open(tick_log_path(args.log))
@@ -520,12 +521,30 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                 except Aborted:
                     break
             dance, bite = commands.take_dance(), commands.take_bite()
+            # The servo reloads Torque_Limit from Max_Torque_Limit (LeRobot writes 500) at power-up, so the cap is
+            # re-written each round while the arm is parked.
+            recap_gripper(lambda: cap_gripper_torque(robot.bus, num_retry=args.read_retries), log, number)
             if supervisor.run_round(number, dance=dance, bite=bite and not dance).outcome == "aborted":
                 print("ABORT: arm holds its pose with torque on. Hold the arm, then switch the power off.", flush=True)
                 break
     finally:
         TICKS.close()
         robot.disconnect()
+
+
+# USB/IP at the table drops single packets: one failed re-cap must not end the demo, three in a row stop it.
+# The connect-time cap stays strict: nothing has moved yet, so a restart costs little.
+def recap_gripper(cap, log: TransitionLog, round_number: int, attempts: int = 3, wait_s: float = 0.2) -> None:
+    for attempt in range(1, attempts + 1):
+        try:
+            cap()
+            return
+        except Exception as error:  # noqa: BLE001 - a garbled packet or a wrong read-back, both retried
+            log.write(event="gripper_cap_failed", round=round_number, attempt=attempt, attempts=attempts, error=str(error))
+            if attempt < attempts:
+                time.sleep(wait_s)
+    sys.exit(f"gripper torque cap not confirmed after {attempts} attempts: stopped before round {round_number}, "
+             "arm parked with torque on")
 
 
 # Experiment folders hold one supervisor.jsonl (Jakob's runs), demo_chain.sh writes one chain_<time>.jsonl per start.
