@@ -33,7 +33,7 @@ from lerobot.datasets.lerobot_dataset import LeRobotDataset
 from lerobot.policies import make_pre_post_processors, make_robot_action
 from lerobot.policies.factory import get_policy_class
 from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
-from lerobot.utils.constants import ACTION, OBS_STR
+from lerobot.utils.constants import ACTION, DEFAULT_FEATURES, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "so101"))
@@ -227,9 +227,74 @@ class EpisodeBuffer:
             yield {k: cv2.imdecode(v, cv2.IMREAD_COLOR) if v.ndim == 1 and v.dtype == np.uint8 else v for k, v in f.items()}
 
 
+FAST_REGISTERS = ("Present_Current", "Present_Load")
+SLOW_REGISTERS = ("Present_Temperature", "Present_Voltage")
+SLOW_EVERY_S = 1.0
+
+
+def telemetry_features(motors: list) -> dict:
+    per_motor = {"dtype": "float32", "shape": (len(motors),), "names": motors}
+    scalar = lambda name: {"dtype": "float32", "shape": (1,), "names": [name]}
+    return {
+        **{f"{OBS_STR}.motor_{r.split('_')[1].lower()}": per_motor for r in (*FAST_REGISTERS, *SLOW_REGISTERS)},
+        f"{OBS_STR}.wall_time": scalar("wall_time"),
+        f"{OBS_STR}.tick_ms": scalar("tick_ms"),
+    }
+
+
+class Telemetry:
+    # Current and load are read every tick, temperature and voltage once per second (they change slowly). A failed read
+    # becomes NaN: telemetry must never end a run, so any bus error is swallowed here.
+    def __init__(self, bus):
+        self.bus = bus
+        self.motors = list(bus.motors)
+        self.values = {r: np.full(len(self.motors), np.nan, np.float32) for r in (*FAST_REGISTERS, *SLOW_REGISTERS)}
+        self.slow_read_at: float | None = None
+        self.temperature_start: np.ndarray | None = None
+        self.tick_ms: list = []
+
+    def read(self, register: str) -> np.ndarray:
+        try:
+            reading = self.bus.sync_read(register, normalize=False)
+            return np.array([reading[m] for m in self.motors], dtype=np.float32)
+        except Exception:
+            return np.full(len(self.motors), np.nan, np.float32)
+
+    def sample(self, now: float, run_start: float, previous_tick_ms: float | None) -> dict:
+        for register in FAST_REGISTERS:
+            self.values[register] = self.read(register)
+        if self.slow_read_at is None or now - self.slow_read_at >= SLOW_EVERY_S:
+            for register in SLOW_REGISTERS:
+                self.values[register] = self.read(register)
+            self.slow_read_at = now
+            if self.temperature_start is None:
+                self.temperature_start = self.values["Present_Temperature"].copy()
+        if previous_tick_ms is not None:
+            self.tick_ms.append(previous_tick_ms)
+        return {
+            **{f"{OBS_STR}.motor_{r.split('_')[1].lower()}": v for r, v in self.values.items()},
+            f"{OBS_STR}.wall_time": np.array([now - run_start], dtype=np.float32),
+            f"{OBS_STR}.tick_ms": np.array([np.nan if previous_tick_ms is None else previous_tick_ms], dtype=np.float32),
+        }
+
+    def stats(self) -> dict:
+        number = lambda x: None if np.isnan(x) else round(float(x), 1)
+        end = self.values["Present_Temperature"]
+        start = self.temperature_start if self.temperature_start is not None else end
+        return {
+            "tick_ms_mean": number(np.mean(self.tick_ms)) if self.tick_ms else None,
+            "tick_ms_max": number(np.max(self.tick_ms)) if self.tick_ms else None,
+            "temperature_start": {m: number(t) for m, t in zip(self.motors, start)},
+            "temperature_end": {m: number(t) for m, t in zip(self.motors, end)},
+        }
+
+
 def open_dataset(root: Path, features: dict, robot_type: str, repo_id: str) -> LeRobotDataset:
     if (root / "meta" / "info.json").exists():
-        return LeRobotDataset(repo_id, root=root, streaming_encoding=True)
+        dataset = LeRobotDataset(repo_id, root=root, streaming_encoding=True)
+        if set(features) != set(dataset.meta.features) - set(DEFAULT_FEATURES):
+            raise SystemExit(f"{root} holds a dataset with other features; use a new --record dir or the same --no-telemetry setting")
+        return dataset
     # streaming_encoding: videos are encoded while add_frame runs and no PNG staging is written, so save_episode takes
     # about 11 s for a 90 s run instead of 56 s, and each finished episode is already a complete mp4 on disk.
     return LeRobotDataset.create(
@@ -309,11 +374,18 @@ def left_home(obs: dict) -> bool:
 
 
 def run_once(
-    robot: SO101Follower, policy: Policy, features: dict, cap_s: float, task: str = "", buffer: EpisodeBuffer | None = None
+    robot: SO101Follower,
+    policy: Policy,
+    features: dict,
+    cap_s: float,
+    task: str = "",
+    buffer: EpisodeBuffer | None = None,
+    telemetry: Telemetry | None = None,
 ) -> dict:
     policy.reset()
     start = time.perf_counter()
     end, has_left, settled_since, late_ticks, ticks = "timeout", False, None, 0, 0
+    previous_tick_start = None
     while (elapsed := time.perf_counter() - start) < cap_s:
         tick = time.perf_counter()
         k = key_pressed()
@@ -324,6 +396,11 @@ def run_once(
             end = "aborted"
             break
         obs = robot.get_observation()
+        extra = {}
+        if telemetry:
+            previous_ms = None if previous_tick_start is None else 1000 * (tick - previous_tick_start)
+            extra = telemetry.sample(time.perf_counter(), start, previous_ms)
+        previous_tick_start = tick
         has_left = has_left or left_home(obs)
         if has_left and at_home_holding(obs):
             settled_since = settled_since or tick
@@ -336,7 +413,7 @@ def run_once(
         action = policy.act(frame, features, robot.robot_type, task)
         robot.send_action(action)
         if buffer:
-            buffer.add(frame, build_dataset_frame(features, action, prefix=ACTION))
+            buffer.add({**frame, **extra}, build_dataset_frame(features, action, prefix=ACTION))
         ticks += 1
         spent = time.perf_counter() - tick
         late_ticks += spent > 1 / FPS
@@ -402,6 +479,7 @@ def main() -> None:
     p.add_argument("--task", default=TASK, help="task sentence for language-conditioned policies (SmolVLA); ACT ignores it")
     p.add_argument("--record", type=Path, help="write every run as one episode of a LeRobot dataset in this directory")
     p.add_argument("--push-to-hub", metavar="REPO_ID", help="with --record: upload the dataset at the very end")
+    p.add_argument("--no-telemetry", action="store_true", help="with --record: do not record motor current, load, temperature, voltage and timing")
     p.add_argument("--log-dir", default=str(Path.home() / "so101" / "evals"))
     args = p.parse_args()
     if args.push_to_hub and not args.record:
@@ -423,7 +501,9 @@ def main() -> None:
     fields = ["run", "layout", "episode_index", "policy", "checkpoint", "started", "n_action_steps", "cap_s", "seconds",
               "end", "gripper_end", "left_home", "late_ticks_pct", "start_state", "result"]
     rows: list = []
-    dataset = open_dataset(args.record, features, robot.robot_type, args.push_to_hub or "local/eval_pick") if args.record else None
+    telemetry_on = bool(args.record) and not args.no_telemetry
+    record_features = {**features, **telemetry_features(list(robot.bus.motors))} if telemetry_on else features
+    dataset = open_dataset(args.record, record_features, robot.robot_type, args.push_to_hub or "local/eval_pick") if args.record else None
     commit = git_commit()
 
     sync_goal_to_present(robot.bus)
@@ -459,7 +539,8 @@ def main() -> None:
                 say("Robot starting")
                 started = datetime.now().isoformat(timespec="seconds")
                 buffer = EpisodeBuffer() if dataset else None
-                outcome = run_once(robot, policy, features, args.seconds, args.task, buffer)
+                telemetry = Telemetry(robot.bus) if telemetry_on else None
+                outcome = run_once(robot, policy, features, args.seconds, args.task, buffer, telemetry)
                 say("Run finished")
                 print(
                     f"\n  ended: {outcome['end']} after {outcome['seconds']} s, gripper {outcome['gripper_end']}"
@@ -490,7 +571,7 @@ def main() -> None:
                 f.flush()
                 if episode_index is not None:
                     with open(args.record / "runs.jsonl", "a") as sidecar:
-                        sidecar.write(json.dumps({**row, "policy_type": policy.type, "git_commit": commit}) + "\n")
+                        sidecar.write(json.dumps({**row, "policy_type": policy.type, "git_commit": commit, **(telemetry.stats() if telemetry else {})}) + "\n")
                 rows.append(row)
                 print(summary(rows, names), flush=True)
                 banner("Hold a hand under the gripper. SPACE = open the gripper")
