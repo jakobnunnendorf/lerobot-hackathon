@@ -13,6 +13,14 @@ huggingface-secret with HF_TOKEN, a write token of the repo's owner):
     uv run modal run --detach scripts/modal_train.py::train --recipe smolvla_redblue --gpu H100 \
         --steps 20000 --max-minutes 115 --hub-repo USER/smolvla_redblue
     uv run modal run scripts/modal_train.py::push --run-name <run_name> --hub-repo USER/smolvla_redblue  # after a stop
+
+act_clean_labelenc starts from a local folder, the ACT whose image encoder was pretrained on our labels
+(decisions/act-label-encoder.md). Upload it to the volume once, before training:
+
+    uv run modal volume put lerobot-smolvla outputs/act_labelenc_init /init/act_labelenc_init
+    uv run modal volume ls lerobot-smolvla /init/act_labelenc_init
+    uv run modal run scripts/modal_train.py::prepare --recipe act_clean_labelenc
+    uv run modal run scripts/modal_train.py::train --recipe act_clean_labelenc --gpu L40S --smoke
 """
 
 import json
@@ -75,6 +83,9 @@ CLEAN_RB_ARGS = [f"--dataset.episodes={json.dumps(CLEAN_RB_TRAIN)}", *REDBLUE_AC
 ALL_DATA_CHECKPOINT = ("brouthen/act_so101_pick_striped_all_pretrain_50k", "050000")
 ALL_DATA_INIT_DIR = "/vol/init/act_striped_all_pretrain_50k"
 
+# Local folder outputs/act_labelenc_init (scripts/label_encoder/make_act_init.py), put on the volume by hand.
+LABELENC_INIT_DIR = "/vol/init/act_labelenc_init"
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -136,6 +147,15 @@ RECIPES = {
         "batch_size": 32,
         "prefetch_models": [],
         "args": ["--policy.type=act", *CLEAN_RB_ARGS],
+        "schedule_follows_steps": False,
+    },
+    # act_clean_scratch with the ResNet18 pretrained on our labels and a fresh transformer; only the encoder differs.
+    "act_clean_labelenc": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 32,
+        "prefetch_models": [],
+        "args": [f"--policy.path={LABELENC_INIT_DIR}", *CLEAN_RB_ARGS],
         "schedule_follows_steps": False,
     },
 }

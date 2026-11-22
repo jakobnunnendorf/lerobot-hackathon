@@ -1,0 +1,123 @@
+{
+  "train_frames": 2585,
+  "holdout_frames": 99,
+  "holdout_episodes": [
+    6,
+    23,
+    65,
+    88,
+    99,
+    110,
+    126,
+    157,
+    177,
+    191
+  ],
+  "visibility_classes": [
+    "buried",
+    "partly",
+    "visible"
+  ],
+  "next_action_classes": [
+    "clear_red",
+    "clear_blue",
+    "pick_striped"
+  ],
+  "model": {
+    "visibility_acc": 0.5656565656565656,
+    "visibility_confusion": [
+      [
+        19,
+        18,
+        0
+      ],
+      [
+        5,
+        19,
+        11
+      ],
+      [
+        4,
+        5,
+        18
+      ]
+    ],
+    "next_action_acc": 0.6666666666666666,
+    "next_action_confusion": [
+      [
+        12,
+        9,
+        11
+      ],
+      [
+        1,
+        11,
+        2
+      ],
+      [
+        4,
+        6,
+        43
+      ]
+    ]
+  },
+  "mint_baseline": {
+    "thresholds": [
+      0.0004166666666666667,
+      0.0077083333333333335
+    ],
+    "pick_threshold": 0.00020833333333333335,
+    "visibility_acc": 0.6666666666666666,
+    "visibility_confusion": [
+      [
+        20,
+        13,
+        4
+      ],
+      [
+        0,
+        35,
+        0
+      ],
+      [
+        0,
+        16,
+        11
+      ]
+    ],
+    "next_action_acc": 0.6868686868686869,
+    "next_action_confusion": [
+      [
+        15,
+        0,
+        17
+      ],
+      [
+        5,
+        0,
+        9
+      ],
+      [
+        0,
+        0,
+        53
+      ]
+    ]
+  },
+  "majority_baseline": {
+    "visibility_acc": 0.35353535353535354,
+    "next_action_acc": 0.5353535353535354
+  },
+  "holdout_label_counts": {
+    "visibility": [
+      37,
+      35,
+      27
+    ],
+    "next_action": [
+      32,
+      14,
+      53
+    ]
+  }
+}
