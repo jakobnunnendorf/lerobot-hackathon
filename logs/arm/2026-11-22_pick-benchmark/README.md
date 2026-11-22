@@ -13,3 +13,4 @@
 - **`benchmark_launch_log_filtered.txt`:** the eval terminal log, with LeRobot's goal-clamp warnings removed.
 - **`earlier_evals/`:** every other `eval_20261122_*.csv` from tonight, all on the new gripper servo from about 05:00 CET. The board posts summarise them: 7074277776, 7074960583, 7075616730.
 - **`demo_chain_e2e/`:** the demo-chain round logs from 06:00 CET on (transitions, grasp checks, round ends). The ticks files are not included.
+- **`clamp_counts_from_terminal.csv`:** per run, how often LeRobot clamped a commanded joint goal to the 15° per-tick `max_relative_target`, and the largest overshoot per joint. Parsed from the 4,523 warnings in the full terminal log. It is a proxy for how jerky each model's commands were.
