@@ -79,8 +79,9 @@ class Settings:
     grasp_check: GraspCheckSettings | None = None
     # With the grasp check off, "holding" also needs |Present_Load| >= this (the grasp check's min_load). The band
     # alone counted an empty gripper at the policy's half-closed goal as a hold (VLA 5K take 2: reading 15, load 32;
-    # board 7067314601). Empty reads 28-44, a squeezed ball 440-500. None: the band alone, as before.
-    hold_min_load: float | None = 200.0
+    # board 7067314601). Empty reads 28-44, a squeezed ball the torque cap (200, kb/gripper-torque-limit.md). None: the band
+    # alone, as before.
+    hold_min_load: float | None = 120.0
 
 
 @dataclass

@@ -29,6 +29,9 @@ from lerobot.policies.act import ACTPolicy
 from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "so101"))
+from gripper_limit import cap_gripper_torque  # noqa: E402
 from lerobot.utils.robot_utils import precise_sleep
 
 FPS = 30
@@ -336,6 +339,7 @@ def main() -> None:
 
     sync_goal_to_present(robot.bus)
     robot.connect()
+    cap_gripper_torque(robot.bus)
     try:
         # The first inference initialises CUDA and takes seconds; do it before the first timed run.
         frame = build_dataset_frame(features, robot.get_observation(), prefix=OBS_STR)

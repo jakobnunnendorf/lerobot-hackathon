@@ -89,7 +89,7 @@ class RobotArm:
 
     # Grasp check: the gripper servo's Present_Load (STS3215 register 60, sign-magnitude, 0.1% of max torque in the
     # Feetech docs; LeRobot 0.7.0's bus reads any register through rustypot, unnormalised). On the arm 2026-11-21 it
-    # read 28-44 empty and 440-500 on the ball, all positive; the grasp check takes abs() in case the sign bit shows.
+    # read 28-44 empty and the torque cap on the ball (440-500 at 500, 200 at today's 200), all positive; the grasp check takes abs() in case the sign bit shows.
     def gripper_load(self) -> float:
         return float(self.robot.bus.sync_read("Present_Load", "gripper")["gripper"])
 
@@ -320,6 +320,7 @@ def bite_gripper_open(args) -> float:
 
 # The arm needs time to reach the mouth pose before the window starts and to finish a bite started at its end.
 BITE_TIMEOUT_MARGIN_S = 15.0
+SO101_DIR = Path(__file__).resolve().parents[1] / "so101"
 
 
 def bite_problem(args, has_receiver: bool, has_kinematics: bool) -> str | None:
@@ -443,6 +444,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   clear_policy, wrist_writer=None, dances=()) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
+    import_from(SO101_DIR, "gripper_limit").cap_gripper_torque(robot.bus)
     log = TransitionLog(args.log)
     if args.tick_log:
         TICKS.open(tick_log_path(args.log))
@@ -655,7 +657,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--put-down-timeout", type=float, default=Settings.put_down_timeout_s)
     p.add_argument("--hold-range", type=float, nargs=2, default=Settings.hold_range)
     p.add_argument("--hold-min-load", type=float, default=Settings.hold_min_load,
-                   help="with --no-grasp-check, a hold also needs |Present_Load| >= this (empty 28-44, ball 440-500); 0: band only")
+                   help="with --no-grasp-check, a hold also needs |Present_Load| >= this (empty 28-44, ball = the torque cap, 200); 0: band only")
     p.add_argument("--hand-wait", type=float, default=Settings.hand_wait_s)
     p.add_argument("--min-visible-area", type=int, default=Settings.min_visible_area_px)
     p.add_argument("--vision-dir", default=str(SCRIPTS / "vision"),
@@ -698,7 +700,7 @@ def parse_args() -> argparse.Namespace:
                    help="grasp check: reading minus goal for a ball stalling the jaw (held closes: p1 5.5, median 12.4)")
     p.add_argument("--grasp-min-load", type=float, default=g.min_load,
                    help="grasp check: |Present_Load| of the gripper servo for a hold, as well as the reading rule "
-                        "(2026-11-21: ball 440-500, empty 28-44); an unreadable load falls back to the reading rule")
+                        "(ball = the torque cap, 200; empty 28-44); an unreadable load falls back to the reading rule")
     p.add_argument("--grasp-lock-margin", type=float, default=g.lock_margin,
                    help="grasp check: after 'held', lock the gripper goal this far below the held reading (at least "
                         "--grasp-close-goal, at most hold low - 1 so the slip watch still sees an empty jaw); less "
