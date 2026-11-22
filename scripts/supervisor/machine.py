@@ -262,8 +262,8 @@ class Supervisor:
         if state == State.ABORT:
             self.round.outcome = "aborted"
         self.log.write(event="round_end", round=number, outcome=self.round.outcome,
-                       pick_attempts=self.round.pick_attempts, clear_attempts=self.round.clear_attempts,
-                       wrong_balls=self.round.wrong_balls, duration_s=round(self.clock.now() - self.round.started, 2),
+                       pick_attempts=self.round.pick_attempts, max_pick_attempts=self.s.max_pick_attempts,
+                       clear_attempts=self.round.clear_attempts, wrong_balls=self.round.wrong_balls, duration_s=round(self.clock.now() - self.round.started, 2),
                        states=[s.value for s in self.round.states],
                        **({"drops": dict(self.round.drops.counts)} if self.round.drops else {}))
         return self.round

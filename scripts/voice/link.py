@@ -67,7 +67,8 @@ def decode(line: str) -> dict | None:
         return None
     if isinstance(command, dict) and ({"target", "destination"} <= command.keys() or command.get("abort") is True
                                       or command.get("dance") is True or command.get("bite") is True
-                                      or isinstance(command.get("plan"), list)):
+                                      or isinstance(command.get("plan"), list)
+                                      or type(command.get("max_pick_attempts")) is int):
         return command
     return None
 

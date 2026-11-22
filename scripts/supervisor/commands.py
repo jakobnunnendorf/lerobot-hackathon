@@ -53,6 +53,7 @@ class Commands:
         self._dance = False
         self._bite = False
         self.voice = None
+        self.on_max_pick_attempts = None
 
     def set_destination(self, destination: str | None) -> None:
         if destination in (None, "hand", "container"):
@@ -175,6 +176,10 @@ class Commands:
             self.set_plan(plan)
             self.set_destination(command.get("destination"))
             self.go.set()
+        elif command is not None and "max_pick_attempts" in command:
+            # No go.set(): the limit never starts a round, and during one it lands at once (a buried ball gets more picks).
+            if self.on_max_pick_attempts is not None:
+                self.on_max_pick_attempts(command["max_pick_attempts"])
         elif command is not None and command.get("target") in TARGETS:
             self.set_target(command["target"])
             self.set_destination(command.get("destination"))

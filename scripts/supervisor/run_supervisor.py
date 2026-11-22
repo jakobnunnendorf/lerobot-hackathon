@@ -519,6 +519,7 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                           save_wrist_frame=wrist_frame_saver(args.log))
         supervisor = Supervisor(arm, skills, sensors, settings, rest, log, commands.abort, frame_writer=frame_writer,
                                 on_tick=commands.poll_voice)
+        commands.on_max_pick_attempts = lambda value: setattr(settings, "max_pick_attempts", max(1, value))
         TICKS.context = tick_context(supervisor)
         log.write(event="start", tick_log=tick_log_path(args.log) if args.tick_log else None, rest=rest.round(1).tolist(), give="follow" if follow else "present" if receiver else None, look=args.look,
                   clear_gray=clear_policy is not None, pick_policy=args.pick_policy,
@@ -593,6 +594,7 @@ def publish_status(args, skills: Skills, receiver, settings: Settings) -> None:
     STATUS.update(available=available(skills), pick_policy=args.pick_policy,
                   log_path=str(Path(args.log).resolve()) if args.log else None, budgets_s=budgets(settings),
                   hold_range=list(settings.hold_range), min_held_target_area_px=args.min_held_target_area)
+    STATUS.add_reader(lambda: {"max_pick_attempts": settings.max_pick_attempts})
     if receiver is not None:
         STATUS.add_reader(lambda: {"palms": palm_count(receiver),
                                    "hands": [np.round(hand, 3).tolist() for hand in receiver.newest_hands()]})

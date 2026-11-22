@@ -60,6 +60,7 @@ def main() -> None:
             with urllib.request.urlopen(SERVER + "/stream/top", timeout=10) as response:
                 chunk = response.read(4000)
             check("top stream: MJPEG part with a JPEG", chunk.startswith(b"--frame") and b"\xff\xd8" in chunk)
+            max_picks()
             refused = call("/api/command", {"target": "red", "destination": "hand"})
             check("red is refused (no red pick skill)", not refused["ok"] and "red" in refused["reason"], refused["reason"])
             plan = call("/api/text", {"text": "take out 2 red balls, then give me the striped ball"})
@@ -108,6 +109,14 @@ def main() -> None:
                 process.wait(timeout=10)
     print("FAIL" if failures else "PASS")
     sys.exit(1 if failures else 0)
+
+
+def max_picks() -> None:
+    check("max picks 0 is refused", not call("/api/max_picks", {"value": 0})["ok"])
+    sent = call("/api/max_picks", {"value": 6})
+    shown = wait_for(lambda: ((_try(first_event) or {}).get("status") or {}).get("max_pick_attempts") == 6, 10)
+    check("max picks 6 -> sent, and the robot program's status reports 6", sent["ok"] and bool(shown), str(sent))
+    call("/api/max_picks", {"value": 3})
 
 
 def dance_round(logs: Path) -> None:

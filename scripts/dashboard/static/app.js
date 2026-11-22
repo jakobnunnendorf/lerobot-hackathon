@@ -189,6 +189,17 @@ $("abort").onclick = async () => {
   say(reply.ok ? "■ ABORT sent: the arm stops and holds. Power switch is the real stop." : "■ ABORT not delivered: robot program not listening. Use the power switch.", "bad");
 };
 
+// Counts from the value just asked for, so a quick double click before the status catches up still adds two.
+async function changeMaxPicks(change) {
+  const now = state.picksAsked ?? (state.status || {}).max_pick_attempts;
+  if (typeof now !== "number") return say("Max picks: the robot program is not running, or too old to change it.", "bad");
+  const reply = await post("/api/max_picks", { value: now + change });
+  if (reply.ok) state.picksAsked = reply.value;
+  else say(`Max picks not changed: ${reply.reason}`, "bad");
+}
+$("picks-down").onclick = () => changeMaxPicks(-1);
+$("picks-up").onclick = () => changeMaxPicks(1);
+
 const recorder = { context: null, stream: null, chunks: [], timer: null, started: 0 };
 
 async function startRecording() {
@@ -334,6 +345,8 @@ function renderLive() {
   $("tip").textContent = s.tip ? `${(s.tip[2] * 100).toFixed(0)} cm high` : "-";
   $("loop-hz").textContent = state.loopHz ? `${state.loopHz.toFixed(0)} Hz ${state.loopHz < 25 ? "(slow!)" : ""}` : "-";
   $("policy").textContent = s.pick_policy ? s.pick_policy.split("/").slice(-4).join("/") : "-";
+  if (s.max_pick_attempts === state.picksAsked) state.picksAsked = null;
+  $("max-picks").textContent = state.picksAsked ?? s.max_pick_attempts ?? "-";
 
   const all = rounds();
   const checks = all.flatMap((r) => r.checks);
