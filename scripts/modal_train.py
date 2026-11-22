@@ -4,6 +4,8 @@
     uv run modal run scripts/modal_train.py::bench --recipe act_redblue --gpus L40S,A100-80GB --budget-usd 10
     uv run modal run --detach scripts/modal_train.py::train --recipe act_redblue --gpu L40S --steps N --max-minutes M
     uv run modal volume get lerobot-smolvla outputs/<run_name> outputs/
+    uv run modal run --detach scripts/modal_train.py::follow --recipe act_redblue_v2 --start-from <checkpoint> --dataset <growing dataset> --budget-usd 15
+      (continuations that make way for each new batch of episodes; docs/continual-training.md)
 """
 
 import json
@@ -212,6 +214,8 @@ image = (
             "TOKENIZERS_PARALLELISM": "false",
         }
     )
+    .add_local_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "train_until_new_data.py"),
+                    "/root/train_until_new_data.py")
 )
 
 app = modal.App("lerobot-train", image=image)
@@ -407,6 +411,96 @@ def train_remote(recipe: str, run_name: str, steps: int, batch_size: int, save_f
         "checkpoints": sorted(os.listdir(checkpoint_dir)) if os.path.isdir(checkpoint_dir) else [],
         "gpu_util_pct": sum(util) / max(len(util), 1),
     }
+
+
+def continuation_command(recipe: str, name: str, start_from: str | None, dataset: str, steps: int, batch_size: int,
+                         save_freq: int, min_new: int, min_steps: int, eval_split: float) -> list:
+    command = train_command(recipe, name, steps, batch_size, save_freq, 100, save=True)[1:]
+    # LeRobot holds out the last episodes of each task sentence, i.e. the newest batch: off by default.
+    command = [a for a in command if not a.startswith(("--dataset.eval_split=", "--dataset.repo_id="))]
+    command += [f"--dataset.eval_split={eval_split}", f"--dataset.repo_id={dataset or RECIPES[recipe]['dataset']}"]
+    if start_from:
+        # A fine-tune, not --resume: the normaliser takes the grown dataset's stats (decisions/continual-training.md).
+        command = [a for a in command if not a.startswith(("--policy.type=", "--policy.path="))]
+        command.insert(0, f"--policy.path={start_from}")
+    return ["python", "/root/train_until_new_data.py", "--min-new", str(min_new), "--min-steps", str(min_steps),
+            "--", *command]
+
+
+@app.function(cpu=CPU, memory=MEMORY, volumes={VOL: volume}, gpu="H100", timeout=4 * 60 * 60)
+def segment_remote(recipe: str, name: str, start_from: str | None, dataset: str, steps: int, batch_size: int,
+                   save_freq: int, max_minutes: float, min_new: int, min_steps: int, eval_split: float) -> dict:
+    import train_until_new_data as follow
+
+    command = continuation_command(recipe, name, start_from, dataset, steps, batch_size, save_freq, min_new, min_steps,
+                                   eval_split)
+    log_path = f"{VOL}/logs/{name}.log"
+    code, minutes, _ = run_training(command, max_minutes, log_path)
+    last = f"{VOL}/outputs/{name}/checkpoints/last"
+    trained_on = re.search(r"training on (\d+) episodes", open(log_path, errors="ignore").read())
+    return {
+        "reason": follow.segment_reason(code),
+        "code": code,
+        "minutes": minutes,
+        "checkpoint": f"{os.path.realpath(last)}/pretrained_model" if os.path.exists(last) else None,
+        "episodes_trained": int(trained_on[1]) if trained_on else None,
+        "run": name,
+    }
+
+
+@app.function(cpu=0.25, memory=1024, volumes={VOL: volume}, timeout=24 * 60 * 60)
+def follow_remote(recipe: str, run_name: str, gpu: str, start_from: str, dataset: str, segment_steps: int,
+                  batch_size: int, save_freq: int, budget_usd: float, hours: float, cap_minutes: float, min_new: int,
+                  min_steps: int, eval_split: float) -> list:
+    import train_until_new_data as follow
+
+    repo = dataset or RECIPES[recipe]["dataset"]
+    history_path = f"{VOL}/outputs/{run_name}_follow.jsonl"
+
+    def log(entry: dict) -> None:
+        print(f"[follow] {json.dumps(entry)}", flush=True)
+        with open(history_path, "a") as handle:
+            handle.write(json.dumps({"time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **entry}) + "\n")
+        volume.commit()
+
+    def run_segment(segment: int, checkpoint: str | None, minutes: float) -> dict:
+        volume.reload()
+        return segment_remote.with_options(gpu=gpu, timeout=int((minutes + 20) * 60)).remote(
+            recipe, f"{run_name}_s{segment:02d}", checkpoint, dataset, segment_steps, batch_size, save_freq, minutes,
+            min_new, min_steps, eval_split)
+
+    return follow.follow_segments(
+        run_segment, lambda: follow.hub_episodes(repo), time.sleep, time.time, start_from=start_from or None,
+        budget_usd=budget_usd, usd_per_minute=usd(gpu, 1), overhead_minutes=STARTUP_MINUTES,
+        deadline=time.time() + hours * 3600, cap_minutes=cap_minutes, min_new=min_new, poll_s=60, log=log)
+
+
+@app.local_entrypoint()
+def follow(
+    recipe: str = "act_redblue_v2",
+    start_from: str = "",
+    dataset: str = "",
+    gpu: str = "H100",
+    segment_steps: int = 5000,
+    batch_size: int = 0,
+    save_freq: int = 1000,
+    budget_usd: float = 15.0,
+    hours: float = 12.0,
+    cap_minutes: float = 60.0,
+    min_new: int = 20,
+    min_steps: int = 500,
+    eval_split: float = 0.0,
+    run_name: str = "",
+) -> None:
+    batch_size = batch_size or RECIPES[recipe]["batch_size"]
+    run_name = run_name or f"follow_{recipe}_{time.strftime('%m%d_%H%M')}"
+    print(f"{run_name}: continuations of {segment_steps} steps on {dataset or RECIPES[recipe]['dataset']}, each from "
+          f"the last one's newest checkpoint; stops at {budget_usd} USD or after {hours} h.\n"
+          f"history: uv run modal volume get lerobot-smolvla outputs/{run_name}_follow.jsonl .")
+    history = follow_remote.remote(recipe, run_name, gpu, start_from, dataset, segment_steps, batch_size, save_freq,
+                                   budget_usd, hours, cap_minutes, min_new, min_steps, eval_split)
+    for entry in history:
+        print(entry)
 
 
 @app.local_entrypoint()
