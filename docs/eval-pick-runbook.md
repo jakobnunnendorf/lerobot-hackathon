@@ -73,7 +73,7 @@ bash scripts/eval/eval_pick.sh --record ~/so101/evals/ds_$(date +%Y%m%d) \
 
 ## Recording the runs
 
-With `--record <dir>`, each run is one episode of a LeRobot dataset (same features as the training data: 30 fps, `top` and `wrist` video, state, action, `task` = the `--task` sentence). Frames are kept in memory (as JPEG) during the run and written after you have entered the result, while the arm holds its pose, so the 30 Hz loop is not slowed; the script prints "saving the episode" for a few seconds. Runs that end before the first tick are not recorded.
+With `--record <dir>`, each run is one episode of a LeRobot dataset (same features as the training data: 30 fps, `top` and `wrist` video, state, action, `task` = the `--task` sentence). Frames are kept in memory (as JPEG) during the run and written after you have entered the result, while the arm holds its pose, so the 30 Hz loop is not slowed; the script prints "saving the episode" for about 10 s after a 90 s run (measured on a Mac CPU; the laptop may differ). Each saved episode is a complete file on disk, so a crash loses only the run in progress. Runs that end before the first tick are not recorded.
 
 - `<dir>/runs.jsonl` has one line per episode: `episode_index`, run, layout, policy name, checkpoint, `policy_type`, `n_action_steps`, `git_commit`, `start_state`, `end`, `result`, `seconds`, `gripper_end` and the rest of the CSV row. The CSV gets an `episode_index` column too.
 - If `<dir>` already holds a dataset, new runs are appended to it.

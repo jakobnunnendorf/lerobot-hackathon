@@ -218,19 +218,23 @@ class EpisodeBuffer:
         self.count += 1
         self.jobs.put((obs_frame, action_frame))
 
-    def drain(self) -> list:
+    def drain(self):
+        # A generator: decoding all frames up front would put the raw 5 GB back in memory.
         self.jobs.put(None)
         self.worker.join()
-        return [
-            {k: cv2.imdecode(v, cv2.IMREAD_COLOR) if v.ndim == 1 and v.dtype == np.uint8 else v for k, v in f.items()}
-            for f in self.frames
-        ]
+        while self.frames:
+            f = self.frames.pop(0)
+            yield {k: cv2.imdecode(v, cv2.IMREAD_COLOR) if v.ndim == 1 and v.dtype == np.uint8 else v for k, v in f.items()}
 
 
 def open_dataset(root: Path, features: dict, robot_type: str, repo_id: str) -> LeRobotDataset:
     if (root / "meta" / "info.json").exists():
-        return LeRobotDataset(repo_id, root=root)
-    return LeRobotDataset.create(repo_id, FPS, features=features, root=root, robot_type=robot_type, use_videos=True)
+        return LeRobotDataset(repo_id, root=root, streaming_encoding=True)
+    # streaming_encoding: videos are encoded while add_frame runs and no PNG staging is written, so save_episode takes
+    # about 11 s for a 90 s run instead of 56 s, and each finished episode is already a complete mp4 on disk.
+    return LeRobotDataset.create(
+        repo_id, FPS, features=features, root=root, robot_type=robot_type, use_videos=True, streaming_encoding=True
+    )
 
 
 def save_episode(dataset: LeRobotDataset, buffer: EpisodeBuffer, task: str) -> int:
