@@ -302,6 +302,11 @@ def open_dataset(root: Path, features: dict, robot_type: str, repo_id: str) -> L
     )
 
 
+def new_buffer(dataset: LeRobotDataset | None) -> EpisodeBuffer | None:
+    # `is not None`, never truthiness: LeRobotDataset defines __len__ (frame count), so a new empty one is falsy.
+    return EpisodeBuffer() if dataset is not None else None
+
+
 def save_episode(dataset: LeRobotDataset, buffer: EpisodeBuffer, task: str) -> int:
     for frame in buffer.drain():
         dataset.add_frame({**frame, "task": task})
@@ -397,7 +402,7 @@ def run_once(
             break
         obs = robot.get_observation()
         extra = {}
-        if telemetry:
+        if telemetry is not None:
             previous_ms = None if previous_tick_start is None else 1000 * (tick - previous_tick_start)
             extra = telemetry.sample(time.perf_counter(), start, previous_ms)
         previous_tick_start = tick
@@ -412,7 +417,7 @@ def run_once(
         frame = build_dataset_frame(features, obs, prefix=OBS_STR)
         action = policy.act(frame, features, robot.robot_type, task)
         robot.send_action(action)
-        if buffer:
+        if buffer is not None:
             buffer.add({**frame, **extra}, build_dataset_frame(features, action, prefix=ACTION))
         ticks += 1
         spent = time.perf_counter() - tick
@@ -538,7 +543,7 @@ def main() -> None:
                 banner(f"RUN {run} ({name}) RUNNING  -  max {args.seconds:.0f} s.  SPACE = end now,  ESC = abort (arm holds)", "97;41")
                 say("Robot starting")
                 started = datetime.now().isoformat(timespec="seconds")
-                buffer = EpisodeBuffer() if dataset else None
+                buffer = new_buffer(dataset)
                 telemetry = Telemetry(robot.bus) if telemetry_on else None
                 outcome = run_once(robot, policy, features, args.seconds, args.task, buffer, telemetry)
                 say("Run finished")
@@ -551,7 +556,7 @@ def main() -> None:
                     start_states[layout] = ask("Ball at start?", START_STATES)
                 result = ask("Result?", RESULTS)
                 episode_index = None
-                if buffer and buffer.count:
+                if buffer is not None and buffer.count:
                     print("  saving the episode (the arm holds its pose)...", flush=True)
                     episode_index = save_episode(dataset, buffer, args.task)
                 row = {
@@ -571,7 +576,7 @@ def main() -> None:
                 f.flush()
                 if episode_index is not None:
                     with open(args.record / "runs.jsonl", "a") as sidecar:
-                        sidecar.write(json.dumps({**row, "policy_type": policy.type, "git_commit": commit, **(telemetry.stats() if telemetry else {})}) + "\n")
+                        sidecar.write(json.dumps({**row, "policy_type": policy.type, "git_commit": commit, **(telemetry.stats() if telemetry is not None else {})}) + "\n")
                 rows.append(row)
                 print(summary(rows, names), flush=True)
                 banner("Hold a hand under the gripper. SPACE = open the gripper")
@@ -582,7 +587,7 @@ def main() -> None:
     finally:
         robot.disconnect()  # torque off: the arm goes limp, so it is sent HOME first on a normal quit
         print(f"\nLog: {log}\n{summary(rows, names) if rows else 'no runs'}", flush=True)
-        if dataset:
+        if dataset is not None:
             dataset.finalize()
             print(f"Dataset: {args.record}", flush=True)
             if args.push_to_hub:
