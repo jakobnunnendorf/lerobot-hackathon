@@ -19,9 +19,10 @@ from frame_link import FrameWriter  # noqa: E402
 from status import Status  # noqa: E402
 
 REST = [-5.6, -102.8, 96.6, -100.1, -5.2]
-BUDGETS = {"PICK": 90.0, "GIVE": 45.0, "PUT_DOWN": 20.0, "REST": 15.0, "DANCE": 120.0}
+BUDGETS = {"PICK": 90.0, "GIVE": 45.0, "PUT_DOWN": 20.0, "REST": 15.0, "DANCE": 120.0, "BITE": 30.0}
 DANCE = "dance FAKE/so101_gestures_dance:1"
 DANCE_POSES = ([10, -60, 0, 80, 0], [-10, -55, 5, 90, 20], [0, -58, -8, 84, 0])
+BITE_POSES = ([0, -40, 30, -10, 0], [20, -40, 30, -10, 0], [20, -30, 25, -10, 0])
 
 
 class Log:
@@ -152,6 +153,33 @@ class FakeRobot:
         self.state = "REST"
 
 
+    def run_bite(self) -> None:
+        self.round += 1
+        self.abort.clear()
+        started, states, outcome = time.monotonic(), ["REST"], "aborted"
+        self.state = "REST"
+        self.log.write(event="round_start", round=self.round, target=None, destination=None, bite=True)
+        try:
+            self.wait(1.0, gripper=30.0, joints=REST)
+            self.go("BITE", "at rest")
+            states.append("BITE")
+            for joints in BITE_POSES:
+                self.wait(1.0, gripper=60.0, joints=joints)
+            self.wait(0.5, gripper=5.0)
+            self.go("REST", "bite: bit", skill="bit")
+            states.append("REST")
+            outcome = "bit"
+            self.wait(1.0, gripper=30.0, joints=REST)
+            self.go("DONE", "round over: bit")
+            states.append("DONE")
+        except Aborted:
+            self.go("ABORT", "abort requested")
+            states.append("ABORT")
+        self.log.write(event="round_end", round=self.round, outcome=outcome, pick_attempts=0, clear_attempts=0,
+                       wrong_balls=0, duration_s=round(time.monotonic() - started, 2), states=states)
+        self.state = "REST"
+
+
 def pattern(label: str, t: float) -> np.ndarray:
     image = np.zeros((480, 640, 3), np.uint8)
     image[..., 0] = np.linspace(40, 120, 640, dtype=np.uint8)[None, :]
@@ -185,13 +213,15 @@ def main() -> None:
     p.add_argument("--wrist-shm", default="wrist_camera_frames")
     p.add_argument("--quiet-pick", type=float, default=0.0, help="seconds without a status in each PICK")
     p.add_argument("--no-dance", action="store_true", help="as a robot program started without --dance-episode")
+    p.add_argument("--no-bite", action="store_true", help="as a robot program started without --bite")
     args = p.parse_args()
     log_dir = Path(args.log_dir).expanduser()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"chain_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
     log = Log(log_path)
     status = FakeStatus()
-    status.update(available={"targets": ["striped"], "destinations": ["hand", "container"], "dance": not args.no_dance},
+    status.update(available={"targets": ["striped"], "destinations": ["hand", "container"], "dance": not args.no_dance,
+                                                                                    "bite": not args.no_bite},
                   pick_policy="FAKE Space0code/act_redblue_from_foil@015000", log_path=str(log_path.resolve()),
                   budgets_s=BUDGETS, hold_range=[6.0, 20.0], min_held_target_area_px=120, gripper=30.0, joints=REST,
                   observes=0, fake=True)
@@ -224,6 +254,8 @@ def main() -> None:
                 print(f"round: {command}", flush=True)
                 if command.get("dance"):
                     robot.run_dance()
+                elif command.get("bite"):
+                    robot.run_bite()
                 else:
                     robot.run_round(command.get("target"), command.get("destination"))
             time.sleep(0.1)

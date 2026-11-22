@@ -11,7 +11,8 @@ const DESTINATIONS = [
 ];
 const FLOW = ["REST", "PICK", "VERIFY_HOLD", "GIVE", "PUT_DOWN", "DONE"];
 const DANCE_FLOW = ["REST", "DANCE", "DONE"];
-const STATE_NAMES = { REST: "Rest", PICK: "Pick", VERIFY_HOLD: "Check ball", GIVE: "Hand over", PUT_DOWN: "Put down", DANCE: "Dance", DONE: "Done", ABORT: "Aborted" };
+const BITE_FLOW = ["REST", "BITE", "DONE"];
+const STATE_NAMES = { REST: "Rest", PICK: "Pick", VERIFY_HOLD: "Check ball", GIVE: "Hand over", PUT_DOWN: "Put down", DANCE: "Dance", BITE: "Bite", DONE: "Done", ABORT: "Aborted" };
 const RESULT_BUTTONS = [
   ["success", "✓ success"], ["wrong_ball", "wrong ball"], ["empty", "empty"], ["dropped", "dropped"],
   ["still_digging", "digging"], ["other", "other"],
@@ -61,7 +62,7 @@ function reasonFor(target, destination) {
 }
 
 function chainOf(start) {
-  return start.dance ? `💃 ${start.dance}` : `${start.target || "striped"} → ${start.destination || "-"}`;
+  return start.dance ? `💃 ${start.dance}` : start.bite ? "🦷 bite" : `${start.target || "striped"} → ${start.destination || "-"}`;
 }
 
 // The robot program refuses a dance with a ball in the gripper as well; greyed out here so nobody has to try.
@@ -69,6 +70,17 @@ function danceReason() {
   const allowed = available();
   if (!allowed) return "robot program not running";
   if (!allowed.dance) return "no dance: start the robot program with --dance-episode";
+  if (running()) return "a round is running";
+  const band = state.status.hold_range || [6, 20];
+  const gripper = state.status.gripper;
+  if (typeof gripper === "number" && gripper >= band[0] && gripper <= band[1]) return "the gripper holds a ball";
+  return null;
+}
+
+function biteReason() {
+  const allowed = available();
+  if (!allowed) return "robot program not running";
+  if (!allowed.bite) return "no bite: start the robot program with --bite";
   if (running()) return "a round is running";
   const band = state.status.hold_range || [6, 20];
   const gripper = state.status.gripper;
@@ -100,6 +112,14 @@ function renderTiles() {
   dance.innerHTML = `<span class="what">💃 Dance</span><span class="why">${reason || "from rest, gripper empty"}</span>`;
   dance.onclick = startDance;
   tiles.appendChild(dance);
+  const biteBlocked = biteReason();
+  const bite = document.createElement("button");
+  bite.className = "tile" + (biteBlocked ? "" : " ready");
+  bite.disabled = Boolean(biteBlocked);
+  bite.title = biteBlocked || "Point at the gripper and it bites, from rest, gripper empty";
+  bite.innerHTML = `<span class="what">🦷 Bite</span><span class="why">${biteBlocked || "point at the gripper"}</span>`;
+  bite.onclick = startBite;
+  tiles.appendChild(bite);
 }
 
 async function post(url, body, raw = false) {
@@ -123,6 +143,7 @@ function describe(reply) {
   if (reply.ok) {
     const c = reply.command;
     if (c.dance) { say("▶ Starting: dance", "ok"); return; }
+    if (c.bite) { say("▶ Starting: bite", "ok"); return; }
     say(`▶ Starting: ${c.target} ball → ${c.destination === "hand" ? "your hand" : "the container"}`, "ok");
     return;
   }
@@ -142,6 +163,11 @@ async function startChain(target, destination) {
 async function startDance() {
   say("dance", "me");
   describe(await post("/api/dance", {}));
+}
+
+async function startBite() {
+  say("bite", "me");
+  describe(await post("/api/bite", {}));
 }
 
 $("chat-form").onsubmit = async (event) => {
@@ -233,7 +259,7 @@ function renderRound() {
     setBudget(0, "");
     return;
   }
-  const chain = shown.start.dance ? chainOf(shown.start) : `${shown.start.target || "striped"} ball → ${shown.start.destination || "no destination"}`;
+  const chain = shown.start.dance || shown.start.bite ? chainOf(shown.start) : `${shown.start.target || "striped"} ball → ${shown.start.destination || "no destination"}`;
   const last = shown.transitions[shown.transitions.length - 1];
   const now = current ? (last ? last.target : "REST") : (shown.end.outcome === "aborted" ? "ABORT" : "DONE");
   const visited = ["REST", ...shown.transitions.map((t) => t.target)];
@@ -249,13 +275,13 @@ function renderRound() {
     $("round-title").textContent = `Round ${shown.number}: ${shown.end.outcome.replace("_", " ")} in ${shown.end.duration_s} s`;
     setBudget(0, "");
   }
-  renderStates(now, visited, Boolean(shown.start.dance));
+  renderStates(now, visited, shown.start.dance ? DANCE_FLOW : shown.start.bite ? BITE_FLOW : null);
 }
 
-function renderStates(now, visited, dance = false) {
+function renderStates(now, visited, fixedFlow = null) {
   const div = $("states");
   div.innerHTML = "";
-  const flow = dance ? DANCE_FLOW
+  const flow = fixedFlow ? fixedFlow
     : visited.includes("PUT_DOWN") || !visited.includes("GIVE") ? FLOW : FLOW.filter((s) => s !== "PUT_DOWN");
   for (const s of now === "ABORT" ? [...flow, "ABORT"] : flow) {
     const chip = document.createElement("div");
