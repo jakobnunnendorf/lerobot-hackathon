@@ -3,6 +3,7 @@
     uv run modal run scripts/modal_train.py::prepare --recipe act_redblue
     uv run modal run scripts/modal_train.py::bench --recipe act_redblue --gpus L40S,A100-80GB --budget-usd 10
     uv run modal run --detach scripts/modal_train.py::train --recipe act_redblue --gpu L40S --steps N --max-minutes M
+    uv run modal run --detach scripts/modal_train.py::resume --run-name <run_name> --steps <new total> --max-minutes M
     uv run modal volume get lerobot-smolvla outputs/<run_name> outputs/
 """
 
@@ -80,6 +81,20 @@ def dataset_root(repo_id: str) -> str:
     return f"{VOL}/datasets/{repo_id.split('/')[-1]}"
 
 
+REDBLUE_ACT_ARGS = [
+    # 2e-5 at batch 32 instead of ACT's 1e-5 at batch 8: a cautious step below linear scaling.
+    "--policy.optimizer_lr=2e-5",
+    "--policy.optimizer_lr_backbone=2e-5",
+    "--dataset.image_transforms.enable=true",
+    f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION}",
+    # Same split and seed as the stopped local batch-8 run, so eval losses compare.
+    "--dataset.eval_split=0.05",
+    "--seed=1000",
+    "--eval_steps=5000",
+]
+
+FOIL_CHECKPOINT = "molnrb/act_pick_ball_combined"
+
 RECIPES = {
     "smolvla_combined": {
         "dataset": "molnrb/so101_pick_ball_combined",
@@ -98,18 +113,16 @@ RECIPES = {
         "frames": 57183,
         "batch_size": 32,
         "prefetch_models": [],
-        "args": [
-            "--policy.type=act",
-            # 2e-5 at batch 32 instead of ACT's 1e-5 at batch 8: a cautious step below linear scaling.
-            "--policy.optimizer_lr=2e-5",
-            "--policy.optimizer_lr_backbone=2e-5",
-            "--dataset.image_transforms.enable=true",
-            f"--dataset.image_transforms.tfs={REDBLUE_AUGMENTATION}",
-            # Same split and seed as the stopped local batch-8 run, so eval losses compare.
-            "--dataset.eval_split=0.05",
-            "--seed=1000",
-            "--eval_steps=5000",
-        ],
+        "args": ["--policy.type=act", *REDBLUE_ACT_ARGS],
+        "schedule_follows_steps": False,
+    },
+    # Same as act_redblue except the start: the foil-scene policy's weights. See decisions/act-redblue-init.md.
+    "act_redblue_from_foil": {
+        "dataset": "molnrb/so101_pick_rb_mixed",
+        "frames": 57183,
+        "batch_size": 32,
+        "prefetch_models": [FOIL_CHECKPOINT],
+        "args": [f"--policy.path={FOIL_CHECKPOINT}", *REDBLUE_ACT_ARGS],
         "schedule_follows_steps": False,
     },
     # Starts from the morning's blue-ball SmolVLA (pretraining on related data helped our ACT runs).
@@ -398,7 +411,10 @@ def bench_remote(recipe: str, gpu: str, batch_size: int, steps: int) -> dict:
 @app.function(cpu=CPU, memory=MEMORY, volumes={VOL: volume}, gpu="L40S", timeout=4 * 60 * 60)
 def train_remote(recipe: str, run_name: str, steps: int, batch_size: int, save_freq: int, max_minutes: float) -> dict:
     command = train_command(recipe, run_name, steps, batch_size, save_freq, 100, save=True)
-    code, minutes, samples = run_training(command, max_minutes, f"{VOL}/logs/{run_name}.log")
+    return run_summary(run_name, *run_training(command, max_minutes, f"{VOL}/logs/{run_name}.log"))
+
+
+def run_summary(run_name: str, code: int, minutes: float, samples: list) -> dict:
     checkpoint_dir = f"{VOL}/outputs/{run_name}/checkpoints"
     util = [s[0] for s in samples]
     return {
@@ -407,6 +423,26 @@ def train_remote(recipe: str, run_name: str, steps: int, batch_size: int, save_f
         "checkpoints": sorted(os.listdir(checkpoint_dir)) if os.path.isdir(checkpoint_dir) else [],
         "gpu_util_pct": sum(util) / max(len(util), 1),
     }
+
+
+def resume_command(run_name: str, steps: int, save_freq: int) -> list:
+    checkpoints = f"{VOL}/outputs/{run_name}/checkpoints"
+    latest = max(d for d in os.listdir(checkpoints) if d.isdigit())
+    # Resume, not --policy.path: same data, so keeping the optimizer state and step counter is what we want.
+    return [
+        "lerobot-train",
+        f"--config_path={checkpoints}/{latest}/pretrained_model/train_config.json",
+        "--resume=true",
+        f"--steps={steps}",
+        f"--save_freq={save_freq}",
+    ]
+
+
+@app.function(cpu=CPU, memory=MEMORY, volumes={VOL: volume}, gpu="L40S", timeout=4 * 60 * 60)
+def resume_remote(run_name: str, steps: int, save_freq: int, max_minutes: float) -> dict:
+    command = resume_command(run_name, steps, save_freq)
+    log_path = f"{VOL}/logs/{run_name}_to_{steps // 1000}k.log"
+    return run_summary(run_name, *run_training(command, max_minutes, log_path))
 
 
 @app.local_entrypoint()
@@ -461,3 +497,12 @@ def train(
     )
     print(result)
     print(f"download: uv run modal volume get lerobot-smolvla outputs/{run_name} outputs/")
+
+
+@app.local_entrypoint()
+def resume(run_name: str, steps: int, gpu: str = "L40S", max_minutes: float = 60, save_freq: int = 5000) -> None:
+    print(f"{run_name}: resume to {steps} steps, cap {max_minutes} min, worst case ~{usd(gpu, max_minutes + STARTUP_MINUTES):.2f} USD")
+    result = resume_remote.with_options(gpu=gpu, timeout=int((max_minutes + 20) * 60)).remote(
+        run_name, steps, save_freq, max_minutes
+    )
+    print(result)
