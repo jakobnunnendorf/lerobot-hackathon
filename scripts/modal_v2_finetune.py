@@ -54,8 +54,10 @@ HIDDEN_EPISODES = sorted(HIDDEN_BURIED + HIDDEN_PARTLY)
 JAKOB_HOLDOUT = {6, 23, 65, 88, 99, 110, 126, 157, 177, 191}
 
 RUNS = {
-    "a": dict(hub_repo="TianK003/act_redblue_from_foil_v3", steps=10_000, save_freq=5_000, eval_steps=5_000,
-              episodes=None, step_offset=START_STEP, gpu="H100"),
+    # L40S: on H100 the video loader is the bottleneck (253 vs 227 steps/min). Saves every 2,500 so a late start or
+    # the deadline stop still leaves a checkpoint to test.
+    "a": dict(hub_repo="TianK003/act_redblue_from_foil_v3", steps=10_000, save_freq=2_500, eval_steps=2_500,
+              episodes=None, step_offset=START_STEP, gpu="L40S"),
     "b": dict(hub_repo="TianK003/act_hidden_from_v2", steps=3_000, save_freq=1_000, eval_steps=1_000,
               episodes=HIDDEN_EPISODES, step_offset=0, gpu="L40S"),
 }
