@@ -232,6 +232,10 @@ Free text: anything seen at the table that the numbers don't show.
 - **Earlier runs on the new servo** (same arm and servo, different `n_action_steps`, no recordings):
   - board 7074277776: 8 layouts at n100; `v1@015000` 5/8, `v2@20000` 6/8;
   - board 7074960583: 10 layouts, `v2@20000` at n100 / n50 / n25: 4/10, 6/10, 6/10; hidden 2/5, 3/5, 2/5.
+  - board 7075616730: 10 layouts at n50 (6 H, 3 P, 1 V), CSV `eval_20261122_072137.csv`:
+    - `hidden@002000` 7/9 (L9 not run), `v2@20000` 6/10, paired 7/9 vs 5/9;
+    - hidden layouts: 4/5 vs 3/5 on the same five;
+    - mean success time 61.1 s vs 34.2 s; 3 of `hidden`'s successes took over 75 s.
 - **Analysis:** later, in a separate write-up (link: –).
 
 ---
