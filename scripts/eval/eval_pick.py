@@ -25,7 +25,7 @@ from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.common.control_utils import predict_action
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.policies import make_pre_post_processors, make_robot_action
-from lerobot.policies.act import ACTPolicy
+from lerobot.policies.factory import get_policy_class
 from lerobot.robots.so_follower import SO101Follower, SO101FollowerConfig
 from lerobot.utils.constants import ACTION, OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
@@ -110,7 +110,7 @@ def checkpoint_folder(paths, step: str = "") -> str | None:
             found.setdefault(parts[0], parts[0])
     if step and step not in found:
         raise SystemExit(f"step {step} not found; available: {sorted(found)}")
-    return found[step or max(found)] if found else None
+    return found[step or max(found, key=int)] if found else None
 
 
 def model_dir(path: Path) -> str:
@@ -133,16 +133,23 @@ def resolve_checkpoint(spec: str) -> tuple[str, str]:
     return model_dir(path), f"{source}@{folder.split('/')[-1]}" if folder else source
 
 
+TASK = "Pick up the striped ball from the bowl of red and blue balls, uncovering it first if it is buried, and return to the start position"
+
+
 class Policy:
-    def __init__(self, path: str, n_action_steps: int | None):
+    def __init__(self, path: str, n_action_steps: int | None, temporal_ensemble_coeff: float | None = None, task: str = TASK):
+        self.task = task
         device = "cuda" if torch.cuda.is_available() else "cpu"
         overrides = [f"--device={device}"]
         if n_action_steps:
             overrides.append(f"--n_action_steps={n_action_steps}")
+        if temporal_ensemble_coeff is not None:
+            overrides.append(f"--temporal_ensemble_coeff={temporal_ensemble_coeff}")
         config = PreTrainedConfig.from_pretrained(path, cli_overrides=overrides)
-        self.policy = ACTPolicy.from_pretrained(path, config=config)
+        self.policy = get_policy_class(config.type).from_pretrained(path, config=config)
         self.device = torch.device(device)
         self.n_action_steps = config.n_action_steps
+        self.temporal_ensemble_coeff = getattr(config, "temporal_ensemble_coeff", None)
         self.pre, self.post = make_pre_post_processors(
             policy_cfg=config,
             pretrained_path=path,
@@ -162,7 +169,7 @@ class Policy:
             preprocessor=self.pre,
             postprocessor=self.post,
             use_amp=self.policy.config.use_amp,
-            task="",  # ACT ignores the task sentence
+            task=self.task,  # ACT ignores it; SmolVLA needs the sentence of its training data
             robot_type=robot_type,
         )
         return make_robot_action(action, features)
@@ -290,8 +297,10 @@ def summary(rows: list, names: list) -> str:
 
 
 def schedule(names: list, first_layout: int, layouts: int) -> list:
-    # Every policy runs each layout once; the order flips every layout so no policy always goes first.
-    return [(k, n) for k in range(first_layout, first_layout + layouts) for n in (names if k % 2 else names[::-1])]
+    # Every policy runs each layout once; the order rotates every layout so no policy always goes first (a flip
+    # would leave the middle one of three always second).
+    return [(k, n) for k in range(first_layout, first_layout + layouts)
+            for n in names[(k - 1) % len(names):] + names[:(k - 1) % len(names)]]
 
 
 def parse_policies(specs: list) -> dict:
@@ -308,20 +317,23 @@ def main() -> None:
     p.add_argument(
         "--policy",
         action="append",
-        help="[name=]<Hub repo id or local run dir>[@step]; repeat to compare policies on the same layouts. "
+        help="[name=]<Hub repo id or local run dir>[@step][#n_action_steps]; repeat to compare policies on the same layouts. "
         "Without @step the newest checkpoint is used. Default: Space0code/act_redblue_from_foil",
     )
     p.add_argument("--runs", type=int, default=10, help="layouts; every policy runs each layout once")
     p.add_argument("--seconds", type=float, default=90.0)
     p.add_argument("--n-action-steps", type=int, help="override the checkpoints' n_action_steps (default 100)")
+    p.add_argument("--task", default=TASK, help="task sentence for language-conditioned policies (SmolVLA)")
+    p.add_argument("--temporal-ensemble-coeff", type=float, help="ACT temporal ensembling; needs --n-action-steps 1")
     p.add_argument("--log-dir", default=str(Path.home() / "so101" / "evals"))
     args = p.parse_args()
 
     policies, labels = {}, {}
     for name, spec in parse_policies(args.policy or ["Space0code/act_redblue_from_foil"]).items():
+        spec, _, chunk = spec.partition("#")
         path, labels[name] = resolve_checkpoint(spec)
         print(f"Loading {name}: {labels[name]} from {path}", flush=True)
-        policies[name] = Policy(path, args.n_action_steps)
+        policies[name] = Policy(path, int(chunk) if chunk else args.n_action_steps, args.temporal_ensemble_coeff, args.task)
     names = list(policies)
     robot = make_robot()
     features = {
@@ -330,7 +342,7 @@ def main() -> None:
     }
     log = Path(args.log_dir) / f"eval_{datetime.now():%Y%m%d_%H%M%S}.csv"
     log.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["run", "layout", "policy", "checkpoint", "started", "n_action_steps", "cap_s", "seconds", "end",
+    fields = ["run", "layout", "policy", "checkpoint", "started", "n_action_steps", "temporal_ensemble_coeff", "cap_s", "seconds", "end",
               "gripper_end", "left_home", "late_ticks_pct", "start_state", "result"]
     rows: list = []
 
@@ -381,6 +393,7 @@ def main() -> None:
                     "checkpoint": labels[name],
                     "started": started,
                     "n_action_steps": policy.n_action_steps,
+                    "temporal_ensemble_coeff": policy.temporal_ensemble_coeff,
                     "cap_s": args.seconds,
                     **outcome,
                     "start_state": start_states[layout],
