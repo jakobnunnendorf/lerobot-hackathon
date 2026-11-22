@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 from datetime import datetime
 from pathlib import Path
 
@@ -1142,6 +1143,75 @@ def goal_sync_before_connect() -> None:
           and robot.bus.goal == {"shoulder_pan": 2100}, str(robot.log))
 
 
+class CapBus:
+    def __init__(self):
+        self.torque_limit, self.cap_writes = None, 0
+
+    def connect(self):
+        pass
+
+    def disconnect(self, disable_torque=True):
+        pass
+
+    def sync_read(self, name, motors=None, normalize=True):
+        return {key.removesuffix(".pos"): 50.0 for key in KEYS}
+
+    def sync_write(self, name, values, normalize=True):
+        pass
+
+    def write(self, name, motor, value, normalize=True):
+        assert (name, motor, normalize) == ("Torque_Limit", "gripper", False)
+        self.torque_limit, self.cap_writes = value, self.cap_writes + 1
+
+    def read(self, name, motor, normalize=True):
+        return self.torque_limit
+
+
+class CapRobot:
+    robot_type = "so101_follower"
+
+    def __init__(self):
+        self.bus = CapBus()
+
+    def connect(self):
+        pass
+
+    def disconnect(self):
+        pass
+
+    def get_observation(self):
+        return {key: 50.0 for key in KEYS}
+
+
+def gripper_cap_each_round(work: str) -> None:
+    import run_supervisor
+
+    robot, rounds, caps_at_round = CapRobot(), 3, []
+
+    class RecordingSupervisor:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def run_round(self, number, **kwargs):
+            caps_at_round.append(robot.bus.cap_writes)
+            return types.SimpleNamespace(outcome="given")
+
+    saved_argv, saved = sys.argv, (run_supervisor.Supervisor, run_supervisor.publish_status)
+    sys.argv = ["run_supervisor.py", "--robot", "--rounds", str(rounds), "--auto", "--no-held-check",
+                "--put-down-pose", "0", "0", "0", "0", "0", "--log", f"{work}/cap.jsonl"]
+    run_supervisor.Supervisor, run_supervisor.publish_status = RecordingSupervisor, lambda *args: None
+    try:
+        args = run_supervisor.parse_args()
+        policy = types.SimpleNamespace(policy=types.SimpleNamespace(config=types.SimpleNamespace(n_action_steps=1)))
+        run_supervisor.run_connected(args, robot, None, None, Path(work), False, Commands(), None, policy, None)
+    finally:
+        sys.argv = saved_argv
+        run_supervisor.Supervisor, run_supervisor.publish_status = saved
+    check(f"robot mode: gripper Torque_Limit 200 written after connect and again before each of {rounds} rounds",
+          caps_at_round == list(range(2, rounds + 2)) and robot.bus.cap_writes == 1 + rounds and robot.bus.torque_limit == 200,
+          f"writes before each round {caps_at_round}, total {robot.bus.cap_writes}")
+
+
 def give_integration(handover_dir: Path, log_path: str) -> None:
     hand_socket = import_from(handover_dir, "hand_socket")
     kinematics = import_from(handover_dir, "kinematics")
@@ -1207,6 +1277,7 @@ def main() -> None:
         tick_log(work)
         camera_stall()
         goal_sync_before_connect()
+        gripper_cap_each_round(work)
         vision_dir = Path(args.vision_dir)
         if (vision_dir / "supervisor_adapter.py").exists():
             vision_adapter(vision_dir)

@@ -20,6 +20,7 @@ class FakeBus:
         self.torque = False
         self.connected = False
         self.goal_at_torque_on = None
+        self.registers = {}
 
     def connect(self, handshake=True):
         assert not self.connected, "port already open"
@@ -42,6 +43,16 @@ class FakeBus:
         assert self.connected and data_name == "Goal_Position" and normalize is False
         self.goal.update(values)
         self.log.append("write Goal_Position")
+
+    def write(self, data_name, motor, value, *, normalize=True):
+        assert self.connected and normalize is False
+        self.registers[(data_name, motor)] = value
+        self.log.append(f"write {data_name} {motor} {value}")
+
+    def read(self, data_name, motor, *, normalize=True):
+        assert self.connected and normalize is False
+        self.log.append(f"read {data_name} {motor}")
+        return self.registers[(data_name, motor)]
 
     def disable_torque(self):
         self.torque = False
@@ -114,6 +125,11 @@ def main():
         "connect_robot: sync disconnect keeps torque state, then LeRobot connects",
         robot.log[:5],
         ["connect", "read Present_Position", "write Goal_Position", "disconnect(disable_torque=False)", "connect"],
+    )
+    check(
+        "connect_robot: gripper Torque_Limit capped at 200 after LeRobot's connect, read back",
+        robot.log[robot.log.index("torque on"):],
+        ["torque on", "write Torque_Limit gripper 200", "read Torque_Limit gripper"],
     )
 
     print(f"\n{'ALL PASS' if not failures else f'{len(failures)} FAILED: {failures}'}")

@@ -444,7 +444,8 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                   clear_policy, wrist_writer=None, dances=()) -> None:
     sync_goal_to_present(robot.bus)
     robot.connect()
-    import_from(SO101_DIR, "gripper_limit").cap_gripper_torque(robot.bus)
+    cap_gripper_torque = import_from(SO101_DIR, "gripper_limit").cap_gripper_torque
+    cap_gripper_torque(robot.bus)
     log = TransitionLog(args.log)
     if args.tick_log:
         TICKS.open(tick_log_path(args.log))
@@ -520,6 +521,9 @@ def run_connected(args, robot, receiver, frame_writer, handover_dir, follow, com
                 except Aborted:
                     break
             dance, bite = commands.take_dance(), commands.take_bite()
+            # The servo reloads Torque_Limit from Max_Torque_Limit (LeRobot writes 500) at power-up, so the cap is
+            # re-written each round while the arm is parked.
+            cap_gripper_torque(robot.bus)
             if supervisor.run_round(number, dance=dance, bite=bite and not dance).outcome == "aborted":
                 print("ABORT: arm holds its pose with torque on. Hold the arm, then switch the power off.", flush=True)
                 break
