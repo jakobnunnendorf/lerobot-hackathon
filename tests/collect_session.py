@@ -74,10 +74,10 @@ class FakeBus:
     def __init__(self):
         self.registers = {}
 
-    def write(self, name, motor, value, normalize=True):
+    def write(self, name, motor, value, normalize=True, num_retry=0):
         self.registers[(name, motor)] = value
 
-    def read(self, name, motor, normalize=True):
+    def read(self, name, motor, normalize=True, num_retry=0):
         return self.registers[(name, motor)]
 
 

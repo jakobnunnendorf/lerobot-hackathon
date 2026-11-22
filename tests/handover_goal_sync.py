@@ -44,12 +44,12 @@ class FakeBus:
         self.goal.update(values)
         self.log.append("write Goal_Position")
 
-    def write(self, data_name, motor, value, *, normalize=True):
+    def write(self, data_name, motor, value, *, normalize=True, num_retry=0):
         assert self.connected and normalize is False
         self.registers[(data_name, motor)] = value
         self.log.append(f"write {data_name} {motor} {value}")
 
-    def read(self, data_name, motor, *, normalize=True):
+    def read(self, data_name, motor, *, normalize=True, num_retry=0):
         assert self.connected and normalize is False
         self.log.append(f"read {data_name} {motor}")
         return self.registers[(data_name, motor)]
