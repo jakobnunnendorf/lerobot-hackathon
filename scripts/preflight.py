@@ -22,7 +22,7 @@ CAMERA_PATHS = {
     "wrist": "/dev/v4l/by-id/usb-Sonix_Technology_Co.__Ltd._USB2.0_CAM1_USB2.0_CAM1-video-index0",
 }
 FRAME_SIZE = (640, 480)
-POLICY = "molnrb/act_pick_ball_combined"
+POLICY = "Space0code/act_redblue_from_foil_v2@20000"  # demo_chain.sh default since #67
 POLICY_CAMERAS = ("top", "wrist")
 TRACKER_PORT = 8766
 VOICE_PORT = 8765
@@ -262,12 +262,25 @@ def check_exposure(args) -> Result:
     return Result(PASS, "exposure and white balance are manual on both cameras", details=details)
 
 
+def policy_path(spec: str) -> str:
+    # Our Hub repos keep each checkpoint in <step>/ or checkpoints/<step>/, so "repo@step" names one of them.
+    source, _, step = spec.partition("@")
+    if not step:
+        return source
+    from huggingface_hub import HfApi, snapshot_download
+
+    folders = {f.rsplit("/", 1)[0] for f in HfApi().list_repo_files(source) if f.endswith("/config.json")}
+    folder = next(f for f in sorted(folders) if f.split("/")[-2 if f.endswith("pretrained_model") else -1] == step)
+    return str(Path(snapshot_download(source, allow_patterns=[f"{folder}/*"])) / folder)
+
+
 def check_policy(args) -> Result:
     import lerobot.policies  # registers the policy types, otherwise from_pretrained finds none
     from lerobot.configs.policies import PreTrainedConfig
 
     try:
-        config = PreTrainedConfig.from_pretrained(args.policy)
+        path = policy_path(args.policy)
+        config = PreTrainedConfig.from_pretrained(path)
     except Exception as error:
         return Result(FAIL, f"cannot read config of {args.policy} ({type(error).__name__})", "check the name, network and hf login")
     cameras = {key.split(".")[-1]: feature.shape for key, feature in config.image_features.items()}
@@ -285,7 +298,7 @@ def check_policy(args) -> Result:
         return Result(FAIL, f"{args.policy}: config ok but no CUDA to load the weights", "fix the cuda check first")
     from lerobot.policies.factory import get_policy_class
 
-    policy = get_policy_class(config.type).from_pretrained(args.policy).to("cuda")
+    policy = get_policy_class(config.type).from_pretrained(path).to("cuda")
     memory = torch.cuda.memory_allocated() / 1e9
     del policy
     return Result(PASS, f"{args.policy}: {config.type} weights loaded on the GPU ({memory:.2f} GB)")

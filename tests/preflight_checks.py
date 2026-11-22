@@ -178,7 +178,7 @@ def test_policy():
         "lerobot.policies.factory": factory_module,
         "torch": fake_torch(True),
     }
-    with mock.patch.dict(sys.modules, modules):
+    with mock.patch.dict(sys.modules, modules), mock.patch.object(preflight, "policy_path", lambda spec: spec):
         result = preflight.check_policy(args())
         assert result.status == preflight.PASS and "weights not loaded" in result.message
         result = preflight.check_policy(args(load_policy=True))
