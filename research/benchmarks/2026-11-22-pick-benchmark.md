@@ -4,7 +4,7 @@ From `research/BENCHMARK_DESIGN_TEMPLATE.md`. **This is data collection only; th
 
 | | |
 | --- | --- |
-| Status | ready, handed to the robot laptop |
+| Status | final, green light 08:13 CET |
 | Version | v1, 22 Nov 08:00 CET |
 | Board posts | earlier plans 7075454867 and 7075469917 (this file replaces them); data: – |
 | Code | `main` with PR #69 (SmolVLA + `--record`) and PR #71 (motor telemetry + timestamps), merge commit acbdb77 |
@@ -48,7 +48,9 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
   - [x] `hidden` and `v3` resolve without a token (board 7075472893);
   - `clean_all`, `clean_scratch` and `balazs` aren't load-tested; problems are sorted out at the table.
 - **Left out:** `v1` and `v2` (an improvement chain, Tian's model > v2 > v1, per Tomi, so only its best is tested; v2's earlier results are in section 13); the old-servo foil models; `brouthen/*` models other than as the init for `clean_all`.
-- **Cut order if time runs short:** don't drop models; cut layouts instead (section 9).
+- **Priority:** `hidden` is the model this benchmark must cover (Jakob). If a model has to give way, it is never `hidden`.
+- **Cut order if time runs short:** cut layouts, not models (section 9).
+- **If time is left at the end:** run `v2@20000` at n30 on the same layouts, as an extra block.
 
 ## 3. Fixed conditions (the same for every run)
 
@@ -176,10 +178,10 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 
 - **Time per run:** about 50 s on average (successes take about 20–40 s, failures 90 s), plus about 10 s to save and about 45 s to reset. That's about 1.75 min.
 - **Total:** 48 × 1.75 min ≈ 84 min, plus about 10 min of setup. That's **about 1 h 35 min**, just over the 1.5 h available.
-- **Cut rule:**
-  - if layout 4 isn't finished by 50 minutes in, stop after layout 6 (H P H V H P: 3 hidden, 2 partly, 1 visible);
-  - that's 36 runs, about 65 min;
-  - cut whole layouts so every model keeps the same layouts. Don't cut models.
+- **Stopping is decided at the table, as time goes** (demo rehearsal before 11:00):
+  - stop after a whole layout, so every model keeps the same layouts;
+  - the order H P H V H P H H keeps any early stop balanced (after layout 6: 3 hidden, 2 partly, 1 visible, 36 runs);
+  - if time is left after layout 8, add the `v2` block.
 - **Safety:**
   - only the person at the table starts a run, and agents never start one;
   - torque cap 200;
@@ -219,6 +221,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 | Time | What changed | Why |
 | --- | --- | --- |
 | 08:08 (before run 1) | `v2` dropped: 6 models, 48 runs | Tomi: improvement chain Tian's model > v2 > v1, so only the best is tested (Jakob) |
+| 08:13 (before run 1) | `hidden` is the priority; `v2` only as an extra block if time is left; stop time decided at the table | Jakob |
 | | | |
 
 ## 12. Notes from the table
