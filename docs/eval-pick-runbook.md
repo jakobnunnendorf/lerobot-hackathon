@@ -62,6 +62,7 @@ Options:
 - `--policy name=<repo or folder>[@step]`: repeat for each policy.
 - `--task "<sentence>"`: task sentence for language-conditioned policies (SmolVLA). Default: the sentence of `molnrb/so101_pick_rb_mixed`. ACT ignores it.
 - `--record <dir>`: write every run as one episode of a LeRobot dataset in `<dir>` (see "Recording the runs"). Off by default.
+- `--no-telemetry`: with `--record`, leave out the motor telemetry (see "Recording the runs"). Telemetry is on by default with `--record` and never on without it.
 - `--push-to-hub <repo_id>`: with `--record`, upload the dataset at the very end with the laptop's Hugging Face login.
 
 Any policy type works: it is read from the checkpoint's config. SmolVLA checkpoints trained with the top/wrist to camera1/camera2 rename carry that rename in their saved preprocessor; the script stops at start-up if a checkpoint expects other camera names. SmolVLA repos use step folders such as `checkpoints/003000` (`jakobnunnendorf/smolvla_redblue_v2` has 001000, 002000 and 003000, about 900 MB each); `@3000` also works.
@@ -76,6 +77,9 @@ bash scripts/eval/eval_pick.sh --record ~/so101/evals/ds_$(date +%Y%m%d) \
 With `--record <dir>`, each run is one episode of a LeRobot dataset (same features as the training data: 30 fps, `top` and `wrist` video, state, action, `task` = the `--task` sentence). Frames are kept in memory (as JPEG) during the run and written after you have entered the result, while the arm holds its pose, so the 30 Hz loop is not slowed; the script prints "saving the episode" for about 10 s after a 90 s run (measured on a Mac CPU; the laptop may differ). Each saved episode is a complete file on disk, so a crash loses only the run in progress. Runs that end before the first tick are not recorded.
 
 - `<dir>/runs.jsonl` has one line per episode: `episode_index`, run, layout, policy name, checkpoint, `policy_type`, `n_action_steps`, `git_commit`, `start_state`, `end`, `result`, `seconds`, `gripper_end` and the rest of the CSV row. The CSV gets an `episode_index` column too.
+- **Telemetry**, extra float32 features per tick next to the training features (the policy never sees them): `observation.motor_current`, `motor_load`, `motor_temperature`, `motor_voltage` (6 values each, raw servo units, motor order of the follower), `observation.wall_time` (seconds since the run started, taken right after the observation is read) and `observation.tick_ms` (period of the previous tick, NaN on the first). Current and load are read every tick, temperature and voltage once per second and carried forward. A failed read gives NaN and the run goes on. Estimated cost on the real bus: one Sync Read of 6 motors at 1 Mbaud is about 14 bytes out and 54 back, 0.7 ms on the wire plus servo reply delays, so 1-2 ms; two per tick is about 3-4 ms, 10-12% of the 33 ms tick. Not measured on the arm: check `slow ticks` in the first run with and without `--no-telemetry`.
+- `runs.jsonl` also gets `tick_ms_mean`, `tick_ms_max`, and `temperature_start` and `temperature_end` per motor.
+- A dataset dir keeps the feature set it was created with: appending with a different `--no-telemetry` setting stops at start-up.
 - If `<dir>` already holds a dataset, new runs are appended to it.
 - Check with `LeRobotDataset("local/eval_pick", root="<dir>")`.
 
