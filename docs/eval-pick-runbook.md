@@ -60,6 +60,24 @@ Options:
 - `--seconds 90`: time cap per run (default 90).
 - `--n-action-steps 20`: override for all policies (default: each checkpoint's own, 100).
 - `--policy name=<repo or folder>[@step]`: repeat for each policy.
+- `--task "<sentence>"`: task sentence for language-conditioned policies (SmolVLA). Default: the sentence of `molnrb/so101_pick_rb_mixed`. ACT ignores it.
+- `--record <dir>`: write every run as one episode of a LeRobot dataset in `<dir>` (see "Recording the runs"). Off by default.
+- `--push-to-hub <repo_id>`: with `--record`, upload the dataset at the very end with the laptop's Hugging Face login.
+
+Any policy type works: it is read from the checkpoint's config. SmolVLA checkpoints trained with the top/wrist to camera1/camera2 rename carry that rename in their saved preprocessor; the script stops at start-up if a checkpoint expects other camera names. SmolVLA repos use step folders such as `checkpoints/003000` (`jakobnunnendorf/smolvla_redblue_v2` has 001000, 002000 and 003000, about 900 MB each); `@3000` also works.
+
+```bash
+bash scripts/eval/eval_pick.sh --record ~/so101/evals/ds_$(date +%Y%m%d) \
+  --policy act=Space0code/act_redblue_from_foil_v2@20000 --policy vla=jakobnunnendorf/smolvla_redblue_v2@003000
+```
+
+## Recording the runs
+
+With `--record <dir>`, each run is one episode of a LeRobot dataset (same features as the training data: 30 fps, `top` and `wrist` video, state, action, `task` = the `--task` sentence). Frames are kept in memory (as JPEG) during the run and written after you have entered the result, while the arm holds its pose, so the 30 Hz loop is not slowed; the script prints "saving the episode" for a few seconds. Runs that end before the first tick are not recorded.
+
+- `<dir>/runs.jsonl` has one line per episode: `episode_index`, run, layout, policy name, checkpoint, `policy_type`, `n_action_steps`, `git_commit`, `start_state`, `end`, `result`, `seconds`, `gripper_end` and the rest of the CSV row. The CSV gets an `episode_index` column too.
+- If `<dir>` already holds a dataset, new runs are appended to it.
+- Check with `LeRobotDataset("local/eval_pick", root="<dir>")`.
 
 ## Safety (tell the person before the first SPACE)
 
@@ -96,6 +114,7 @@ Post on the board:
   - the control loop with the real policy;
   - the end on SPACE and on timeout;
   - the questions, the CSV, and HOME before every run and before quitting.
+- Tested on 2026-11-22 on a Mac, CPU, fake robot with random frames (`tests/eval_pick_record.py`): ACT `act_redblue_from_foil_v2@20000` and SmolVLA `smolvla_redblue_v2@003000` each ran 10 control ticks through `run_once`, two episodes recorded and reloaded with `LeRobotDataset` (20 frames).
 - **Not tested:** the real arm, the cameras, and keys typed into a WSL terminal. Watch the first run closely.
 
 Written by Claude
