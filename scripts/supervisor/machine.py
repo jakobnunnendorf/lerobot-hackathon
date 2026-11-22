@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 from grasp_check import GraspChecked, GraspCheckSettings, load_magnitude
-from skills import MoveTo, Skill
+from skills import MoveTo, Skill, pose_of
 
 
 class State(Enum):
@@ -45,6 +45,7 @@ class Settings:
     put_down_timeout_s: float = 20.0
     dance_timeout_s: float = 120.0
     bite_timeout_s: float = 45.0
+    bite_gripper_open: float = 60.0
     move_timeout_s: float = 15.0
     hold_range: tuple[float, float] = (6.0, 20.0)
     gripper_hold: float | None = None
@@ -350,6 +351,10 @@ class Supervisor:
         if holding and special and self.round.outcome is None:
             self.round.outcome = "refused_holding"
             return State.DONE, f"the gripper holds something: empty it before a {special}", {"reading": reading}
+        # After a bite a hold can only be a finger (a ball refuses the round): open, never ABORT, which would keep it.
+        if holding and self.round.bite:
+            self.log.write(event="bite_jaws_opened", round=self.round.number, reading=reading, move=self._open_bite_jaws())
+            holding = False
         if holding and special:
             return State.ABORT, f"gripper reads holding after the {special}", {"reading": reading}
         if holding:
@@ -538,7 +543,15 @@ class Supervisor:
         result = self.run_skill(self.round.bite, self.s.bite_timeout_s)
         self.round.outcome = result if result in ("bit", "no_finger") else f"bite_{result}"
         self.round.after_rest = State.DONE
-        return State.REST, f"bite: {result}", {"skill": result}
+        details = {"skill": result}
+        if result not in ("bit", "no_finger"):
+            details["jaws_opened"] = self._open_bite_jaws()
+        return State.REST, f"bite: {result}", details
+
+    # Cut off mid-bite, the jaws may be shut on a finger: open them where the arm is, in one step, before it moves.
+    def _open_bite_jaws(self) -> str:
+        opened = np.concatenate([pose_of(self.arm.last_sent)[:5], [self.s.bite_gripper_open]])
+        return self.run_skill(MoveTo("bite_open", opened, gripper_step=100.0), self.s.move_timeout_s)
 
     def _shake(self):
         result = self.run_skill(self.skills.shake(), self.s.shake_timeout_s)

@@ -30,16 +30,37 @@ def check(name: str, ok: bool, detail: str = "") -> None:
         failures.append(name)
 
 
+# The tracker sends a new message about every 2 ticks (15 fps of MediaPipe against the 30 Hz loop); between two, the
+# receiver hands out the newest one again. tips_at(message number, skill) scripts each new message.
 class ScriptedReceiver:
-    def __init__(self, tips_at):
-        self.tips_at, self.tick, self.skill = tips_at, 0, None
+    def __init__(self, tips_at, every: int = 2):
+        self.tips_at, self.every, self.tick, self.skill = tips_at, every, 0, None
+        self.message, self.tips = -1, []
+
+    def newest_pointing(self) -> tuple[int, list[np.ndarray]]:
+        if self.tick // self.every != self.message:
+            self.message = self.tick // self.every
+            self.tips = [np.array(tip, dtype=float) for tip in self.tips_at(self.message, self.skill)]
+        return self.message, list(self.tips)
 
     def newest_pointing_tips(self) -> list[np.ndarray]:
-        return [np.array(tip, dtype=float) for tip in self.tips_at(self.tick, self.skill)]
+        return self.newest_pointing()[1]
+
+
+# One MediaPipe detection, handed out again for its 0.5 s of freshness, then messages without a pointing hand.
+class OneFalseDetection:
+    def __init__(self, finger):
+        self.finger, self.tick, self.skill = np.array(finger, dtype=float), 0, None
+
+    def newest_pointing(self) -> tuple[int, list[np.ndarray]]:
+        return (0, [self.finger.copy()]) if self.tick < 15 else (self.tick, [])
+
+    def newest_pointing_tips(self) -> list[np.ndarray]:
+        return self.newest_pointing()[1]
 
 
 def held(*tips):
-    return lambda tick, skill: list(tips)
+    return lambda message, skill: list(tips)
 
 
 class Trace:
@@ -53,9 +74,9 @@ class Trace:
         return self.phases.index(phase) if phase in self.phases else -1
 
 
-def run(tips_at, settings: BiteSettings, start=READY, seconds: float = 20.0):
-    receiver = ScriptedReceiver(tips_at)
-    skill = BiteSkill(kinematics, receiver, settings, READY)
+def run(tips_at, settings: BiteSettings, start=READY, seconds: float = 20.0, ready=READY, receiver=None):
+    receiver = receiver or ScriptedReceiver(tips_at)
+    skill = BiteSkill(kinematics, receiver, settings, ready)
     receiver.skill = skill
     last_sent = action_of(start)
     obs, now, trace = dict(last_sent), 0.0, Trace()
@@ -160,9 +181,34 @@ def lost_after_freeze() -> None:
 
 def seen_too_rarely() -> None:
     finger = (0.30, 0.05, 0.15)
-    skill, trace = run(lambda tick, skill: [finger] if tick % 8 < 3 else [], BiteSettings(window_s=2.0))
-    check("a finger seen in only 3 of 8 frames: no aim, result 'no_finger'",
+    skill, trace = run(lambda message, skill: [finger] if message % 8 < 3 else [], BiteSettings(window_s=2.0))
+    check("a finger in only 3 of 8 tracker messages: no aim, result 'no_finger'",
           "AIM" not in trace.phases and skill.result() == "no_finger" and np.allclose(trace.commanded[:, :5], READY[:5]))
+
+
+def one_false_detection() -> None:
+    receiver = OneFalseDetection((0.30, 0.05, 0.15))
+    skill, trace = run(None, BiteSettings(window_s=2.0), receiver=receiver)
+    check("one pointing detection handed out again for 15 ticks counts once: no aim, result 'no_finger'",
+          "AIM" not in trace.phases and skill.result() == "no_finger" and np.allclose(trace.commanded[:, :5], READY[:5]),
+          f"phases {list(dict.fromkeys(trace.phases))}")
+    skill, trace = run(held((0.30, 0.05, 0.15)), BiteSettings(max_bites=1), receiver=ScriptedReceiver(held((0.30, 0.05, 0.15)), every=2))
+    check("a finger in every tracker message at the tracker's rate (a new message every 2 ticks) is still bitten",
+          skill.result() == "bit" and "AIM" in trace.phases)
+
+
+# Folded rest of the demo chain on the robot laptop; from it the tip passes 35 cm up, where pitch-0 IK has no solution
+# 32-35 cm out, so the Cartesian part of the way to such a mouth pose stalled until the bite timeout.
+DEMO_REST = np.array([-5.6, -102.8, 96.6, -100.1, -5.2, 30.0])
+
+
+def far_mouth_from_demo_rest() -> None:
+    for tip in ((0.0, -0.35, 0.15), (0.0, 0.35, 0.15), (0.25, -0.25, 0.15)):
+        ready = np.concatenate([kinematics.lerobot_degrees(kinematics.solve(np.array(tip), 0, 0, margin_deg=3)), [60.0]])
+        skill, trace = run(held(), BiteSettings(window_s=0.5), start=DEMO_REST, ready=ready, seconds=15)
+        check(f"from the demo rest pose to a mouth pose at {tip}: arrives (READY -> WATCH), no stall mid-air",
+              "WATCH" in trace.phases and skill.done({}, 0.0) and np.allclose(trace.commanded[-1, :5], ready[:5]),
+              f"{len(trace.phases) / FPS:.1f} s, last tip {np.round(trace.tips[-1], 3).tolist()}")
 
 
 def three_bites() -> None:
@@ -210,6 +256,8 @@ def main() -> None:
     lost_before_freeze()
     lost_after_freeze()
     seen_too_rarely()
+    one_false_detection()
+    far_mouth_from_demo_rest()
     three_bites()
     zone_mode()
     ready_pose_outside_refused()

@@ -151,6 +151,7 @@ def settings_from(args) -> Settings:
                     pick_timeout_s=args.pick_timeout, clear_timeout_s=args.clear_timeout,
                     give_timeout_s=args.give_timeout, put_down_timeout_s=args.put_down_timeout,
                     dance_timeout_s=args.dance_timeout, bite_timeout_s=args.bite_timeout,
+                    bite_gripper_open=bite_gripper_open(args),
                     hold_range=tuple(args.hold_range), gripper_hold=args.gripper_hold, hand_wait_s=args.hand_wait,
                     hold_min_load=args.hold_min_load,
                     min_visible_area_px=args.min_visible_area, min_held_target_area_px=args.min_held_target_area,
@@ -306,10 +307,19 @@ def bite_settings_from(args) -> BiteSettings:
         return step if args.max_step_deg is None else min(step, args.max_step_deg)
 
     return BiteSettings(mode=args.bite_mode, window_s=args.bite_window, max_bites=args.bite_max,
-                        gripper_close=args.bite_close,
-                        gripper_open=args.bite_ready[5] if args.bite_open is None else args.bite_open,
+                        gripper_close=args.bite_close, gripper_open=bite_gripper_open(args),
                         standoff_m=args.bite_standoff, min_height_m=args.bite_min_height, max_pan_deg=args.bite_max_pan,
                         max_step_deg=cap(BiteSettings.max_step_deg), lunge_step_deg=cap(args.bite_lunge_step_deg))
+
+
+def bite_gripper_open(args) -> float:
+    if args.bite_open is not None:
+        return args.bite_open
+    return args.bite_ready[5] if args.bite_ready else Settings.bite_gripper_open
+
+
+# The arm needs time to reach the mouth pose before the window starts and to finish a bite started at its end.
+BITE_TIMEOUT_MARGIN_S = 15.0
 
 
 def bite_problem(args, has_receiver: bool, has_kinematics: bool) -> str | None:
@@ -317,6 +327,14 @@ def bite_problem(args, has_receiver: bool, has_kinematics: bool) -> str | None:
         return None
     if args.bite_ready is None:
         return "--bite needs --bite-ready: the mouth pose's 5 joints + gripper (deg), read with read_pose.py"
+    if args.bite_timeout < args.bite_window + BITE_TIMEOUT_MARGIN_S:
+        return (f"--bite-timeout {args.bite_timeout} must be at least --bite-window {args.bite_window} "
+                f"+ {BITE_TIMEOUT_MARGIN_S:.0f} s, or the round can be cut off mid-bite")
+    # REST reads the gripper: open jaws inside the holding band would look like a hold after every bite.
+    low, high = args.hold_range
+    if low <= bite_gripper_open(args) <= high:
+        flag = "--bite-open" if args.bite_open is not None else "--bite-ready's gripper value"
+        return f"{flag} {bite_gripper_open(args)} is inside the holding band {low}-{high} (--hold-range): open the jaws wider"
     if not has_receiver:
         return f"--bite needs the hand receiver: no hand_socket.py in {args.handover_dir}"
     if not has_kinematics:

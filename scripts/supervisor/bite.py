@@ -91,7 +91,7 @@ class BiteSkill:
     def start(self, obs, last_sent, now):
         self.commanded = pose_of(last_sent)[:5]
         self.gripper = self.s.gripper_open
-        self.bites, self.watch_started, self.finished = 0, None, False
+        self.bites, self.watch_started, self.finished, self.last_message = 0, None, False, None
         self._enter(Phase.READY, now)
 
     def step(self, obs, now):
@@ -137,8 +137,9 @@ class BiteSkill:
         self._enter(Phase.WATCH, now)
 
     def _watch(self, now: float) -> None:
-        tip = self._candidate(self.mouth)
-        self.seen.append(tip is not None)
+        new, tip = self._new_candidate(self.mouth)
+        if new:
+            self.seen.append(tip is not None)
         if tip is not None:
             self.tips.append(tip)
         if now - self.watch_started >= self.s.window_s:
@@ -160,7 +161,7 @@ class BiteSkill:
 
     def _aim(self, now: float) -> None:
         if not self.frozen:
-            tip = self._candidate(self.finger)
+            _, tip = self._new_candidate(self.finger)
             if tip is not None:
                 self.tips.append(tip)
                 self.finger = np.median(self.tips, axis=0)
@@ -200,19 +201,23 @@ class BiteSkill:
 
     # From the folded rest pose (tip behind the pan axis) only a joint move gets there; once near the mouth pose the
     # last centimetre is a joint move too, so it ends on the taught joints even if they are not exactly pitch 0.
+    # A Cartesian step that cannot move (no pitch-0 solution 35 cm up, 32-35 cm out, on the way from the demo rest)
+    # falls back to the joint move: without it the arm hung mid-air until the bite timeout.
     def _go_to_mouth(self) -> None:
         tip = self._tip()
         self.latched |= np.linalg.norm(tip - self.mouth) < LATCH_M
-        if self.latched or not self._in_workspace(tip, slack=self.s.guard_slack_m):
+        cartesian = not self.latched and self._in_workspace(tip, slack=self.s.guard_slack_m)
+        if not (cartesian and self._move_tip(self.mouth, self.s.step_m, self.s.max_step_deg)):
             self.commanded = self._guarded(self.ready, self.s.max_step_deg, base=self.latched)
-        else:
-            self._move_tip(self.mouth, self.s.step_m, self.s.max_step_deg)
 
-    def _move_tip(self, target: np.ndarray, step_m: float, max_step_deg: float) -> None:
-        waypoint = self._clamp(toward(self._tip(), target, step_m))
-        goal = self._solve(waypoint)
-        if goal is not None:
-            self.commanded = self._guarded(goal, max_step_deg)
+    def _move_tip(self, target: np.ndarray, step_m: float, max_step_deg: float) -> bool:
+        goal = self._solve(self._clamp(toward(self._tip(), target, step_m)))
+        if goal is None:
+            return False
+        moved = self._guarded(goal, max_step_deg)
+        changed = not np.allclose(moved, self.commanded)
+        self.commanded = moved
+        return changed
 
     def _solve(self, point: np.ndarray) -> np.ndarray | None:
         try:
@@ -245,10 +250,15 @@ class BiteSkill:
     def _at_ready(self, measured: np.ndarray) -> bool:
         return bool(np.allclose(self.commanded, self.ready) and np.abs(measured - self.ready).max() <= self.s.arrive_tol_deg)
 
-    def _candidate(self, near: np.ndarray) -> np.ndarray | None:
-        valid = [tip for tip in map(self._as_point, self.receiver.newest_pointing_tips()) if tip is not None
-                 and self._targetable(tip)]
-        return min(valid, key=lambda tip: np.linalg.norm(tip - near), default=None)
+    # The receiver hands out its newest tracker message for up to 0.5 s; only a message not looked at before counts,
+    # or one false detection fills "5 of the last 8" and the median on its own.
+    def _new_candidate(self, near: np.ndarray) -> tuple[bool, np.ndarray | None]:
+        message, tips = self.receiver.newest_pointing()
+        if message == self.last_message:
+            return False, None
+        self.last_message = message
+        valid = [tip for tip in map(self._as_point, tips) if tip is not None and self._targetable(tip)]
+        return True, min(valid, key=lambda tip: np.linalg.norm(tip - near), default=None)
 
     @staticmethod
     def _as_point(tip) -> np.ndarray | None:

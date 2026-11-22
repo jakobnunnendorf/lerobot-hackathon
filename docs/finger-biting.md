@@ -25,7 +25,7 @@ python scripts/handtrack/hand_tracker.py --model hand_landmarker.task \
 
 - Point with one hand, the finger about 15 cm above the table, in front of the arm where the mouth will face. Twice a second it prints the hand with `pointing`. An open palm or a fist must not say `pointing`.
 - Check that the camera sees the finger there: no `no hand` while you point. If it only sees it elsewhere, choose the mouth direction (step 2) towards where it sees fingers.
-- Hold the fingertip over a point you can measure. The tracker prints the palm's x and y. The bite uses the fingertip at `--finger-z`, so hold it at that height. If people naturally point higher or lower, change `--finger-z` to that height (in m) and keep it for step 3.
+- Hold the fingertip over a point you can measure. The tracker prints the palm's x and y. The bite uses the fingertip at `--finger-z`, so hold it at that height. If people naturally point higher or lower, change `--finger-z` to that height (in m) and keep it for step 3. `--finger-z` must be at least `--bite-min-height` (0.15): below it every finger is outside the bite workspace and the arm never bites.
 
 Ctrl+C.
 
@@ -65,7 +65,7 @@ Start a round (tile, "bite the finger", or `f` + Enter). Expect:
 2. An adult points a finger right in front of the jaws, about 4 cm ahead of them. The arm lunges straight forward, snaps, opens, backs off.
 3. After the bite (or 30 s with no finger) it folds back to rest. The round shows as `bit` or `no_finger`.
 
-**Stop:** ABORT on the page, or `a` + Enter in terminal 1. The arm stops where it is with torque on.
+**Stop:** ABORT on the page, or `a` + Enter in terminal 1. The arm stops where it is with torque on, and so do the jaws: ABORT keeps them as they are. If a finger is caught in the jaws, switch the power off; with the torque off the jaws let go.
 
 ## 4. Aim mode
 

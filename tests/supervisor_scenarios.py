@@ -610,9 +610,12 @@ class PointingReceiver:
     def __init__(self, tips):
         self.tips, self.calls = [np.array(tip, dtype=float) for tip in tips], 0
 
-    def newest_pointing_tips(self):
+    def newest_pointing(self):
         self.calls += 1
-        return list(self.tips)
+        return self.calls, list(self.tips)
+
+    def newest_pointing_tips(self):
+        return self.newest_pointing()[1]
 
 
 class OneCommand:
@@ -665,6 +668,21 @@ def bite(log_path: str, handover_dir: Path) -> None:
     check("bite: a pointing finger seen during a PICK -> GIVE round does nothing (the tips are never read)",
           result.outcome == "given" and receiver.calls == 0 and "BITE" not in [s.value for s in result.states],
           f"{result.outcome}, {receiver.calls} reads")
+
+    scenario = next(s for s in SCENARIOS if s.name == "bite_times_out_with_finger_in_jaws_opens")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    sent, original = [], arm.send
+    arm.send = lambda action: (sent.append(pose_of(action)), original(action))
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), TransitionLog(None, echo=False), abort,
+                        clock).run_round(1, bite=True)
+    sent = np.array(sent)
+    closed = int(np.argmax(sent[:, 5] == 5.0))
+    opened = closed + int(np.argmax(sent[closed:, 5] >= 60.0))
+    check("bite: time budget out during SNAP with a finger in the jaws -> the jaws open where the arm is, then REST, no ABORT",
+          [s.value for s in result.states] == ["REST", "BITE", "REST", "DONE"] and result.outcome == "bite_timeout"
+          and opened > closed and np.allclose(sent[opened, :5], sent[closed, :5]) and not world.holding
+          and np.allclose(sent[-1], pose_of(FakeArm(World(), abort).last_sent)),
+          f"{[s.value for s in result.states]} {result.outcome}, closed at send {closed}, opened at {opened}")
 
     scenario = next(s for s in SCENARIOS if s.name == "bite_unavailable_refused")
     arm, skills, sensors, settings, abort, clock, world = build(scenario)
@@ -735,6 +753,21 @@ def bite(log_path: str, handover_dir: Path) -> None:
                  (ready_flags, True, False))]
     check("bite flags: no --bite is fine; --bite needs --bite-ready, the hand receiver and kinematics.py",
           problems[:2] == [None, None] and all(problems[2:]) and "--bite-ready" in problems[2], str(problems))
+    open_in_band = ("--bite", "--bite-ready", *map(str, ready[:5]), "12")
+    refusals = {name: run_supervisor.bite_problem(parsed(*flags), True, True) for name, flags in {
+        "short timeout": (*ready_flags, "--bite-timeout", "40"),
+        "long window": (*ready_flags, "--bite-window", "31"),
+        "ready gripper in band": open_in_band,
+        "open in band": (*ready_flags, "--bite-open", "15"),
+        "open overrides ready gripper": (*open_in_band, "--bite-open", "60"),
+        "close in band is fine": (*ready_flags, "--bite-close", "10"),
+        "window 30, timeout 45": ready_flags}.items()}
+    check("bite flags: refused when --bite-timeout < --bite-window + 15 s, or when the open gripper value is inside the "
+          "holding band (the flag is named); a close value in the band is fine",
+          "--bite-timeout" in (refusals["short timeout"] or "") and "--bite-timeout" in (refusals["long window"] or "")
+          and "--bite-ready" in (refusals["ready gripper in band"] or "") and "--bite-open" in (refusals["open in band"] or "")
+          and refusals["open overrides ready gripper"] is None and refusals["close in band is fine"] is None
+          and refusals["window 30, timeout 45"] is None, str(refusals))
     available = run_supervisor.available(Skills(pick=lambda: None, put_down=lambda: None, bite=lambda: None))
     check("bite: status says available.bite only when the robot program has a bite skill",
           available["bite"] is True and run_supervisor.available(Skills(pick=lambda: None, put_down=lambda: None))["bite"] is False

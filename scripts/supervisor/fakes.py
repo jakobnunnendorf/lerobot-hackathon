@@ -170,6 +170,32 @@ class FakeGraspPick:
         self.world.queries += 1
 
 
+# A bite whose jaws close on a finger and that never finishes (its time budget runs out during SNAP): the gripper reads
+# a hold (13, load 480) until it opens again.
+class FingerCaughtBite:
+    name = "bite"
+
+    def __init__(self, world: World):
+        self.world = world
+
+    def start(self, obs, last_sent, now):
+        self.pose, self.count = pose_of(last_sent), 0
+
+    def step(self, obs, now):
+        self.count += 1
+        self.pose[0] = min(self.pose[0] + 1.0, DRY_RUN_REST[0] + 20.0)
+        if self.count == 20:
+            self.pose[5] = 5.0
+            self.world.holding, self.world.hold_goal, self.world.release_ok = True, 5.0, True
+        return action_of(self.pose)
+
+    def done(self, obs, now):
+        return False
+
+    def result(self):
+        return "snapping"
+
+
 def scripted(name: str, world: World, outcomes: list[str], effect, ticks: int = 30):
     remaining = list(outcomes)
     return lambda: ScriptedSkill(name, world, remaining.pop(0) if len(remaining) > 1 else remaining[0], effect, ticks)
@@ -269,6 +295,7 @@ class Scenario:
     bite: bool = False
     bite_available: bool = True
     bites: list[str] = field(default_factory=lambda: ["bit"])
+    finger_caught: bool = False
 
 
 DANCE_SPEED = 0.5
@@ -332,8 +359,8 @@ def build(scenario: Scenario):
         if scenario.colour_pick else None,
         shake=scripted("shake", world, ["ok"], lambda outcome, last_sent: None) if scenario.shake else None,
         dance=synthetic_dance(scenario.dance_max_step_deg) if scenario.dance_available else None,
-        bite=scripted("bite", world, scenario.bites, lambda outcome, last_sent: _with_gripper(last_sent, 60.0))
-        if scenario.bite_available else None,
+        bite=None if not scenario.bite_available else (lambda: FingerCaughtBite(world)) if scenario.finger_caught
+        else scripted("bite", world, scenario.bites, lambda outcome, last_sent: _with_gripper(last_sent, 60.0)),
     )
     sensors = Sensors(target=lambda: scenario.target, visible_area=lambda frame: 0 if world.buried else 800,
                       palms_seen=lambda: world.hand, destination=lambda: world.destination,
@@ -444,4 +471,6 @@ SCENARIOS = [
     Scenario("bite_refused_while_holding", [R, D], "refused_holding", bite=True, holding_at_start=True),
     Scenario("bite_unavailable_refused", [], "unsupported_bite", bite=True, bite_available=False),
     Scenario("abort_key_during_bite", [R, BI, A], "aborted", bite=True, bites=["hang"], abort_at_tick=40),
+    Scenario("bite_times_out_with_finger_in_jaws_opens", [R, BI, R, D], "bite_timeout", bite=True, finger_caught=True,
+             settings={"bite_timeout_s": 2.0}),
 ]

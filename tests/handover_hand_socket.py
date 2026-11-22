@@ -67,8 +67,18 @@ def main():
     r.open_only = False
     check("open_only off: fists count again", feed(r, hands=[hand(False), hand(False)]), (2, 2))
     r.open_only = True
+    feed(r, hands=[pointing()])
+    first, _ = r.newest_pointing()
+    same = r.newest_pointing()
+    feed(r, hands=[hand()])
+    after_palm = r.newest_pointing()
+    feed(r, hands="x")
+    check("message number: the same message twice keeps it, every stored line (pointing or not) adds one, garbage none",
+          (same[0] - first, [tuple(t) for t in same[1]], after_palm[0] - first, after_palm[1], r.newest_pointing()[0] - first),
+          (0, [(0.30, 0.05, 0.15)], 1, [], 1))
     r.max_age_s = -1
-    check("stale frame counts nothing", (len(r.newest_hands()), r.newest_palm_count(), tips()), (0, 0, []))
+    check("stale frame counts nothing", (len(r.newest_hands()), r.newest_palm_count(), tips(), r.newest_pointing()[1]),
+          (0, 0, [], []))
     print("PASS" if not failures else f"FAIL: {failures}")
     sys.exit(1 if failures else 0)
 
