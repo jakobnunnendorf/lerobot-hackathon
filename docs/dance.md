@@ -55,6 +55,8 @@ Click **💃 Dance**, type "let's dance", or press `d` + Enter in terminal 1. Ex
    - Then about 40 s of dancing, the gripper half open and still.
 3. **Rest**: it folds back. The round shows under **Rounds** as `danced`, and the dashboard films it like any round.
 
+**Music:** when the dance starts, the dashboard page plays a 10 s clip on the speakers of the computer that shows it. Turn the volume up, and click anywhere on the page once after loading it, or the browser keeps it muted. **🔊 Dance music** in the header turns it off. To play your own clip instead of the chiptune, save it as `scripts/dashboard/static/music/dance.mp3` (git-ignored, stays on that laptop) and reload the page. Why: `decisions/dance-music.md`.
+
 **Watch the fold-out.** If the arm leans towards the table or the bowl, or the wrist bends the opposite way from the dataset video, press **ABORT**: the recording does not match our arm.
 
 **Stop:** ABORT on the page, or `a` + Enter in terminal 1. The arm stops where it is with torque on. Hold the arm, then switch the power off.

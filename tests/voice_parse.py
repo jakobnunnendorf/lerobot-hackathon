@@ -3,7 +3,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "voice"))
 
-from commands import DEFAULT_TARGET, from_key, parse, rejection_reason, scores, wants_bite, wants_dance  # noqa: E402
+from commands import (  # noqa: E402
+    DEFAULT_TARGET, from_key, parse, parse_plan, rejection_reason, scores, wants_bite, wants_dance,
+)
 
 ACCEPTED = [
     ("Give it to me.", "hand"),
@@ -49,7 +51,33 @@ COLOURED = [
     ("Give me the blue ball.", "hand", "blue"),
     ("Put the red ball in the container.", "container", "red"),
     ("I'm tired, give it to me.", "hand", "striped"),
+    ("Give me a red ball.", "hand", "red"),
+    ("Give me the striped one.", "hand", "striped"),
 ]
+
+B3_R2_S = (("blue", 3), ("red", 2), ("striped", 1))
+PLANS = [
+    ("Pick up 3 blue balls and 2 red balls, then the target ball.", B3_R2_S, None),
+    ("Take out three blue balls and two red balls, then give me the striped ball.", B3_R2_S, "hand"),
+    ("Take out 3 blue and 2 red, then put the striped ball in the container.", B3_R2_S, "container"),
+    ("Hey bot, take out three of the blue balls and two red ones, then hand me the yellow and green ball.", B3_R2_S, "hand"),
+    ("Take out a red ball and two blue balls, then give me the striped one.",
+     (("red", 1), ("blue", 2), ("striped", 1)), "hand"),
+    ("Give me the striped ball after you take out one red ball.", (("red", 1), ("striped", 1)), "hand"),
+    ("Take out four red balls.", (("red", 4),), None),
+    ("Take out 1 blue, 1 red and 1 blue ball.", (("blue", 1), ("red", 1), ("blue", 1)), None),
+]
+
+PLAN_REJECTED = [
+    ("Take out 3 purple balls, then give me the striped ball.", "a count without a known ball colour ('3')"),
+    ("Take out blue balls and 2 red balls.", "no count for the blue balls"),
+    ("Take out 2 red balls and the blue ones.", "no count for the blue balls"),
+    ("Give me two striped balls after 1 red ball.", "there is only one striped ball"),
+    ("Give it to me in 2 seconds.", "a count without a known ball colour ('2')"),
+]
+
+PLAN_MESSAGE = {"plan": [{"target": "blue", "count": 3}, {"target": "red", "count": 2}, {"target": "striped", "count": 1}],
+                "destination": "hand", "transcript": PLANS[1][0], "source": "voice"}
 
 REJECTED = [
     "",
@@ -102,6 +130,19 @@ for transcript, destination, target in COLOURED:
     command = parse(transcript)
     if command is None or (command.destination, command.target) != (destination, target):
         failures.append(f"expected {destination!r} {target!r} got {command}  <- {transcript!r}")
+for transcript, steps, destination in PLANS:
+    plan = parse_plan(transcript)
+    if plan is None or (plan.steps, plan.destination) != (steps, destination) or parse(transcript) is not None:
+        failures.append(f"plan: expected {steps} {destination!r}, got {plan}, parse {parse(transcript)}  <- {transcript!r}")
+for transcript, reason in PLAN_REJECTED:
+    if parse_plan(transcript) is not None or parse(transcript) is not None or rejection_reason(transcript) != reason:
+        failures.append(f"plan: expected rejection {reason!r}, got {parse_plan(transcript)} / {rejection_reason(transcript)!r}"
+                        f"  <- {transcript!r}")
+for transcript in [t for t, _ in ACCEPTED] + [t for t, _, _ in COLOURED] + REJECTED + DANCE:
+    if parse_plan(transcript) is not None:
+        failures.append(f"plan from an old command  <- {transcript!r}")
+if (message := parse_plan(PLANS[1][0]).message()) != PLAN_MESSAGE:
+    failures.append(f"plan message: {message}")
 for transcript in REJECTED:
     if (command := parse(transcript)) is not None:
         failures.append(f"expected rejection, got {command.destination!r}  <- {transcript!r}")
@@ -133,11 +174,12 @@ shown = scores("Give me the red ball.")
 if not (shown.destinations["hand"] == 1.0 > shown.destinations["container"] and shown.colours == ("red",)):
     failures.append(f"scores for 'Give me the red ball.': {shown}")
 
-total = len(ACCEPTED) + len(COLOURED) + len(REJECTED) + len(REASONS) + len(KEYS) + len(DANCE) + len(NOT_DANCE) + len(BITE) + len(NOT_BITE) + len(MIXED_WITH_BITE)
+total = (len(ACCEPTED) + len(COLOURED) + len(REJECTED) + len(REASONS) + len(KEYS) + len(DANCE) + len(NOT_DANCE)
+         + len(BITE) + len(NOT_BITE) + len(MIXED_WITH_BITE) + len(PLANS) + len(PLAN_REJECTED))
 print(
     f"{total} cases: {len(ACCEPTED)} accepted, {len(COLOURED)} with a colour, {len(REJECTED)} rejected, "
     f"{len(REASONS)} reasons, {len(KEYS)} keys, {len(DANCE)} dances, {len(NOT_DANCE)} not dances, {len(BITE)} bites, "
-    f"{len(NOT_BITE) + len(MIXED_WITH_BITE)} not bites"
+    f"{len(NOT_BITE) + len(MIXED_WITH_BITE)} not bites, {len(PLANS)} plans, {len(PLAN_REJECTED)} plans rejected"
 )
 for failure in failures:
     print("FAIL", failure)

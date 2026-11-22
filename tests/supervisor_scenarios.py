@@ -46,7 +46,7 @@ def fake_scenarios(log_path: str) -> None:
             problems.append(world.violations[0])
         if arm.sends_after_abort:
             problems.append(f"{arm.sends_after_abort} actions sent after abort")
-        if scenario.outcome in ("given", "put_down", "gave_up", "wrong_ball") and not np.allclose(pose_of(arm.last_sent), pose_of(FakeArm(World(), abort).last_sent)):
+        if scenario.outcome in ("given", "put_down", "gave_up", "wrong_ball", "cleared", "step_gave_up") and not np.allclose(pose_of(arm.last_sent), pose_of(FakeArm(World(), abort).last_sent)):
             problems.append("did not end at the rest pose")
         check(f"scenario {scenario.name}", not problems, "; ".join(problems))
     with open(log_path) as lines:
@@ -119,6 +119,156 @@ def voice_container() -> None:
     states = [s.value for s in result.states]
     check("voice: link.send -> CommandReceiver -> 'container' with a hand present -> PUT_DOWN",
           sent and states == scenario.expected, f"sent={sent} states={states}")
+    commands.voice.close()
+
+
+SPOKEN_PLAN = "Take out two red balls and one blue ball, then give me the striped ball."
+SPOKEN_PLAN_MESSAGE = {"plan": [{"target": "red", "count": 2}, {"target": "blue", "count": 1},
+                                {"target": "striped", "count": 1}], "destination": "hand"}
+
+
+# Loaded by path: the supervisor's own `commands` module already holds that name.
+def spoken_plan_message() -> tuple[dict, str]:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("voice_commands", SUPERVISOR.parent / "voice" / "commands.py")
+    voice = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(voice)
+    except ImportError as error:  # rapidfuzz lives in the voice environment, not in LeRobot's
+        return {**SPOKEN_PLAN_MESSAGE, "transcript": SPOKEN_PLAN, "source": "voice"}, f"literal message ({error.name} missing)"
+    return voice.parse_plan(SPOKEN_PLAN).message(), "parsed"
+
+
+def multistep(log_path: str) -> None:
+    from commands import plan_from_keys, valid_plan
+
+    link = import_from(SUPERVISOR.parent / "voice", "link")
+    message, how = spoken_plan_message()
+    commands, port = Commands(), 18773
+    commands.listen_voice("127.0.0.1", port)
+    sent = link.send(message, port=port)
+    deadline = time.monotonic() + 3
+    while commands.plan() is None and time.monotonic() < deadline:
+        time.sleep(1 / 30)
+    check(f"plan: spoken sentence ({how}) -> link -> Commands.plan, destination and go",
+          sent and commands.plan() == (("red", 2), ("blue", 1), ("striped", 1)) and commands.destination() == "hand"
+          and commands.go.is_set(), f"{commands.plan()} {commands.destination()}")
+
+    scenario = next(s for s in SCENARIOS if s.name == "plan_red2_blue1_then_striped")
+    arm, skills, sensors, settings, abort, clock, world = build(scenario)
+    sensors.plan, sensors.destination, sensors.finish_round = commands.plan, commands.destination, commands.clear
+    starts = {}
+    for colour in ("red", "blue"):
+        factory = skills.clear_colour[colour]
+        skills.clear_colour[colour] = lambda colour=colour, factory=factory: (
+            starts.setdefault(colour, (arm.last_sent["shoulder_pan.pos"], arm.last_sent["gripper.pos"])), factory())[1]
+    log = TransitionLog(log_path, echo=False)
+    result = Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+    log.file.close()
+    events = [json.loads(line) for line in open(log_path)]
+    open(log_path, "w").close()
+    states = [s.value for s in result.states]
+    drops = [(e["step_colour"], e["hole"]) for e in events if e["event"] == "drop"]
+    check("plan: STEP red x2 -> STEP blue x1 -> REST -> PICK chain -> given, drops counted from the joints",
+          states == scenario.expected and result.outcome == "given" and drops == [("red", "red")] * 2 + [("blue", "blue")]
+          and events[-1]["drops"] == {"red": 2, "blue": 1}, f"{states} {drops}")
+    check("plan: the blue step starts where the last red drop ended (red hole, gripper open), not at rest",
+          starts["red"] == (0.0, 30.0) and starts["blue"] == (-30.0, 40.0), str(starts))
+    check("plan: cleared with the round", commands.plan() is None and commands.destination() is None)
+
+    def run(name: str) -> list[dict]:
+        scenario = next(s for s in SCENARIOS if s.name == name)
+        arm, skills, sensors, settings, abort, clock, world = build(scenario)
+        log = TransitionLog(log_path, echo=False)
+        Supervisor(arm, skills, sensors, settings, pose_of(arm.last_sent), log, abort, clock).run_round(1)
+        log.file.close()
+        events = [json.loads(line) for line in open(log_path)]
+        open(log_path, "w").close()
+        return events
+
+    events = run("plan_wrong_colour_drop_counts_for_its_hole")
+    drops = [(e["step_colour"], e["hole"], e["wrong_colour"]) for e in events if e["event"] == "drop"]
+    skipped = [e["reason"] for e in events if e.get("source") == "STEP" and e.get("target") == "REST"]
+    check("plan: a blue drop during the red step counts for blue and is logged; the blue step is then skipped",
+          drops == [("red", "blue", True), ("red", "red", False)] and skipped == ["blue: 1 already dropped; now the striped ball"],
+          f"{drops} {skipped}")
+    events = run("plan_step_timeout_reprompts")
+    steps = [(e["skill"], e["prompt"]) for e in events if e.get("source") == "STEP"]
+    releases = [e["pan"] for e in events if e["event"] == "release"]
+    check("plan: an empty close over the bowl is a release, not a drop; a timeout with an empty gripper re-prompts",
+          steps == [("timeout", 1), ("count_reached", 2)] and releases == [0.0], f"{steps} {releases}")
+    events = run("plan_step_gives_up_after_3_reprompts")
+    prompts = [e["prompt"] for e in events if e.get("source") == "STEP"]
+    check("plan: at most 3 re-prompts, then the round gives up at rest",
+          prompts == [1, 2, 3, 4] and events[-1]["outcome"] == "step_gave_up", str(prompts))
+    events = run("plan_empty_trips_to_the_hole_are_not_drops")
+    opens = [(e["event"], e["hole"], e["pan"], e["closed_min"]) for e in events if e["event"] in ("drop", "release")]
+    check("plan: an empty close carried to the hole and opened there is a release, not a drop (arm test 2026-11-22)",
+          [o[:2] for o in opens] == [("release", None), ("release", None), ("drop", "blue")]
+          and opens[0][2] == 25.0 and opens[0][3] < 5 <= opens[2][3], str(opens))
+    events = run("plan_grasp_check_empty_close_reprompts_in_the_bowl")
+    steps = [(e["skill"], e["prompt"], e.get("grasp_misses")) for e in events if e.get("source") == "STEP"]
+    checks = [(e["step_colour"], e["phase"]) for e in events if e["event"] == "grasp_check"]
+    hole_pans = [e["pan"] for e in events if e["event"] == "release"]
+    check("plan + grasp check: an empty close is opened in the bowl and re-prompted at once, no trip to the hole",
+          steps == [("grasp_miss", 1, 1), ("count_reached", 2, None)] and ("red", "settle") in checks
+          and all(abs(p) < 5 for p in hole_pans), f"{steps} {checks} {hole_pans}")
+    events = run("plan_grasp_check_hold_still_drops_at_the_hole")
+    drops = [(e["hole"], e["pan"]) for e in events if e["event"] == "drop"]
+    check("plan + grasp check: a held ball is not locked, the policy still opens at its hole and the drop counts",
+          drops == [("red", -30.0)] and not any(e.get("phase") == "release_blocked" for e in events), str(drops))
+    events = run("plan_grasp_check_misses_give_up")
+    end = events[-1]
+    check("plan + grasp check: 8 empty closes re-prompt, the 9th gives up at rest",
+          end["outcome"] == "step_gave_up" and sum(e.get("skill") == "grasp_miss" for e in events) == 9, end["outcome"])
+    events = run("plan_step_still_holding_reprompts_then_aborts")
+    reasons = [e["reason"] for e in events if e.get("source") == "STEP"]
+    check("plan: a timeout while holding re-prompts (the drop may still come), ABORT only after the last re-prompt",
+          [r.split(": re-prompt")[0] for r in reasons[:3]] == ["red step timeout, still holding"] * 3
+          and reasons[-1] == "red step: still holding after 4 prompts", str(reasons))
+    events = run("plan_refused_without_blue_policy")
+    end = events[-1]
+    check("plan: refused before the arm moves when a colour has no clear policy, the log names the flag",
+          end["outcome"] == "unsupported_plan" and "--clear-blue-policy" in end["reason"], end["reason"])
+
+    from drops import DropCounter, DropRule
+
+    counter = DropCounter(DropRule())
+    track = [(40, 0), (13, 0), (30, 5), (12.5, 0), (14, -31), (16.8, -31), (12.5, -31), (25, -31), (13, 10), (19, 26),
+             (17, 26), (30, 26)]
+    opened = [counter.update({"gripper.pos": g, "shoulder_pan.pos": pan}) for g, pan in track]
+    check("drop counter: re-grasp over the bowl is a release; a partial open (16.8, rb_mixed ep 11) is missed; "
+          "open past 18 at pan -31 red, at +26 blue; no second count without a new close",
+          [o for o in opened if o] == [(None, 5), ("red", -31), ("blue", 26)] and counter.counts == {"red": 1, "blue": 1},
+          f"{opened} {counter.counts}")
+    counter = DropCounter(DropRule())
+    track = [(40, 0), (1.6, -8), (4.0, -20), (30, -30), (12, -8), (11.5, -30), (30, -30)]
+    opened = [counter.update({"gripper.pos": g, "shoulder_pan.pos": pan}) for g, pan in track]
+    check("drop counter: an empty close (lowest reading 1.6) opened over the red hole is a release; a held one counts",
+          [o for o in opened if o] == [(None, -30), ("red", -30)] and counter.counts == {"red": 1, "blue": 0},
+          f"{opened} {counter.counts}")
+
+    keys = {"p 3b 2r s h":((("blue", 3), ("red", 2), ("striped", 1)), "hand"), "p 2r": ((("red", 2),), None),
+            "P 1b s C": ((("blue", 1), ("striped", 1)), "container"), "p": None, "p 3x": None, "p s 2r": None,
+            "p 2s": None, "p 0r": None, "p 2r h c": None}
+    parsed = {line: plan_from_keys(line) for line in keys}
+    check("plan keys: p 3b 2r s h; striped only last and once; one destination letter", parsed == keys, str(parsed))
+    check("plan message: counts must be positive integers, colours known",
+          valid_plan([{"target": "red", "count": 2}]) == (("red", 2),)
+          and all(valid_plan(bad) is None for bad in ([], [{"target": "green", "count": 1}], [{"target": "red", "count": 0}],
+                                                       [{"target": "red", "count": "2"}], [{"target": "red"}], "red")))
+    link.send({"plan": [{"target": "striped", "count": 1}, {"target": "red", "count": 1}], "destination": None}, port=port)
+    link.send({"target": "red", "destination": "container"}, port=port)
+    deadline = time.monotonic() + 3
+    while commands.target() is None and time.monotonic() < deadline:
+        time.sleep(1 / 30)
+    check("plan: an invalid plan is refused; a later single command replaces nothing it should not",
+          commands.plan() is None and commands.target() == "red")
+    commands.set_plan((("red", 1),))
+    check("plan and single target replace each other", commands.target() is None and commands.plan() == (("red", 1),))
+    check("link.decode accepts a plan message", link.decode(json.dumps(SPOKEN_PLAN_MESSAGE)) == SPOKEN_PLAN_MESSAGE
+          and link.decode(json.dumps({"plan": "3 red"})) is None)
     commands.voice.close()
 
 
@@ -489,6 +639,21 @@ def robot_flags() -> None:
           and settings.min_held_target_area_px is None and tuple(args.held_check_roi) == WRIST_HELD_ROI == (0.52, 0.72, 0.2, 0.25)
           and [c.fourcc for c in cameras.values()] == ["MJPG", "MJPG"] and cameras["wrist"].index_or_path == "/dev/video2",
           f"{settings.held_check_colours} {settings.min_held_area_px} {[c.fourcc for c in cameras.values()]}")
+    rule = settings.drop_rule
+    check("plan defaults: no colour policies, 30 s per prompt, 3 re-prompts, drop rule 16.5/18 and pan -25/+18",
+          (args.clear_red_policy, args.clear_blue_policy, settings.step_timeout_s, settings.max_step_reprompts,
+           rule.holding_below, rule.open_at, rule.red_pan_below, rule.blue_pan_above)
+          == (None, None, 30.0, 3, 16.5, 18.0, -25.0, 18.0), str(rule))
+    args = parsed("--clear-red-policy", "me/act_clear_red", "--clear-blue-policy", "/ckpt/blue", "--step-timeout", "20",
+                  "--max-step-reprompts", "1", "--drop-gripper", "15", "17", "--drop-pan", "-22", "16",
+                  "--max-step-grasp-misses", "5")
+    settings = settings_from(args)
+    check("plan flags: --clear-red/blue-policy, --step-timeout, --max-step-reprompts, --max-step-grasp-misses, "
+          "--drop-gripper, --drop-pan",
+          (args.clear_red_policy, args.clear_blue_policy, settings.step_timeout_s, settings.max_step_reprompts,
+           settings.max_step_grasp_misses, vars(settings.drop_rule)) == ("me/act_clear_red", "/ckpt/blue", 20.0, 1, 5,
+                                          {"holding_below": 15.0, "open_at": 17.0, "red_pan_below": -22.0,
+                                           "blue_pan_above": 16.0, "held_above": 5.0}), str(vars(settings.drop_rule)))
     args = parsed("--held-check-colours", "striped", "red", "--min-held-target-area", "120",
                   "--min-held-area", "red=1500", "--camera-fourcc", "none")
     settings, cameras = settings_from(args), camera_configs(args)
@@ -1302,6 +1467,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
         fake_scenarios(f"{work}/fake.jsonl")
         voice_container()
+        multistep(f"{work}/multistep.jsonl")
         round_hygiene(f"{work}/hygiene.jsonl")
         hold_needs_load(f"{work}/load.jsonl")
         abort_details(f"{work}/abort_details.jsonl")

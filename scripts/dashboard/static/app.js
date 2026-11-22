@@ -148,6 +148,11 @@ function describe(reply) {
     const c = reply.command;
     if (c.dance) { say("▶ Starting: dance", "ok"); return; }
     if (c.bite) { say("▶ Starting: bite", "ok"); return; }
+    if (c.plan) {
+      const steps = c.plan.map((s) => `${s.count} ${s.target}`).join(", then ");
+      say(`▶ Starting plan: ${steps}${c.destination ? ` → ${c.destination === "hand" ? "your hand" : "the container"}` : ""}`, "ok");
+      return;
+    }
     say(`▶ Starting: ${c.target} ball → ${c.destination === "hand" ? "your hand" : "the container"}`, "ok");
     return;
   }
@@ -577,6 +582,15 @@ async function loadResults() {
   state.results = Object.fromEntries(rows.map((r) => [String(r.round), r]));
 }
 
+// Only transitions that just happened: the first message after a page load replays the whole log.
+function followDanceMusic(events) {
+  for (const e of events) {
+    const live = Date.now() - eventTime(e) < 3000;
+    if (e.event === "transition" && e.target === "DANCE" && live) danceMusic.play();
+    else if ((e.event === "transition" && e.source === "DANCE") || e.event === "round_end") danceMusic.stop();
+  }
+}
+
 function connect() {
   const source = new EventSource("/events");
   let renderedAt = 0;
@@ -584,6 +598,7 @@ function connect() {
     const data = JSON.parse(message.data);
     if (data.reset) { state.events = []; loadResults(); }
     state.events.push(...data.events);
+    followDanceMusic(data.events);
     if (data.status && state.status && typeof data.status.observes === "number" && state.lastObserves) {
       const [count, at] = state.lastObserves;
       const seconds = (data.status.time - at);
@@ -610,6 +625,7 @@ function connect() {
 
 $("toggle-demo").onchange = (e) => document.body.classList.toggle("demo", e.target.checked);
 $("toggle-cameras").onchange = () => renderRound();
+$("toggle-music").onchange = (e) => danceMusic.setEnabled(e.target.checked);
 $("summary").onclick = async () => {
   const text = await (await fetch("/api/summary")).text();
   $("summary-text").value = text;
