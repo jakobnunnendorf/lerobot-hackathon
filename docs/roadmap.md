@@ -106,14 +106,14 @@ A video of the best full run is recorded on Saturday evening for every tier, in 
 Facts and open checks are in `kb/machines.md`.
 
 - **Training runs in the cloud** (Hugging Face Jobs) where the credit allows, so the laptops stay free for the robot. One ACT run costs about 1-2 USD, so about 30 EUR covers many runs.
-- **Inference runs on a team laptop.** Kamel's laptop (RTX 4070, 8 GB) is the demo machine. The skills are ACT policies: pi0.5 ran out of memory while loading there.
+- **Inference runs on a team laptop.** The robot laptop (RTX 4050, WSL2) drives the arm and is the demo machine; Kamel's laptop (RTX 4070, 8 GB) trains and is the closest backup. The skills are ACT policies: pi0.5 ran out of memory while loading on the 4070.
 - **Recording laptop:** any laptop can drive the robot for recording. It must use the same calibration files and robot id as the demo machine.
 - **Backup demo laptop:** a second laptop that can run the full demo. Set up and tried on Saturday evening, not on Sunday morning.
 - The demo laptop stays on its charger with sleep and automatic updates switched off for the weekend.
 
 ## Not yet known, and it changes this plan
 
-- Whether the arm and both cameras work from WSL on the demo laptop, or the demo runs from native Windows there.
+- Settled 2026-11-21: the arm and both cameras work from WSL on the robot laptop.
 - The exact Hugging Face credit and which account holds it.
 - Whether the gripper can take the target ball when it touches other balls or the bowl wall (H1).
 - This year's judging criteria.
