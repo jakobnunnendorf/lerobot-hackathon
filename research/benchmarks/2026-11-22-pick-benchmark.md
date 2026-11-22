@@ -7,13 +7,11 @@ From `research/BENCHMARK_DESIGN_TEMPLATE.md`. **This is data collection only; th
 | Status | draft, not shared yet |
 | Version | v1, 22 Nov 08:00 CET |
 | Board posts | earlier plans 7075454867 and 7075469917 (this file replaces them); data: – |
-| Code | `scripts/eval/eval_pick.py` with PR #69 (SmolVLA + `--record`), commit dc54204 |
+| Code | `main` with PR #69 merged (SmolVLA + `--record`), merge commit 25b666c |
 
 **Open before the first run:**
-1. **PR #69:** merge it into `main`, or run from branch `jakobnunnendorf/eval-record`. Without it there's no SmolVLA and no recording.
-2. **`balazs` model:** fill in its training details in section 2 (dataset, episodes, init, steps). The repo is private, so they can't be read from here.
-3. **Untested loads:** `clean_all`, `clean_scratch` and `balazs` haven't been load-tested yet; do it with the pre-download step in section 5. `v2`, `hidden`, `v3` and `vla` load: tested offline or confirmed on the board.
-4. **Dataset repo:** confirm the name for the recordings (section 7). The draft uses `molnrb/so101_eval_pick_20261122`, the laptop's Hub account.
+1. `balazs` training details (section 2): asked on the board, 7075644974.
+2. The recording dataset repo (section 7): asked on the board, 7075644974.
 
 ---
 
@@ -39,7 +37,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 | `v3` | `TianK003/act_redblue_from_foil_v3@030000` | ACT | all episodes | `v2@20000` | +10K steps (step numbers continue from 20K), batch 32 | v2 trained longer |
 | `clean_all` | `jakobnunnendorf/act_clean_from_all@010000` | ACT | 93 clean episodes (10 more held out) | `brouthen/act_so101_pick_striped_all_pretrain_50k@050000`: 50K steps, batch 8, on `brouthen/so101_pick_striped_all` (314 episodes) | 10K steps, batch 32 | broad pretrain + clean fine-tune |
 | `clean_scratch` | `jakobnunnendorf/act_clean_scratch@030000` | ACT | the same 93 clean episodes | none (from scratch) | 30K steps, batch 32 | clean data alone; compare with `clean_all` |
-| `balazs` | `molnrb/act_pick_rb_mixed@080000` | ACT | **open item 2** | **open item 2** | 80K | fastest in the 02:15 test (9–15 s on visible balls, old servo) |
+| `balazs` | `molnrb/act_pick_rb_mixed@080000` | ACT | **open item 1** | **open item 1** | 80K | fastest in the 02:15 test (9–15 s on visible balls, old servo) |
 | `vla` | `jakobnunnendorf/smolvla_redblue_v2@003000` | SmolVLA | all episodes | `lerobot/smolvla_base` | 3K steps (of a 10K run, only 1K/2K/3K uploaded), batch 64, lr 1e-4; chunk 50 | the only VLA |
 
 - **SmolVLA specifics:**
@@ -48,7 +46,7 @@ All ACT models use chunk 100 in training. Every model runs at `n_action_steps` 3
 - **Checked before the runs:**
   - [x] `v2` and `vla` load and get through `select_action`: offline test, PR #69;
   - [x] `hidden` and `v3` resolve without a token (board 7075472893);
-  - [ ] `clean_all`, `clean_scratch` and `balazs` load on the robot laptop (pre-download step).
+  - `clean_all`, `clean_scratch` and `balazs` aren't load-tested; problems are sorted out at the table.
 - **Left out:** `v1` (replaced by `v2`); the old-servo foil models; `brouthen/*` models other than as the init for `clean_all`.
 - **Cut order if time runs short:** don't drop models; cut layouts instead (section 9).
 
@@ -103,7 +101,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 - **Design:** every model runs every layout once. 7 models × 8 layouts = **56 runs**.
 - **Order:** layouts in the listed order. The script rotates the model order within a layout, so no model always goes first after a reset.
 - **Before the first run:**
-  1. Check out the code with PR #69 (open item 1).
+  1. Pull `main` (PR #69 is merged).
   2. Pre-download all seven checkpoints.
   3. Take the reference photos.
   4. Do one warm-up run (logged as warm-up, not counted).
@@ -149,7 +147,7 @@ bash scripts/eval/eval_pick.sh --runs 8 --seconds 90 --n-action-steps 30 \
 | What | How | Where |
 | --- | --- | --- |
 | One CSV row per run: run, layout, episode_index, policy, checkpoint, started, n_action_steps, cap_s, seconds, end, gripper_end, left_home, late_ticks_pct, start_state, result | automatic | `~/so101/evals/eval_20261122_*.csv` |
-| Every run as a LeRobot dataset episode: top + wrist video, state, action, 30 fps, task sentence | automatic, `--record` | `~/so101/evals/rec_20261122`, then `molnrb/so101_eval_pick_20261122` (open item 4) |
+| Every run as a LeRobot dataset episode: top + wrist video, state, action, 30 fps, task sentence | automatic, `--record` | `~/so101/evals/rec_20261122`, then `molnrb/so101_eval_pick_20261122` (open item 2) |
 | Per episode: row + policy type + git commit | automatic | `rec_20261122/runs.jsonl` |
 | Failure code, number of grasp attempts, note | by hand | `fails.csv`: `run,policy,layout,fail,attempts,note` |
 | Layout photos `L1..L8.jpg`, reference photos | phone | uploaded with the logs |
@@ -229,7 +227,7 @@ Free text: anything seen at the table that the numbers don't show.
 - **This benchmark:**
   - recording dataset: `molnrb/so101_eval_pick_20261122` (revision: –);
   - logs: `molnrb/arm-logs/logs/arm/2026-11-22_pick-benchmark/`;
-  - code: PR #69, commit dc54204, plus the command in section 3;
+  - code: `main` at 25b666c (PR #69), plus the command in section 3;
   - checkpoints: section 2.
 - **Earlier runs on the new servo** (same arm and servo, different `n_action_steps`, no recordings):
   - board 7074277776: 8 layouts at n100; `v1@015000` 5/8, `v2@20000` 6/8;
