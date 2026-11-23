@@ -8,7 +8,7 @@ import yaml
 CALIB_DIR = Path(__file__).resolve().parent
 INTRINSICS_PATH = CALIB_DIR / "intrinsics.yaml"
 EXTRINSICS_PATH = CALIB_DIR / "extrinsics.yaml"
-RUNBOOK = "docs/camera-calibration-runbook.md"
+RUNBOOK = "docs/camera-calibration.md"
 
 # Plain undistortPoints runs 5 fixed iterations, which leaves an error towards the image corners with strong distortion.
 UNDISTORT_CRITERIA = (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS, 50, 1e-10)

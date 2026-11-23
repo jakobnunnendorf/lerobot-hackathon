@@ -19,7 +19,7 @@ board:
 
 # Measured in the robot frame: origin on the table below the shoulder_pan axis, x forward, y left, z up.
 # Left empty on purpose: calibrate_extrinsics.py stops until the measurements are given (here or on its command line).
-# How to measure, and the corner numbering: docs/camera-calibration-runbook.md.
+# How to measure, and the corner numbering: docs/camera-calibration.md.
 extrinsics:
   # Ruler x, y in millimetres of the four outermost inner corners (where four squares meet), board flat on the table.
   # 1 = the one nearest the square of red tape on the cardboard; 2 = from 1 along the long side (six squares);

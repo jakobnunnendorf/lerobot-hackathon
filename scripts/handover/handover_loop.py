@@ -25,7 +25,7 @@ class Limits:
     max_step_deg: float = 1.5
     gripper_step: float = 4.0
     max_step_m: float = 0.008
-    # Every target at least 20 cm above the table, as in the command run on the arm (docs/hand-tracking-test.md, 2b).
+    # Every target at least 20 cm above the table, as in the command run on the arm (docs/hand-tracking.md).
     min_height: float = 0.20
     max_height: float = 0.30
     min_radius: float = 0.12

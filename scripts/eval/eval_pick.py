@@ -1,7 +1,7 @@
 # Written by Claude
 # Repeated PICK evaluation on the SO-101: SPACE starts a run from HOME, the policy runs until the arm is back
 # home holding a ball or the time cap hits, the result is written to a CSV. Several policies are compared on the
-# same layouts, newest checkpoint of each by default. Runbook: docs/eval-pick-runbook.md.
+# same layouts, newest checkpoint of each by default. Runbook: docs/evaluation.md.
 # Own loop instead of lerobot-rollout: rollout disconnects after every run, which switches torque off and drops the ball.
 
 import argparse
