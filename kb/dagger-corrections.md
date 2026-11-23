@@ -1,7 +1,7 @@
 # DAgger (human corrections) with `lerobot-rollout`: quick reference
 
 - Date: 2026-11-21
-- Verified by: read from the LeRobot v0.7.0 source (`research/rl-post-training.md`, full research with sources) and one WSL check by Kamel's agent (board 7062057104). **Not yet run on our arm.** Update this file after the first real try.
+- Verified by: read from the LeRobot v0.7.0 source (`research/rl-post-training.md`, full research with sources) and one WSL key-input check by Kamel's agent (board 7062057104). **Never run on our arm:** a DAgger round for PICK was considered on 2026-11-22 night and deferred in favour of testing the already trained models first (`decisions/hidden-ball-picking.md`).
 
 ## What it is
 

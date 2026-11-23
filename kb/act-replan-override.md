@@ -5,8 +5,8 @@
 
 Our ACT checkpoints were trained with `chunk_size=100` and `n_action_steps=100`. With those values the arm plays back 100 actions (3.3 s at 30 fps) before it looks at the cameras again. Both `n_action_steps` and temporal ensembling are only read at inference time, so a saved checkpoint can be run with other values. No retraining is needed.
 
-- `lerobot-rollout` passes `--policy.*` flags on to the saved config (`rollout/configs.py`, `PreTrainedConfig.from_pretrained(policy_path, cli_overrides=...)`). That makes `--policy.n_action_steps=10` work next to `--policy.path=...`. molnrb's agent confirmed this on the robot laptop: `lerobot-rollout --policy.path=<ckpt> --policy.n_action_steps=20 ...` parses and loads the policy (stopped at robot connect on purpose, board comment 7060970692). Not yet run on the arm.
-- In our own loop: `PreTrainedConfig.from_pretrained(path, cli_overrides=["--n_action_steps=10"])`, then `ACTPolicy.from_pretrained(path, config=cfg)`. Run and confirmed: the loaded policy reports the new values.
+- `lerobot-rollout` passes `--policy.*` flags on to the saved config (`rollout/configs.py`, `PreTrainedConfig.from_pretrained(policy_path, cli_overrides=...)`). That makes `--policy.n_action_steps=10` work next to `--policy.path=...`. molnrb's agent confirmed this on the robot laptop: `lerobot-rollout --policy.path=<ckpt> --policy.n_action_steps=20 ...` parses and loads the policy (stopped at robot connect on purpose, board comment 7060970692). The team never drove the arm with `lerobot-rollout`; the override below is what ran.
+- In our own loop: `PreTrainedConfig.from_pretrained(path, cli_overrides=["--n_action_steps=10"])`, then `ACTPolicy.from_pretrained(path, config=cfg)`. Run and confirmed: the loaded policy reports the new values. On the arm this is `eval_pick.py`'s per-policy `#n_action_steps` and the supervisor's `--n-action-steps`, run at 25, 30, 50 and 100 on 2026-11-22.
 - Temporal ensembling: `--n_action_steps=1 --temporal_ensemble_coeff=0.01`. Any other `n_action_steps` together with ensembling fails validation. With ensembling the model runs on every step.
 
 Measured with the same checkpoint (two 640x480 cameras, CUDA, 60 steps):
@@ -25,4 +25,4 @@ The same checkpoint on the **robot/demo laptop (RTX 4050)**, measured by molnrb'
 
 At 30 fps a step has 33 ms. **Ensembling does not fit on the demo laptop**: it would slow the loop to about 20 Hz. It fits on the 4070 only. `n_action_steps` between 10 and 20 works on both: one model call every 10 to 20 steps, and that one step takes 36-60 ms on the 4050.
 
-Not measured: how the arm moves with these settings. Smaller `n_action_steps` reacts sooner but can make the motion jerkier when two chunks disagree; ensembling smooths that.
+How the arm moves with these settings was measured on 2026-11-22: 25-50 picked better than 100, and slower (`decisions/hidden-ball-picking.md`). Ensembling was never run on the arm.

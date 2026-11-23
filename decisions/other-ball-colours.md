@@ -1,6 +1,6 @@
 # Can we get a red-ball training set by repainting the striped ball in the recorded episodes?
 
-- Status: DECIDED (2026-11-21): not with mask version 2. No red dataset was written.
+- Status: DECIDED (2026-11-21): not with mask version 2. No red dataset was written. Overtaken the same day: the team replaced the foil with real red and blue balls and recorded `molnrb/so101_pick_rb_mixed`, so no repainted set was needed.
 
 ## Decision
 

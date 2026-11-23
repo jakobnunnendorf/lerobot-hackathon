@@ -1,15 +1,16 @@
 # How does the arm know where a hand is, and how does it get above it without a learned policy?
 
-- Status: OPEN (2026-11-21). Built and checked in simulation and on photos. Nothing has run on the arm or with a live camera.
+- Status: DECIDED (2026-11-21). Built and checked in simulation and on photos, then run on the arm with the live top camera the same day; it is the demo's GIVE.
+- On the arm (2026-11-21): the top-camera calibration was cross-checked independently on the real frames (`decisions/calibration-cross-check.md`); a four-corner touch check found 44-63 mm kinematics errors from joint zero offsets, fitted away to 4-11 mm (shoulder_pan -3.9, shoulder_lift +0.9, elbow_flex +9.9, wrist_flex +3.2 LeRobot degrees; board 7064527311); the gripper then hovered 3-6 cm from straight above the palm centre, which Balazs judged fine for the demo (board 7064702491). The folded rest pose still comes out about 4 cm low in the model.
 
 ## Decision
 
-The classical hand-following path, built in parallel to the learned one (`decisions/hand-handover-policy.md`) to compare them:
+The classical hand-following path, built in parallel to a learned one, which it replaced (`decisions/hand-handover-policy.md`):
 
 - **Seeing** (`scripts/handtrack/`): MediaPipe Hand Landmarker on the top camera, in its own process. The palm centre's pixel becomes a ray through the calibrated camera, and the ray is cut with a plane at an assumed palm height (15 cm). One JSON line per frame goes to the robot program on `127.0.0.1:8766`, in metres in the robot frame (origin on the table below the shoulder_pan axis, x forward at shoulder_pan = 0, y left, z up).
-- **Moving** (`scripts/handover/kinematics.py`, `following.py`, used by the loop in `scripts/handover/handover_loop.py`): closed-form kinematics from the official URDF in plain numpy. The tip hovers at a fixed height above the table (22 cm) with the gripper tilted as steeply as the joints allow.
-- **Set-up it needs:** hands held 10-15 cm above the table and 15-35 cm in front of the base, shown as two flat open palms side by side.
-- **Calibrating the top camera** (`scripts/calib/`, `docs/camera-calibration-runbook.md`): intrinsics from 20-30 frames of the team's printed 8 x 6-square board (7 x 5 inner corners); the camera pose from one frame of that board lying on the table, with its four outermost inner corners measured by ruler in the robot frame and corner 1 marked by red tape. Robot-touch points (method B) check calibration and kinematics together.
+- **Moving** (`scripts/handover/kinematics.py`, `following.py`, used by the loop in `scripts/handover/handover_loop.py`): closed-form kinematics from the official URDF in plain numpy, with joint zero offsets fitted on the arm. The tip hovers at a fixed height above the table (22 cm at first, 0.28 m after the arm run, `decisions/hand-following-safety.md`) with the gripper tilted as steeply as the joints allow.
+- **Set-up it needs:** hands held 10-15 cm above the table and 15-35 cm in front of the base, as a flat open palm (first two palms side by side; one palm since the arm run, `decisions/hand-following-safety.md`).
+- **Calibrating the top camera** (`scripts/calib/`, `docs/camera-calibration.md`): intrinsics from 20-30 frames of the team's printed 8 x 6-square board (7 x 5 inner corners); the camera pose from one frame of that board lying on the table, with its four outermost inner corners measured by ruler in the robot frame and corner 1 marked by red tape. Robot-touch points (method B) check calibration and kinematics together.
 
 ## Why
 
@@ -45,7 +46,7 @@ Details, sources and what was run: `research/so101-inverse-kinematics.md`, `rese
 
 ## Revisit if
 
-- The table check (`docs/hand-following-table-check.md`) shows a joint sign or offset that differs from the URDF: set `LEROBOT_SIGNS` and `LEROBOT_OFFSETS_DEG` in `kinematics.py` and repeat.
+- The arm is recalibrated or a servo replaced: repeat the touch check (`docs/hand-tracking.md`) and refit `LEROBOT_OFFSETS_DEG` in `kinematics.py`.
 - The top camera loses the hands while the gripper hovers over them: latch the last two-hand position or confirm with the wrist camera.
 - The ball does not fall cleanly from a gripper tilted 35-45 degrees.
 - Hands at varying heights cause misses of more than about 3 cm: add depth from hand size for the demo person.

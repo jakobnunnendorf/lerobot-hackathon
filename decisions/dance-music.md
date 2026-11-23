@@ -1,6 +1,6 @@
 # Where does the dance music play, and which music?
 
-**Status:** DECIDED (2026-11-22, Tomi asked for it)
+- Status: DECIDED (2026-11-22, Tomi asked for it); on `main` (#72)
 
 ## Decision
 
@@ -20,5 +20,3 @@ When a round enters DANCE, the dashboard page plays a 10 s clip through the spea
 ## Revisit if
 
 - Nobody at the table clicks the page before a voice-started dance, and the music stays silent: then add a "click to enable sound" banner.
-
-Written by Claude

@@ -9,7 +9,8 @@ The code says *what* it does. This folder says *why*, and what did not work.
 - **Keep the history.** When a decision changes, move the old choice into Alternatives with the reason it was dropped, then rewrite Decision.
 - **Say how each claim is known**: tested on our hardware (who, when, run or dataset name), taken from a `research/` file, or assumed. Link to `kb/` and `research/` rather than copying from them.
 - **Keep it short.** A record is a few bullets, not an essay.
-- Which project idea the team builds is decided in `ideas/`, not here.
+- Which project idea the team built, and the ideas it dropped, are in `README.md` and `docs/HISTORY.md`, not here.
+- Since the hackathon ended (2026-11-22 11:00), every status here is the state at the deadline. A question nobody answered stays `OPEN`, with a line saying where it stood.
 
 Template:
 

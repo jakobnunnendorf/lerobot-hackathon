@@ -1,5 +1,7 @@
 # Ball picking, stirring and handover: evidence review
 
+> **The scene changed after this was written.** It assumes a blue target ball among grey tinfoil balls. On 2026-11-21 the team switched to a yellow-and-green striped target among red and blue balls, and the foil was dropped. The research is kept as written; what was built is in `decisions/` (start with `decisions/supervisor.md` and `decisions/hidden-ball-picking.md`).
+
 Researched 2026-11-20 from public web sources only. Every claim carries a source link. Claims marked **[unverified]** or **[estimate]** are collected again in the last section. Success rates quoted from hobby write-ups usually rest on 5 to 10 trials, so treat them as anecdotes, not measurements.
 
 ## TL;DR

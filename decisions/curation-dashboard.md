@@ -1,7 +1,6 @@
 # How does the team pick the episodes for the next fine-tune?
 
-- Date: 2026-11-21
-- Status: requested by Jakob (board 7067804132). The design was posted in 7068053553 and approved unchanged in 7068189188. Built on `TianK003/curation`, tested by `tests/curation_smoke.py` against `molnrb/so101_pick_rb_mixed`.
+- Status: DECIDED (2026-11-21). Asked for by Jakob; on `main` (#49), tested by `tests/curation_smoke.py` against `molnrb/so101_pick_rb_mixed`.
 
 ## Decision
 

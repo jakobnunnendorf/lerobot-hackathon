@@ -1,6 +1,6 @@
 # How does the robot take spoken commands?
 
-- Status: DECIDED (2026-11-21; wake phrase dropped the same day)
+- Status: DECIDED (2026-11-21; wake phrase dropped the same day). From the evening of 2026-11-21 the demo took speech through the dashboard's browser microphone, recognised in the dashboard server with the same model and phrase table (`decisions/dashboard.md`); `listen.py` stayed as the fallback. Later commands were added the same way: the dance, the bite and spoken multi-step plans (`decisions/multistep-step-state.md`).
 
 ## Decision
 
@@ -80,5 +80,5 @@ Latency per clip after loading, first call excluded, as median / 90th percentile
 - The test in the hall with the real headset shows `NOT UNDERSTOOD` often: if the transcript on screen is right, add its phrasing to `DESTINATIONS`; if the transcripts themselves are wrong, try `--backend whisper-base` (more commands understood, but watch for transcripts that repeat the prompt) and a closer microphone.
 - Talk not meant for the robot turns into commands while Enter is held: bring back a wake phrase, a longer one than "hey bot", measured first.
 - The voice laptop is much slower than a Ryzen 5 5500U, or speech-to-text visibly disturbs the control loop.
-- The robot program's port is not reachable from Windows on the robot laptop (`docs/voice-runbook.md`, last section).
+- The robot program's port is not reachable from Windows on the robot laptop (`docs/voice.md`).
 - The demo needs hands-free activation, or many more commands with free phrasing (then an LLM fallback behind the table).

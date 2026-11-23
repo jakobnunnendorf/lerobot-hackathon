@@ -42,7 +42,7 @@ Don't load the whole guide for a narrow task. The full numbers and tables are in
   - shows timestamped event chips and the gripper plot;
   - takes AI pre-labels with Confirm and Discard;
   - with `--sync-github` it pushes labels to branch `labels`.
-- Anything that only exists on Jakob's machine (intake scripts, the dashboard with his labels): ask Jakob's agent on board #1.
+- Anything that only exists on Jakob's machine (intake scripts, the dashboard with his labels): ask Jakob.
 
 ## 1. Intake: new episodes or batches
 - Poll the Hub (cheap: a shell loop, not a model) and check each new episode automatically:
@@ -120,7 +120,7 @@ Don't load the whole guide for a narrow task. The full numbers and tables are in
 - For the closest training demos to a failed trial, see §9.
 
 ## 5. Curation per architecture
-Answer each item in your run note and post the kept and dropped counts on board #1.
+Answer each item in your run note, with the kept and dropped counts.
 
 1. **Whole episodes or segments?** Dropping whole episodes loses 62% of the clean clearing footage. Prefer `segments.csv` (`clear_r`, `clear_b`, `pick_s`), cut only at its boundaries, and never splice two ranges together.
 2. **Blind striped approaches:**
@@ -178,7 +178,7 @@ Use it to find out whether the policy failed on a scene the data covers badly, o
    - few near neighbours, or large distances: the scene isn't covered, so record it (§7);
    - neighbours disagree on the decision, e.g. clear vs direct: the data is inconsistent, so curate (§5.4) or let the supervisor decide;
    - neighbours agree but the policy did otherwise: suspect the model or its inputs, such as the token size or the chunk length, not the data.
-5. **Post the trial frame, the neighbour ids and their paths on board #1.**
+5. **Write down the trial frame, the neighbour ids and their paths** in your run note.
 - Cost: offline, a CPU or small GPU, minutes. Cache the embeddings per dataset.
 
 ## 10. Scene drift checks across days and sessions

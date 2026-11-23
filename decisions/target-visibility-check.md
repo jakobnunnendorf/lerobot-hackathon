@@ -1,6 +1,7 @@
 # Can a colour check on the top camera tell "target visible, pick" from "target buried, clear a gray ball"?
 
-- Status: OPEN (2026-11-21). Measured on the recordings only. Not tested in the demo hall or on live camera frames.
+- Status: OPEN (2026-11-21). Measured on the old foil recordings only. Not tested in the demo hall or on live camera frames.
+- Where it stood at the deadline: unused. The supervisor's LOOK (this rule, `--look`) stayed off, because no clear policy was in the demo and the pick policy digs for a buried ball on its own (`decisions/hidden-ball-picking.md`). On red/blue-scene frames an offline comparison found the 150 px rule only 0.63 accurate at pick versus clear (37 of 46 clear frames sent to pick), 0.78 with a bowl region; that record is `decisions/scene-classifier-vs-supervisor-rule.md` on the unmerged branch `TianK003/scene-clf-compare` (PR #61).
 
 ## Decision
 

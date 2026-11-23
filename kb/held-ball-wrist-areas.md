@@ -30,3 +30,9 @@ At rest the wrist camera faces the ceiling, and the held ball sits in the lower 
 
 - **Red:** with the target held at rest, red stays at p95 345 px (max 529); with a red covering ball held, the median is about 15,000. A red check at rest looks feasible with a threshold around 2,000. Confirm it at the table with a red ball held at rest, because no recording holds a red ball at rest.
 - **Blue is not usable:** with the striped target held at rest, blue reaches p95 19,651 px (max 27,466) inside the ellipse. The bluish ceiling falls inside it.
+
+## On the arm (2026-11-21, molnrb, board 7065772934)
+
+- With 120 and this ellipse, 3 of 6 holds were red or blue balls, each reading striped 0 px; the check rejected the ones it saw. The one striped hold read 274 px.
+- A deep grasp can hold the ball above the ellipse, so every colour reads 0; the supervisor treats that as unseen, not wrong (below 30 px for every ball).
+- The demo ran with 120, striped only. The red threshold was never checked with a red ball held at rest.

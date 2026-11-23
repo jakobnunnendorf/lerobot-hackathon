@@ -1,6 +1,6 @@
 # How does the arm dance, and how is a borrowed dance kept safe on our arm?
 
-- Status: DECIDED (2026-11-21), not yet run on the arm
+- Status: DECIDED (2026-11-21). Ran on the arm twice that night (`danced`, no ABORT; demo-chain logs, board 7071878494); Tomi confirmed it works and it stayed as it was for the demo.
 
 ## Decision
 
@@ -18,7 +18,7 @@ A DANCE round replays one episode of someone else's public SO-101 dataset (`Nike
   - The busier episodes reach 300-700 deg/s with pan sweeps of 100-170 deg (for example 48 and 49).
   - Front-camera frames of episodes 1 and 2 (extracted 2026-11-21) show the follower upright over its own base, gripper up, small sways. It never leans towards the table.
   - Episode 1 starts near our present pose (pan -1, lift -58, elbow -8, wrist flex 84 against `PRESENT_POSE` 0, -55, 6, 92). The approach from rest is therefore the same fold-out that GIVE already makes on the arm.
-- **Our degrees match theirs**: same joint names, LeRobot `use_degrees` and robot type `so_follower`, and the poses above line up with ours. This is inferred from the data, not tested on the arm. The first run at half speed is the test.
+- **Our degrees match theirs**: same joint names, LeRobot `use_degrees` and robot type `so_follower`, and the poses above line up with ours. Inferred from the data, then confirmed by the runs on the arm.
 - **Replay instead of a policy**: a dance needs no camera and no decision, and `Replay` already approaches the first frame speed-limited (1.5 deg/tick, or the dance cap if lower). ABORT works the same as in every other skill: `_observe` raises, nothing more is sent, the arm holds with torque on.
 - **Gripper held at its rest value (30)**: the recording keeps the gripper closed (0-11). Replaying that would squeeze the empty jaws shut for 40 s and could stall the servo, and an open gripper does not change the look of the dance.
 - **Clamp, not reject, for the joint envelope**: the envelope is the action min/max of `molnrb/so101_pick_rb_mixed` (`skills.ARM_ENVELOPE`). Episodes 1 and 2 stay inside it: the largest clamp is 0.1 deg (episode 1's wrist flex), so clamping changes nothing visible. A clamp of 1 deg or more is printed at start.

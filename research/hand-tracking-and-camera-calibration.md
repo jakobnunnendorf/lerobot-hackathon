@@ -2,7 +2,7 @@
 
 Researched 2026-11-21. Web sources were read through an automated page reader; docs.opencv.org refused the reader (403), so OpenCV facts come from the OpenCV source and docs in the `opencv/opencv` GitHub repository. Everything under "Checked on Tian's laptop" was run there (Windows 11, Ryzen 5 5500U, no GPU, Python 3.12.10) on public test photos; no webcam, microphone or robot was used. The laptop was running two other jobs at the same time, so the timings are pessimistic. Kinematics is covered in `research/so101-inverse-kinematics.md`, not here.
 
-**Where the code is.** Tracker and sender are in the repo under `scripts/handtrack/` (`hand_tracker.py`, `hand_features.py`, `frame_link.py`, `hand_link.py`); the camera calibration is in `scripts/calib/` (runbook: `docs/camera-calibration-runbook.md`). Test scripts, photos and outputs named below with `data/handtrack/` are on Tian's laptop in the git-ignored `data/` folder.
+**Where the code is.** Tracker and sender are in the repo under `scripts/handtrack/` (`hand_tracker.py`, `hand_features.py`, `frame_link.py`, `hand_link.py`); the camera calibration is in `scripts/calib/` (runbook: `docs/camera-calibration.md`). Test scripts, photos and outputs named below with `data/handtrack/` are on Tian's laptop in the git-ignored `data/` folder.
 
 ## Summary
 
@@ -10,7 +10,7 @@ Researched 2026-11-21. Web sources were read through an automated page reader; d
 2. Palm up or palm down can be read from the landmarks (index knuckle, pinky knuckle, wrist and the left/right label); it was right on all 7 photos where the answer was clear. The Gesture Recognizer's `Open_Palm` does not separate palm from back of the hand and missed half of the open hands.
 3. **Two cupped hands touching were not detected** in 3 of 3 photos at the default thresholds; two separate open hands were detected every time, in any rotation. Ask for two flat open palms side by side, not cupped hands. Lowering the thresholds to find cupped hands also produced the only false "hand" on photos of orange SO-100 arms.
 4. One camera gives no reliable depth. Use the pixel ray and intersect it with an assumed palm height. The error is `(true height - assumed height) x tan(angle of the ray from vertical)`: 1-2 cm for a hand 15-20 cm high and 20-30 cm beside the point under a camera 70 cm up, up to 5-7 cm at the edges of a 10-25 cm height band. MediaPipe's metric "world landmarks" are not a usable depth source: the same hand came out 20% nearer when seen from the back than from the palm.
-5. Calibration route: print OpenCV's 9x6 board (25 mm squares, A4), calibrate the top camera where it is mounted, lay the board flat on the table in the handover area and measure four corners with a ruler in the robot frame. About 30-40 minutes. (The team's board is 8 x 6 squares, 7 x 5 inner corners, instead; `docs/camera-calibration-runbook.md`.) Fallback without any geometry: teach 9-12 hover poses and interpolate joint angles from the palm's pixel position.
+5. Calibration route: print OpenCV's 9x6 board (25 mm squares, A4), calibrate the top camera where it is mounted, lay the board flat on the table in the handover area and measure four corners with a ruler in the robot frame. About 30-40 minutes. (The team's board is 8 x 6 squares, 7 x 5 inner corners, instead; `docs/camera-calibration.md`.) Fallback without any geometry: teach 9-12 hover poses and interpolate joint angles from the palm's pixel position.
 6. Frames should reach the tracker through shared memory written by the robot program: 0.2 ms per frame for the control loop, about 2 ms transport. Tracker and robot program both run inside WSL2. Sender and tracker are built and tested on photos (see the end).
 
 ## Recommended pipeline
@@ -23,7 +23,7 @@ Researched 2026-11-21. Web sources were read through an automated page reader; d
 
 ## What the people at the table do with the checkerboard
 
-Superseded by `docs/camera-calibration-runbook.md`. The team's board is 8 x 6 squares, so **7 x 5 inner corners**, marked with red tape at one corner; where this file says 9 x 6 it means OpenCV's own board, which was not used.
+Superseded by `docs/camera-calibration.md`. The team's board is 8 x 6 squares, so **7 x 5 inner corners**, marked with red tape at one corner; where this file says 9 x 6 it means OpenCV's own board, which was not used.
 
 ## 1. MediaPipe Hand Landmarker
 
