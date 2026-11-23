@@ -45,6 +45,39 @@ It runs at 30 Hz on an RTX 4050 laptop GPU.
 
 These samples are small, but the two tests agree: the fine-tuned model won every layout where the two models disagreed. The biggest single gain did not come from training. Executing 25–50 of each predicted 100-step action chunk before replanning, instead of all 100, took v2 from 4/10 to 6/10. Hidden balls remain the hard case.
 
+### Final benchmark: 7 models on the same layouts
+
+On Sunday morning, every candidate ran on the same 4 layouts, one attempt each: 30 action steps, 90 s cap, new gripper servo capped at torque 200. The model order rotated per layout. The run stopped after 28 runs for time.
+
+| Model | Type, start weights | Training data | Picks | Mean time of a successful pick |
+| --- | --- | --- | --- | --- |
+| **`TianK003/act_hidden_from_v2@002000`** | ACT, from v2 | 38 clean buried or partly covered demos | **4/4** | **28.8 s** |
+| `TianK003/act_redblue_from_foil_v3@030000` | ACT, from v2 | 201 demos, 10K more steps | 4/4 | 42.1 s |
+| `Space0code/act_redblue_from_foil_v2@20000` (v2) | ACT, from the foil policy | 201 demos | 3/4 | 33.5 s |
+| `jakobnunnendorf/act_clean_from_all@010000` | ACT, from a 314-episode pretrain | 93 clean demos | 3/4 | 21.7 s |
+| `jakobnunnendorf/act_clean_scratch@030000` | ACT, from scratch | 93 clean demos | 3/4 | 26.3 s |
+| `molnrb/act_pick_rb_mixed@080000` | ACT, from scratch | 201 demos, no curation | 2/4 | 50.9 s |
+| `jakobnunnendorf/smolvla_redblue_v2@003000` | SmolVLA, from `smolvla_base` | 114 demos | 0/4 | – |
+
+Per layout (time of the successful pick; "–" = no pick within 90 s):
+
+| Model | L1 hidden | L2 partly covered | L3 hidden | L4 visible |
+| --- | --- | --- | --- | --- |
+| hidden | 43.6 s | 45.7 s | 10.4 s | 15.6 s |
+| v3 | 64.7 s | 26.2 s | 24.4 s | 53.0 s |
+| v2 | 51.4 s | 35.0 s | – | 14.1 s |
+| clean_from_all | 38.5 s | 9.8 s | – | 16.7 s |
+| clean_scratch | 46.0 s | 16.0 s | – | 17.0 s |
+| act_pick_rb_mixed | – | 56.3 s | – | 45.4 s |
+| SmolVLA | – | – | – | – |
+
+**Read with care:**
+- 4 layouts per model is a tiny sample, so a gap of 1 or 2 picks between two models is within noise.
+- L3, the second hidden layout, separated the models most: only hidden and v3 picked there.
+- Counts were made by hand at the table. Failure codes and layout photos were not recorded.
+- A bug (fixed in #76) left the recording dataset empty, so no video or joint data exists for these runs.
+- Raw CSV and logs: branch [`molnrb/arm-logs`](https://github.com/jakobnunnendorf/lerobot-hackathon/tree/molnrb/arm-logs/logs/arm/2026-11-22_pick-benchmark). Every earlier arm test is in [docs/HISTORY.md](docs/HISTORY.md#benchmarks-on-the-arm).
+
 Every model we trained, every dataset and every benchmark, with how the choices changed over the 48 hours: **[docs/HISTORY.md](docs/HISTORY.md)**.
 
 ## Data
