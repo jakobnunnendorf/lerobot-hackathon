@@ -37,7 +37,11 @@ Recipes (`RECIPES` in the script):
 
 `prepare_merged` builds `brouthen/so101_pick_striped_all` (task sentences rewritten for the striped ball, then merged) and needs a Modal secret named `huggingface` with a Hub token.
 
-Our final pick model, `TianK003/act_hidden_from_v2`, was fine-tuned from `Space0code/act_redblue_from_foil_v2@20000` with `scripts/modal_v2_finetune.py`, which lives on the branch `TianK003/modal-v2-finetune` and is not merged.
+Our final pick model, `TianK003/act_hidden_from_v2`, was fine-tuned from `Space0code/act_redblue_from_foil_v2@20000` with `scripts/modal_v2_finetune.py` (`run_b`; `run_a` trained `TianK003/act_redblue_from_foil_v3`). It starts from v2's checkpoint on the Hub, uses v1's recipe and pushes every checkpoint to the Hub:
+
+```bash
+uv run --with modal modal run --detach scripts/modal_v2_finetune.py::run_b
+```
 
 **Publish checkpoints while a run trains:** `python scripts/publish_checkpoints.py --run <run name> --repo-name <hub repo name> --dataset <dataset>` polls the Modal volume and uploads each finished checkpoint as `<step>/` with a model card (held-out loss per checkpoint). It prefers the EMA weights when a run saved them. It needs the `modal` CLI on the PATH and `HF_TOKEN` in a `.env` file at the repo root.
 
@@ -67,8 +71,8 @@ When the data changes, start from a checkpoint with `--policy.path=<checkpoint>/
 
 `n_action_steps` and temporal ensembling are read at inference time, so you can change them on any checkpoint (`kb/act-replan-override.md`):
 
-- demo program: `--n-action-steps 25` (`docs/demo.md`);
-- eval: `--n-action-steps 25` (`docs/evaluation.md`);
-- `lerobot-rollout`: `--policy.n_action_steps=25` next to `--policy.path`.
+- demo program: `--n-action-steps 30`, the default of `demo_chain.sh` (`docs/demo.md`);
+- eval: `--n-action-steps 30` (`docs/evaluation.md`);
+- `lerobot-rollout`: `--policy.n_action_steps=30` next to `--policy.path`.
 
 Temporal ensembling (`n_action_steps` 1) takes about 47 ms per step on the RTX 4050, too slow for 30 fps.

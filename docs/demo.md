@@ -79,10 +79,10 @@ Before starting:
 
 ```bash
 conda activate lerobot
-PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000 --n-action-steps 25
+PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000
 ```
 
-- `TianK003/act_hidden_from_v2@002000` is ACT `Space0code/act_redblue_from_foil_v2` fine-tuned on 38 buried or partly covered episodes. `--n-action-steps 25` makes it look at the cameras again after 25 of its 100 predicted actions, so it approaches more carefully (`decisions/hidden-ball-picking.md`).
+- `TianK003/act_hidden_from_v2@002000` is ACT `Space0code/act_redblue_from_foil_v2` fine-tuned on 38 buried or partly covered episodes. `demo_chain.sh` runs it with `--n-action-steps 30` by default: it looks at the cameras again after 30 of its 100 predicted actions, so it approaches more carefully (`decisions/hidden-ball-picking.md`).
 - Without `PICK_POLICY` and `--step` the script runs the fallback, `Space0code/act_redblue_from_foil_v2@20000`, at 30 action steps. `--step` must come first; it names the checkpoint folder as the repo spells it (`002000` here, `20000` in the `Space0code` repos).
 - Any `run_supervisor.py` flag can be appended; a later flag wins over the script's defaults.
 - It runs 10 rounds, then exits. Append `--rounds 50` for more.
@@ -168,7 +168,7 @@ Set the clearing policies in `~/.so101.env` or on the command line, as `PICK_POL
 
 ```bash
 CLEAR_RED_POLICY=TianK003/act_clear_red CLEAR_BLUE_POLICY=TianK003/act_clear_blue \
-  PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000 --n-action-steps 25
+  PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000
 ```
 
 A colour left unset refuses its plans. On our arm the clearing policies made empty grasps. How a step runs and ends: `decisions/multistep-step-state.md`.

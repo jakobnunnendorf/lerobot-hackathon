@@ -69,4 +69,4 @@ The repo records *why* things are the way they are, so nobody explores the same 
 - `research/` - external research with source links, and offline analyses of our own data.
 - `images/` - pictures used by `README.md`.
 - `logs/training/` - loss logs and plots of the main training runs.
-- Only `README.md` and this file stay at the repo root.
+- Only `README.md`, `LICENSE` (CC BY-NC 4.0: non-commercial use with attribution) and this file stay at the repo root.

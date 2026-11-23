@@ -1,5 +1,8 @@
 # Find the striped ball, then hand it over
 
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](LICENSE)
+[![LeRobot 0.7.0](https://img.shields.io/badge/LeRobot-0.7.0-yellow.svg)](https://github.com/huggingface/lerobot)
+
 An SO-101 robot arm that digs a striped ball out of a bowl full of red and blue balls, checks that it has the right one, and drops it into your open hand. You start it by voice ("give me the ball") or from a web dashboard.
 
 Built in 48 hours by a team of five at the [Bilbao Physical AI Hackathon](https://hackathonbilbao.eus/home-page-eus) (20–22 November 2026) with [LeRobot](https://github.com/huggingface/lerobot) 0.7.0, one SO-101 arm, two cameras and a gaming laptop.
@@ -27,7 +30,7 @@ The dashboard can also make the arm dance (a public SO-101 dance recording, repl
 
 ## Results
 
-**Current model: [`TianK003/act_hidden_from_v2`](https://huggingface.co/TianK003/act_hidden_from_v2), checkpoint `002000`, run with `n_action_steps` 25.** It is ACT (51.6M parameters, of which 34M run at inference), trained in two stages:
+**Current model: [`TianK003/act_hidden_from_v2`](https://huggingface.co/TianK003/act_hidden_from_v2), checkpoint `002000`, run with `n_action_steps` 30.** It is ACT (51.6M parameters, of which 34M run at inference), trained in two stages:
 
 1. Fine-tuned from a pick policy for the older tinfoil-ball scene on all 201 red/blue demonstrations (`Space0code/act_redblue_from_foil_v2`, 20K steps).
 2. Fine-tuned 2K more steps on the 38 clean demonstrations that start with the ball buried or partly covered.
@@ -40,7 +43,7 @@ It runs at 30 Hz on an RTX 4050 laptop GPU.
 | 4 layouts, 30 action steps, 90 s cap (7-model benchmark) | **4/4** | 3/4 |
 | Together | **11/13** | 8/13 |
 
-These samples are small, but the two tests agree: the fine-tuned model won every layout where the two models disagreed. It was benchmarked at 50 and 30 action steps; 25 is the setting we run it at now. The biggest single gain did not come from training. Executing 25–50 of each predicted 100-step action chunk before replanning, instead of all 100, took v2 from 4/10 to 6/10. Hidden balls remain the hard case.
+These samples are small, but the two tests agree: the fine-tuned model won every layout where the two models disagreed. The biggest single gain did not come from training. Executing 25–50 of each predicted 100-step action chunk before replanning, instead of all 100, took v2 from 4/10 to 6/10. Hidden balls remain the hard case.
 
 Every model we trained, every dataset and every benchmark, with how the choices changed over the 48 hours: **[docs/HISTORY.md](docs/HISTORY.md)**.
 
@@ -127,8 +130,10 @@ python scripts/dashboard/server.py --no-speech      # terminal 2, then open http
 Run the real demo on the arm (setup first: [docs/setup.md](docs/setup.md), then [docs/demo.md](docs/demo.md)):
 
 ```bash
-PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000 --n-action-steps 25
+PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000
 ```
+
+`demo_chain.sh` runs the pick policy with 30 action steps by default.
 
 ## Repository layout
 
@@ -141,7 +146,7 @@ PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --
 | `scripts/so101/`, `scripts/collect/` | Teleoperation, recording, dataset checks and upload, gripper torque cap, USB fixes |
 | `scripts/curation/` | Curation dashboard: browse, label and mix episodes for training |
 | `scripts/eval/` | `eval_pick`: compare pick policies on the arm over the same layouts |
-| `scripts/modal_train.py` | Cost-capped training recipes on [Modal](https://modal.com) |
+| `scripts/modal_train.py`, `scripts/modal_v2_finetune.py` | Cost-capped training recipes on [Modal](https://modal.com); the second one trained the current model |
 | `scripts/vision/`, `scripts/voice/`, `scripts/recolour/`, `scripts/analysis/` | Colour detector, voice commands, dataset recolouring, offline data analysis |
 | `tests/` | Standalone smoke and scenario tests (`uv run python tests/<file>.py`) |
 | `docs/` | Runbooks and [HISTORY.md](docs/HISTORY.md) |
@@ -164,3 +169,9 @@ PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --
 ## Thanks
 
 [LeRobot](https://github.com/huggingface/lerobot) and the SO-101 by [TheRobotStudio](https://github.com/TheRobotStudio/SO-ARM100), [MediaPipe](https://ai.google.dev/edge/mediapipe) hand landmarks, [Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) via [onnx-asr](https://github.com/istupakov/onnx-asr) for speech, the [`NikeSong/so101_gestures_dance`](https://huggingface.co/datasets/NikeSong/so101_gestures_dance) recording for the dance, [Modal](https://modal.com) and Hugging Face for training compute, and the organisers of the Bilbao Physical AI Hackathon.
+
+## License
+
+The code, documentation and images in this repository are licensed under [CC BY-NC 4.0](LICENSE). You may use, share and adapt them for non-commercial purposes if you credit us, link to the licence and say what you changed. Commercial use, including selling the work or a product built on it, is not allowed. A credit line could read: *"Find the striped ball" by Tian, Jakob, Tomi, Balazs and Kamel (github.com/jakobnunnendorf/lerobot-hackathon), CC BY-NC 4.0.*
+
+Dependencies such as LeRobot and MediaPipe keep their own licences. Datasets and models on the Hugging Face Hub carry the licence shown on their Hub pages.

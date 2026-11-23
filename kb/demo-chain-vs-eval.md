@@ -8,7 +8,7 @@ Tian saw the same model pick worse through the dashboard than in `eval_pick`. Vo
 | | `eval_pick` on 2026-11-22 | `demo_chain.sh` by default |
 |---|---|---|
 | checkpoint | `Space0code/act_redblue_from_foil_v2@20000` | `Space0code/act_redblue_from_foil@015000` before #67, then v2 `@20000` |
-| `n_action_steps` | 25 or 50 | the checkpoint's 100 before #67, then 30 |
+| `n_action_steps` | 25 to 50 (30 in the final benchmark) | the checkpoint's 100 before #67, then 30 |
 | between policy and gripper | nothing | the grasp check (`grasp_check.py`): on the first close it freezes the arm, squeezes, judges hold or miss; a hold resets the policy and locks the gripper, a miss opens, backs off and restarts PICK |
 | gripper at the start of a pick | 17.8, as in training | 30 |
 | attempts | one, 75 to 90 s | up to 3 of 90 s (raisable live from the dashboard); a timeout sends the arm to rest and restarts with an empty action queue |
@@ -23,7 +23,7 @@ Tian saw the same model pick worse through the dashboard than in `eval_pick`. Vo
 
 ```bash
 PICK_POLICY=Space0code/act_redblue_from_foil_v2 bash scripts/supervisor/demo_chain.sh --step 20000 \
-  --n-action-steps 25 --no-grasp-check --max-pick-attempts 1 --min-held-target-area 0 \
+  --n-action-steps 30 --no-grasp-check --max-pick-attempts 1 --min-held-target-area 0 \
   --rest -5.6 -102.8 96.6 -100.1 -5.2 17.8 --device cuda --give-mode present
 ```
 

@@ -22,7 +22,7 @@ python -c "from lerobot.datasets.lerobot_dataset import LeRobotDataset as D; D('
 The dance is only offered when the program is started with `--dance-episode`. Append the dance flags to the usual demo command; each dance command plays the next episode in turn:
 
 ```bash
-PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000 --n-action-steps 25 \
+PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000 \
   --dance-episode NikeSong/so101_gestures_dance:1 --dance-episode NikeSong/so101_gestures_dance:2 \
   --dance-speed 0.5 --dance-max-step-deg 4
 ```

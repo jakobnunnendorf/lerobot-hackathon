@@ -4,7 +4,7 @@
 
 ## Decision
 
-The demo PICK is `TianK003/act_hidden_from_v2@002000`: v2 (`Space0code/act_redblue_from_foil_v2@20000`) fine-tuned for 2K more steps on 38 clean episodes that start with the ball buried or partly covered. It runs with fewer executed actions per chunk than the checkpoint's 100: Tian says the demo ran it at 25; the benchmark below and Jakob's decision (board 7076580521) used 30, which is also the default in `scripts/supervisor/demo_chain.sh`. The pick budget is 90 s (`--pick-timeout 90`). The number of picks per round can be raised live from the dashboard. v2 stays the fallback and is what `demo_chain.sh` runs without `PICK_POLICY`.
+The demo PICK is `TianK003/act_hidden_from_v2@002000`: v2 (`Space0code/act_redblue_from_foil_v2@20000`) fine-tuned for 2K more steps on 38 clean episodes that start with the ball buried or partly covered. It runs with 30 executed actions per chunk instead of the checkpoint's 100: the setting of the final benchmark below and of Jakob's decision (board 7076580521), and the default in `scripts/supervisor/demo_chain.sh`. The pick budget is 90 s (`--pick-timeout 90`). The number of picks per round can be raised live from the dashboard. v2 stays the fallback and is what `demo_chain.sh` runs without `PICK_POLICY`.
 
 ```
 PICK_POLICY=TianK003/act_hidden_from_v2 bash scripts/supervisor/demo_chain.sh --step 002000
@@ -48,7 +48,7 @@ The model was not made larger and was not retrained with a smaller chunk.
 
 ## How the two fine-tunes were trained
 
-- **Hidden specialist:** Modal L40S, v2 at 20K plus 3K steps on 38 clean episodes that start buried or partly covered (Jakob's clean list, no hold-out episode), checkpoints `001000`, `002000`, `003000`. Script: `scripts/modal_v2_finetune.py`, on the unmerged branch `TianK003/modal-v2-finetune`.
+- **Hidden specialist:** Modal L40S, v2 at 20K plus 3K steps on 38 clean episodes that start buried or partly covered (Jakob's clean list, no hold-out episode), checkpoints `001000`, `002000`, `003000`. Script: `scripts/modal_v2_finetune.py` (`run_b`).
 - **v3, more steps on the same data:** Modal L40S, v2 at 20K plus 10K steps on all 201 episodes with Tomi's recipe, checkpoints `022500`, `025000`, `027500`, `030000`. Reason to try: v1 at 15K had seen its data 8.9 times, v2 at 20K only 5.0 times.
 
 ## Alternatives

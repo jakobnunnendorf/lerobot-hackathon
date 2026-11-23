@@ -4,7 +4,7 @@ This is how the project changed over the Bilbao Physical AI Hackathon (2026-11-2
 
 Times are local (CET). Most facts come from the team's message board (GitHub issue #1), the git history and the public Hugging Face API. Arm results are small samples, counted by hand at the table. Read the caveats in [Benchmarks on the arm](#benchmarks-on-the-arm) before you compare numbers.
 
-**Current PICK model:** [`TianK003/act_hidden_from_v2`](https://huggingface.co/TianK003/act_hidden_from_v2), checkpoint `002000`, run with `n_action_steps` 25. On the arm it was tested at 50 and 30 action steps. It has never been benchmarked at 25. The fallback is [`Space0code/act_redblue_from_foil_v2`](https://huggingface.co/Space0code/act_redblue_from_foil_v2) at checkpoint `20000`.
+**Current PICK model:** [`TianK003/act_hidden_from_v2`](https://huggingface.co/TianK003/act_hidden_from_v2), checkpoint `002000`, run with `n_action_steps` 30, the setting of the final benchmark and the default of `scripts/supervisor/demo_chain.sh`. The fallback is [`Space0code/act_redblue_from_foil_v2`](https://huggingface.co/Space0code/act_redblue_from_foil_v2) at checkpoint `20000`.
 
 ## Timeline
 
@@ -81,11 +81,11 @@ Every policy we trained or tried is listed below. "Chunk" is ACT's `chunk_size`,
 | [`Space0code/act_redblue_from_foil_v2`](https://huggingface.co/Space0code/act_redblue_from_foil_v2) (**v2**) | ACT | Tomi | `act_pick_ball_combined` | `so101_pick_rb_mixed`, all 201 episodes (190 train) | v1's recipe, 20K steps, L40S. Checkpoint folders are not zero-padded (`20000`). | `@20000`: 6/8 at 100 steps. 4/10, 6/10 and 6/10 at 100, 50 and 25 steps. 5/9 paired at 50 steps. 3/4 at 30 steps. **Fallback.** |
 | [`Space0code/act_redblue_v2`](https://huggingface.co/Space0code/act_redblue_v2) | ACT | Tomi | scratch | `so101_pick_rb_mixed`, 201 episodes | 20K steps, same recipe. Held-out loss equal to v2's. | Not tested on the arm. |
 | [`TianK003/act_redblue_from_foil_v3`](https://huggingface.co/TianK003/act_redblue_from_foil_v3) | ACT | Tian | v2 `@20000` | `so101_pick_rb_mixed`, 201 episodes | v1's recipe, 10K more steps, L40S (checkpoints 22.5K to 30K). Held-out loss flat at 0.33 to 0.34. | `@030000`: 4/4 in the final benchmark, but 53 s on the visible ball. |
-| [`TianK003/act_hidden_from_v2`](https://huggingface.co/TianK003/act_hidden_from_v2) | ACT | Tian | v2 `@20000` | 40 clean `so101_pick_rb_mixed` episodes that start buried (25) or partly covered (15). 2 are held out, so 38 are trained on. None of Jakob's hold-out episodes. | v1's recipe, 3K steps, L40S. Checkpoints 1K, 2K and 3K. | `@002000`: 7/9 paired against v2's 5/9 at 50 steps. 4/4 at 30 steps. **Current PICK, run at 25 steps.** |
+| [`TianK003/act_hidden_from_v2`](https://huggingface.co/TianK003/act_hidden_from_v2) | ACT | Tian | v2 `@20000` | 40 clean `so101_pick_rb_mixed` episodes that start buried (25) or partly covered (15). 2 are held out, so 38 are trained on. None of Jakob's hold-out episodes. | v1's recipe, 3K steps, L40S. Checkpoints 1K, 2K and 3K. | `@002000`: 7/9 paired against v2's 5/9 at 50 steps. 4/4 at 30 steps. **Current PICK, run at 30 steps.** |
 
 Two recipes were prepared but never trained: an ACT whose image encoder is first trained on Jakob's labels (`act_clean_labelenc`, branch `jakobnunnendorf/label-archs`), and a "clear one foil ball" policy cut from the buried foil episodes. That one was withdrawn when the scene changed to red and blue balls. Kamel's first local red/blue run was stopped at about 2K steps and moved to Modal.
 
-The training code is [`scripts/modal_train.py`](../scripts/modal_train.py) (Modal recipes for ACT and SmolVLA). The v3 and hidden fine-tunes were trained with `scripts/modal_v2_finetune.py` on branch `TianK003/modal-v2-finetune`. The clearing models were trained with `scripts/multistep/` on branch `TianK003/multistep-act`.
+The training code is [`scripts/modal_train.py`](../scripts/modal_train.py) (Modal recipes for ACT and SmolVLA). The v3 and hidden fine-tunes were trained with [`scripts/modal_v2_finetune.py`](../scripts/modal_v2_finetune.py). The clearing models were trained with `scripts/multistep/` on branch `TianK003/multistep-act`.
 
 ### Model choices over time
 
@@ -95,7 +95,6 @@ The training code is [`scripts/modal_train.py`](../scripts/modal_train.py) (Moda
 4. **Sunday early morning: v2 (`act_redblue_from_foil_v2@20000`).** It has the same recipe as v1 but was trained on all 201 episodes. After the servo swap it beat v1 on visible and partly covered balls and picked no wrong ball. Neither handled hidden balls well at 100 steps.
 5. **Sunday 07:30: v2 at 30 action steps.** Running fewer of the 100 predicted actions before looking again helped on hidden balls, and it needs no retraining. Tomi had already guessed on Saturday that the arm was "blind for 3 s" at a time ([`decisions/hidden-ball-picking.md`](../decisions/hidden-ball-picking.md)).
 6. **Sunday 09:30: `act_hidden_from_v2@002000` at 30 action steps, with v2 as the fallback.** It won both tests against v2 (11 of 13 paired runs in total against 8 of 13), and it never lost a layout that v2 picked. At 30 steps it was no slower than v2 (10 to 46 s).
-7. **Now: the same checkpoint at 25 action steps.** That is Tian's current setting. The model itself has only been tested at 50 and 30, while v2 was tested at 25.
 
 ## Benchmarks on the arm
 

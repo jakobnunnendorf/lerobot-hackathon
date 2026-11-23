@@ -12,7 +12,7 @@ Inside WSL, repo root, in a terminal you can type in (the arm only moves after S
 
 ```bash
 bash scripts/eval/eval_pick.sh --policy hidden=TianK003/act_hidden_from_v2@002000 \
-    --policy v2=Space0code/act_redblue_from_foil_v2@20000 --n-action-steps 25
+    --policy v2=Space0code/act_redblue_from_foil_v2@20000 --n-action-steps 30
 ```
 
 From PowerShell, in its own window:
