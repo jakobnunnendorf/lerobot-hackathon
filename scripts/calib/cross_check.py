@@ -1,4 +1,4 @@
-"""Independent cross-check of the top camera's calibration (docs/calibration-cross-check.md).
+"""Independent cross-check of the top camera's calibration (docs/camera-calibration.md).
 
 Recomputes intrinsics from the same frames and the camera pose from the same table frame and ruler values, without
 importing anything from Tian's scripts/calib/*.py, and prints the differences to the YAML files those scripts wrote

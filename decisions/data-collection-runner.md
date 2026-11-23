@@ -14,7 +14,7 @@ One script, `scripts/so101/collect.sh <name>`, records until ESC, checks the new
 
 ## Alternatives
 
-- **Recording from Tian's dashboard** - considered, not built: the dashboard only sends commands to a running supervisor and by design does not start robot programs (`decisions/dashboard.md`).
+- **Recording from Tian's dashboard** - first ruled out because the dashboard did not start robot programs; later built anyway as its one exception, a recording session started from the page (`decisions/dashboard.md`). Both ways exist; this script stays the one the robot-laptop agent runs.
 - **Auto-restart after a crash without asking** - rejected: a crash mid-episode can leave the arm in any pose, so the person decides (R + Enter).
 
 ## Revisit if

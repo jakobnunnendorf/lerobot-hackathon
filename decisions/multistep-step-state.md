@@ -1,6 +1,6 @@
 # How does the supervisor run and end the colour steps of a spoken plan?
 
-- Status: DECIDED (2026-11-22, agent of TianK003). Fake scenarios only; no clear-red/clear-blue ACT exists yet and nothing has run on the arm. Which policy runs a step (option (b), one ACT per colour) is `decisions/multistep-voice-policy.md` on `TianK003/multistep-research`.
+- Status: DECIDED (2026-11-22). On `main` (#59). The step logic ran on the arm once; the clearing ACTs it runs never grasped a ball, so spoken plans were not part of the demo. Which policy runs a step (one ACT per colour, `TianK003/act_clear_red`, `TianK003/act_clear_blue`) is decided in `decisions/multistep-voice-policy.md`, on the unmerged branch `TianK003/multistep-act` (PR #58).
 
 ## Decision
 
@@ -20,8 +20,13 @@ A plan round goes REST -> STEP (one per prompt) -> ... -> REST -> PICK chain. A 
 
 - **No ball was grabbed**, blue or red, according to Tian, who watched the run. Balazs's agent had reported "blue 2 / 2", but those were empty closes (gripper 1.6-4) that the policy still carried to the blue hole and opened there. The counter had no held-ball check and counted them. That is why the counter now has `held_above`.
 - **Red**: three cycles of an empty close, a swing to the red hole and an open. The fourth close read 14 (a ball, probably) when the 30 s budget ran out mid-trip, which aborted the round. That is why a timeout while holding now re-prompts, and why the grasp check runs inside a step.
-- These fixes make the step honest and let it retry. They do not make the clear ACTs grasp; that is a policy question, still open.
+- These fixes make the step honest and let it retry. They do not make the clear ACTs grasp; that is a policy question.
 - **Voice: a number makes a sentence a plan.** Any count word or digit, except a bare "one" ("the striped one"). "a"/"an" count as one inside a plan but never start one, so "give me a red ball" stays a single command.
+
+## Where it stood at the deadline
+
+- The clear ACTs always ran at the checkpoint's 100 action steps, while PICK improved at 25-50 (`decisions/hidden-ball-picking.md`). A flag `--clear-n-action-steps` for a second one-ball test at 30 is on the unmerged branch `Space0code/clear-n-action-steps` (PR #74). The test was planned for the last morning; no result was posted before the deadline.
+- So whether the clear ACTs can grasp at all, and the drop rule on real policy releases, stayed untested.
 
 ## Alternatives
 

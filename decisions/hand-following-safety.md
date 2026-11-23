@@ -1,6 +1,6 @@
 # How does the classical hand-following loop keep the ball and the people safe?
 
-- Status: OPEN, built and tested in dry run only, with Tian's kinematics and follower (2026-11-21, Jakob's agent, `scripts/handover/`)
+- Status: DECIDED (2026-11-21). Built by Jakob's agent with Tian's kinematics and follower (`scripts/handover/`), tested in dry run, then run on the arm by Balazs (T1, T2) and inside the demo chain's GIVE from the same evening.
 
 ## Decision
 
@@ -21,7 +21,7 @@ One process owns the robot connection and runs a 30 Hz loop: newest hand message
   - `tests/handover_drop_rule.py` covers: a still palm drops; a palm moving 6 cm does not; 0.3 s gaps still drop; 0.8 s gaps restart the dwell.
   - The tracker sends only open, palm-up hands (`--only-open`), so the loop does not filter `palm_up` itself.
 - **Unreachable or badly solved targets hold position** (IK result checked with FK, 2 cm tolerance) instead of moving to the nearest pose.
-- **After the drop (Tian, TianK003/hand-tracking-test 3bb344d, board 7064748304):** the gripper opens, `--celebrate N` fast close-open cycles (0.3 s strokes) with the arm still, then a plain joint move to `--rest` (Balazs's reading `-3.69 -103.43 97.01 -100.26 1.45`) and the loop stays there. From every hover point in the hand zone that joint move only rises (`tests/handover_celebrate_rest.py`). Celebrate and rest are not yet run on the arm (Balazs's run was 34dbc75, before them). "Hand lost" still returns to the start pose.
+- **After the drop (Tian, 2026-11-21, asked for by Balazs after T2):** the gripper opens, `--celebrate N` fast close-open cycles (0.3 s strokes) with the arm still, then a plain joint move to `--rest` (Balazs's reading `-3.69 -103.43 97.01 -100.26 1.45`) and the loop stays there. From every hover point in the hand zone that joint move only rises (`tests/handover_celebrate_rest.py`). Both ran on the arm inside the demo chain's GIVE, where the supervisor's REST does the fold (`decisions/supervisor.md`). "Hand lost" still returns to the start pose.
 - **Hand lost: hold, then back to the start pose after 5 s (`--lost-to-home`, was 3 s; Tian, 2026-11-21).** In T2 on the arm the tracker printed `no hand` in 63 of 157 lines while the gripper hovered over the palm (board 7064755928). The arm hides the palm from the side camera, so short losses are normal, and 3 s sent the arm home during them.
 - **The tip moves in straight Cartesian waypoints** (8 mm per tick, each clamped to the workspace, then IK, then at most 1.5° per joint and tick). The first version stepped joints straight to the target's IK solution: in dry run the tip dipped to 0.136 m with hover 0.18 m between targets. With waypoints it stayed 0.205-0.221 m at hover 0.22 m. This assumes the IK stays near its seed. The placeholder had to be changed to keep the seed's pitch, otherwise it jumped pitch and dipped the tip to 0.107 m. Tian's IK did jump (up to 16° between waypoints). His version keeps 20° of elbow bend, which brings that down to at most 8.5° (`tests/handover_kinematics.py`).
 - **Each joint step is guarded:** a step is shortened (1, 1/2, 1/4, 1/8, else no move) if it would bring the tip closer to the table (`--min-height`) or the base (0.12 m) than both where it is and where it is going. While the 1.5° limit spreads an 8° IK step over several ticks, the tip leaves the waypoint line. In the dry run with Tian's files, the tip was at most 7.6 mm from the waypoint the loop asked for (95th percentile 5.8 mm), and never outside the clamp.
@@ -36,5 +36,5 @@ One process owns the robot connection and runs a 30 Hz loop: newest hand message
 
 ## Revisit if
 
-- The table check (`docs/hand-following-table-check.md`) shows FK errors above about 2 cm.
+- A touch check (`docs/hand-tracking.md`) shows FK errors above about 2 cm.
 - The tip dips too low on the real arm between targets; then limit in Cartesian space instead of per joint.

@@ -1,15 +1,15 @@
-# LeRobot 0.7.0 training feasibility: "cut the correct wire" on SO-101 in 2 days
+# LeRobot 0.7.0: policies, commands and data collection for the SO-101
 
 Researched 2026-11-20 against the v0.7.0 docs (`https://huggingface.co/docs/lerobot/v0.7.0/en/...`) and the `huggingface/lerobot` repo at tag `v0.7.0`. Doc pages and source files were downloaded raw from the tag and read directly; community pages and papers were read through an automated summarizer, so numbers from those are marked where they should be re-checked.
+
+This was first written for the wire-cutting idea the team dropped on 2026-11-20. The wire-specific plan, cutting-force estimates and blade-safety notes were removed after the hackathon; the LeRobot 0.7.0 facts stay. What the team later confirmed on its own hardware is in `kb/`.
 
 ## TL;DR
 
 1. Train **ACT** first. It is the only policy that comfortably trains on a laptop GPU (about 2-6 GB VRAM) in an hour or two; SmolVLA needs about 10-16 GB, and pi0/pi0.5/GR00T need 24-40 GB (cloud only).
 2. LeRobot 0.7.0 (released 2026-11-05) changed the workflow: evaluation is `lerobot-rollout`, not `lerobot-record --policy.path`; async inference is replaced by `--inference.type=rtc` (local) or `lerobot-policy-server` plus `--inference.type=remote`; W&B flags are now `--trackio.*`.
 3. Bimanual SO-101 is supported in software (`bi_so_follower` + `bi_so_leader`), but a learned bimanual policy is not realistic in 2 days: in a July 2026 SO-101 benchmark, ACT with 50 demos scored 2.5% on bimanual tasks.
-4. Do not ask one policy to decide the color. Use a hybrid: classical CV (HSV on a fixed overhead camera) picks the slot, then one of three per-slot, color-agnostic ACT skills does the cut.
-5. Data budget: 3 slots x 40 episodes = 120 base episodes, plus about 30 DAgger correction episodes on day 2, leaving 20-50 spare for one stretch experiment.
-6. Biggest risks: the capped gripper cannot cut real copper wire, a blade near hands during 150+ resets, lighting drift between day 1 and day 2, and Windows USB/camera/video-decoding friction on a 15-day-old release.
+4. Do not ask a small-data policy to decide from a sentence which object to act on: the evidence in section 4 says language following is the weak point at about 50 demos per instruction.
 
 ---
 
@@ -278,13 +278,13 @@ lerobot-record \
 
 ### How much harder is bimanual?
 
-- ArmnetBench (50 demos per task, bimanual SO-101): ACT 2.5% average over four bimanual tasks (0%, 0%, 0%, 10%); Diffusion 35.8%; pi0.5 52.1%. "Hold the lamp with the left arm and open the door with the right gripper" - structurally the closest to hold-and-cut - scored ACT 0%, Diffusion 73%, pi0.5 23%.
+- ArmnetBench (50 demos per task, bimanual SO-101): ACT 2.5% average over four bimanual tasks (0%, 0%, 0%, 10%); Diffusion 35.8%; pi0.5 52.1%. "Hold the lamp with the left arm and open the door with the right gripper" - a hold-with-one-arm, act-with-the-other task - scored ACT 0%, Diffusion 73%, pi0.5 23%.
 - The policies that did tolerably on bimanual (Diffusion, pi0.5) are the ones that do not fit a typical laptop GPU.
 - No source found gives a clean "bimanual needs N times more data" figure.
 
 ### Verdict
 
-Recording a bimanual dataset in 2 days is feasible. Getting a working learned bimanual policy in 2 days is not something the evidence supports, especially with ACT on a laptop. If two arms matter for the demo, make the second arm a holder that is not learned: record one "present the device" trajectory and replay it, or hold a fixed pose, while the single-arm policy does the cut (details in the plan below).
+Recording a bimanual dataset in 2 days is feasible. Getting a working learned bimanual policy in 2 days is not something the evidence supports, especially with ACT on a laptop. If two arms matter for a demo, make the second arm a holder that is not learned: replay one recorded trajectory or hold a fixed pose while the single-arm policy does the task.
 
 ---
 
@@ -327,13 +327,12 @@ lerobot-record \
 - **Cadence report:** each episode prints the achieved loop rate. Frame timestamps are derived from the frame index, so a session that really ran at 25 Hz still claims 30 fps and the recorded motion is faster than reality. Check this line before training on anything.
 - Suggested for this task: `--dataset.episode_time_s=20 --dataset.reset_time_s=10`, ending episodes early with Right Arrow.
 
-### Handling variation for the wire task
+### Handling variation
 
-- Fix the mock device in a jig (screwed or clamped, with tape outlines). Every degree of freedom removed from the scene is data you do not have to record.
+- Fix the scene where you can (screwed or clamped, with tape outlines). Every degree of freedom removed from the scene is data you do not have to record.
 - If positions must vary, follow the 10-episodes-per-position rule and add positions only after the fixed case works.
-- Colors: for the hybrid design below, shuffle wire colors across slots every 5 or so episodes so each per-slot skill becomes color-agnostic.
 - Lighting: bring your own lamp and shade the scene from windows. Day 1 afternoon and day 2 morning will otherwise look different. Train with `--dataset.image_transforms.enable=true`.
-- Demonstration style: one operator, one consistent strategy, no pauses or hesitations, same start pose, stop the episode right after the cut.
+- Demonstration style: one operator, one consistent strategy, no pauses or hesitations, same start pose, stop the episode right after the task is done.
 
 ### Common failure causes (from the sources above)
 
@@ -389,44 +388,18 @@ lerobot-replay \
 
 ---
 
-## 4. The "which wire?" decision
+## 4. Choosing the target at run time: evidence on language conditioning
 
-### a. End-to-end single policy that learns color from pixels (ACT, one task string)
+How the ball-picking demo handled this: `research/multi-colour-targets.md` and `decisions/colour-choice.md`. The general evidence found here:
 
-- Mapping: one dataset, `--policy.type=act`, target is always the same color while its slot changes.
-- Pros: no extra code; one model.
-- Cons: ACT has no language input, so the target color is baked in at training time; you cannot ask for a different wire at demo time. The policy must learn "find green, then go there" from about 40 episodes per slot with nothing forcing it to attend to color. A September 2026 paper studying ACT reports that visually similar distractors cause "incorrect object or destination selection even when the underlying manipulation skill remains intact" (https://arxiv.org/abs/2609.05376 ; abstract only, no numbers retrieved).
-- Verdict: plausible but fragile, and a wrong cut is the worst possible demo failure.
-
-### b. Language-conditioned VLA ("cut the green wire")
-
-- Mapping: record one dataset per instruction with different `--dataset.single_task` strings, merge with `lerobot-edit-dataset --operation.type merge`, fine-tune `lerobot/smolvla_base`, pass the string via `--task` at rollout. `--interactive=true` adds `/subtask <text>` to switch instructions without reloading.
-- Evidence against, for small data:
-  - LIBERO-Plus reports models "tend to ignore language instructions completely" (https://arxiv.org/abs/2510.13626); LangGap, which keeps the layout fixed and varies only the instruction, reports that current VLAs "largely ignore language instructions" (https://arxiv.org/abs/2603.00592). A fixed wire jig where only the instruction differs is exactly that setting.
+- **ACT has no language input**, so the target is baked in at training time. A September 2026 paper studying ACT reports that visually similar distractors cause "incorrect object or destination selection even when the underlying manipulation skill remains intact" (https://arxiv.org/abs/2609.05376 ; abstract only, no numbers retrieved).
+- **Language-conditioned VLAs often ignore the instruction at small data:** LIBERO-Plus reports models "tend to ignore language instructions completely" (https://arxiv.org/abs/2510.13626); LangGap, which keeps the layout fixed and varies only the instruction, reports that current VLAs "largely ignore language instructions" (https://arxiv.org/abs/2603.00592).
   - ArmnetBench: SmolVLA 15.0% strict success at 50 demos per task, the lowest of seven policies.
   - A community four-task SO-101 SmolVLA card (930 episodes, 200k steps on an L40S) describes the result as "OK-ish", says SmolVLA "appears capacity-limited", and that "Pi0.5 on the same dataset works really well" (https://huggingface.co/Project-IRA/TPSoSe2026_SmolVLA_LeRobot_SO101_Finetuning_V6_Full). No success rates given.
   - Community multi-task SmolVLA cards use 200-300 episodes per instruction and warn that strings must match training verbatim (https://huggingface.co/Harrysunshine/so101-smolvla-9task ; not validated on hardware).
-- No source found shows SmolVLA reliably respecting color instructions with ~50 episodes per instruction.
-- Verdict: does not fit the laptop comfortably and the evidence says language following is the weak point. Stretch experiment only.
-
-### c. Hybrid: CV picks the target, a learned skill executes (recommended)
-
-- Mapping: a fixed overhead camera and a fixed jig give each wire slot a known image region. A short OpenCV script reads the mean hue in each region and returns the slot holding the requested color. It then launches the matching per-slot ACT policy with `lerobot-rollout --strategy.type=base --policy.path=<slot_k_policy> --duration=<s>`.
-- Each per-slot policy is trained only on "cut the wire in slot k" with shuffled colors, so it has no decision to make.
-- Pros: the decision is deterministic, debuggable and testable without the robot; data per skill follows the documented 50-episode recipe; no LeRobot internals to modify; the requested color can change at demo time; a wrong cut can only come from the CV step, which you can verify on screen before the arm moves.
-- Cons: N policies to train (same total frames as one policy); scales linearly with slot count; switching policies means reloading a checkpoint (seconds); on Windows the CV script must release the camera before `lerobot-rollout` opens it, or use a separate camera.
-- Variants:
-  - VLM instead of HSV. 0.7.0 has a built-in external planner: `--planner.model_id`, `--planner.api_base`, and `--planner.instructions='["...","..."]'`, where "the VLM is asked to pick one of these strings". It only steers language-conditioned policies, so it combines with option b, not with per-slot ACT.
-  - IK pre-positioning then learned finish. `lerobot.model.kinematics` and `examples/so100_to_so100_EE/` exist, but they depend on `placo`, and hand-eye calibration is a day of work. Not for this timeline.
-  - Open-loop replay per slot (`lerobot-replay`). With a rigid jig this may simply work and is the safety-net demo.
-- Related precedent: an SO-101 scissors project wrapped its imitation policy in a five-state machine with two YOLO classifiers verifying each step and per-state timeouts, after the robot "became overeager and made repeated cuts" (https://jaredlbailey.github.io/2025/11/01/Imitation-Learning.html).
-
-### d. Visual prompting (marker or overlay on the camera image)
-
-- Mapping: draw a marker on the overhead image at the target wire during both recording and rollout, and train one ACT policy on all slots. In 0.7.0 this needs a custom observation processor step so the overlay lands in the recorded frames (`robot_observation_processor` in `record_loop` and `build_rollout_context`). A zero-code physical version: an LED or pointer next to the target slot, switched by the CV script.
-- Evidence: AimBot (overlay cues improve visuomotor policies, https://arxiv.org/abs/2508.08113), ARRO (masking distractors, tested with Diffusion Policy and pi0, https://arxiv.org/abs/2505.08627), Visual Attentive Prompting (training-free highlighting for frozen VLAs, https://arxiv.org/abs/2512.20014), and the ACT distractor paper above lists appearance-based visual prompting among fixes that "substantially improve robustness". None of these was confirmed to report results at the 100-200 episode scale.
-- Pros: one policy shares approach-and-cut data across slots. Cons: custom code inside the record and rollout loops on a new release; an overlay bug silently poisons the whole dataset.
-- Verdict: good second step if c works early. The physical LED version is the low-risk way to try it.
+  - No source found shows SmolVLA reliably respecting colour instructions with ~50 episodes per instruction.
+- **Classical vision picks, a learned skill executes:** deterministic and testable without the robot. 0.7.0 also has a built-in external planner (`--planner.model_id`, `--planner.api_base`, `--planner.instructions='["...","..."]'`, where "the VLM is asked to pick one of these strings"); it only steers language-conditioned policies. Precedent: an SO-101 scissors project wrapped its imitation policy in a five-state machine with two YOLO classifiers verifying each step and per-state timeouts, after the robot "became overeager and made repeated cuts" (https://jaredlbailey.github.io/2025/11/01/Imitation-Learning.html).
+- **Visual prompting** (a marker or overlay on the camera image at the target, during recording and rollout): in 0.7.0 this needs a custom observation processor step so the overlay lands in the recorded frames (`robot_observation_processor` in `record_loop` and `build_rollout_context`). Evidence: AimBot (https://arxiv.org/abs/2508.08113), ARRO (https://arxiv.org/abs/2505.08627), Visual Attentive Prompting (https://arxiv.org/abs/2512.20014), and the ACT distractor paper above. None was confirmed to report results at the 100-200 episode scale, and an overlay bug silently poisons the whole dataset.
 
 ---
 
@@ -489,87 +462,25 @@ lerobot-train \
 - **Video decoding:** `pyproject.toml` pins `torchcodec>=0.7.0,<0.18.0` on win32 and notes it "needs torch>=2.8". TorchCodec needs FFmpeg shared libraries it can load; forum reports of Windows DLL load failures are common (https://discuss.huggingface.co/t/cannot-load-torchcodec/169260). LeRobot falls back automatically: `get_safe_default_video_backend()` returns `pyav` with a warning when TorchCodec cannot load FFmpeg. You can force it with `--dataset.video_backend=pyav` (flag used in the GR00T docs).
 - **Video encoding while recording:** default codec is `libsvtav1` (CPU heavy). `--dataset.rgb_encoder.vcodec=auto` probes for hardware encoders; `h264_nvenc` is listed for Linux/Windows with an NVIDIA GPU. Low-resource fallback from the docs: `--dataset.rgb_encoder.vcodec=h264 --dataset.streaming_encoding=false`.
 - **Extras:** the extra is named `core_scripts` in `pyproject.toml`; pip normalizes `core-scripts` to the same thing. `feetech` now installs `rustypot` instead of the Feetech SDK. `libero` is Linux-only.
-- **WSL:** USB cameras through WSL are a known pain point (forum threads); stay on native Windows.
+- **WSL:** USB cameras through WSL are a known pain point (forum threads). The team nevertheless ran the arm and both cameras from WSL2 with usbipd on the robot laptop (`kb/machines.md`).
 
 ---
 
-## 6. Practical cutting on an SO-101
-
-### Servo and gripper limits
+## 6. SO-101 servo and gripper limits
 
 - The follower uses 6x STS3215 with 1/345 gearing (https://huggingface.co/docs/lerobot/v0.7.0/en/so101).
 - Retailer specs: 7.4 V version 16.5 kg.cm at 6 V and 19.5 kg.cm at 7.4 V stall, rated load 5 kg.cm; 12 V version 30 kg.cm stall, rated load 10 kg.cm, stall current 2.7 A (https://www.dfrobot.com/product-2961.html , https://www.dfrobot.com/product-2962.html , https://www.robotshop.com/products/feetech-12v-30kgcm-magnetic-encoding-servo-sts3215). Sources disagree slightly on which voltage the 19.5 figure belongs to.
-- **LeRobot caps the gripper servo.** `so_follower.py` at v0.7.0 writes, for the gripper motor only: `Max_Torque_Limit = 500` ("50% of max torque to avoid burnout"), `Protection_Current = 250` ("50% of max current"), `Overload_Torque = 25` ("25% torque when overloaded"). Source: https://github.com/huggingface/lerobot/blob/v0.7.0/src/lerobot/robots/so_follower/so_follower.py
-- My estimate, not a measured value: half of stall torque is about 10 kg.cm (7.4 V) or 15 kg.cm (12 V). With a jaw of roughly 8-10 cm that is on the order of 10-18 N at the tip, briefly, and much less sustained.
-- **Payload and repeatability:** TheRobotStudio publishes no rated payload or repeatability. Third-party figures conflict (about 150 g to about 500 g). Assume millimetre-level, not sub-millimetre, positioning from hobby servos with gear backlash and printed links, and measure it: replay one episode ten times with `lerobot-replay` onto a paper target.
-
-### Can it cut?
-
-- Precedent: an SO-101 with ordinary scissors on a custom wrist mount, handles driven by the gripper, cut soft food; the author reports it "couldn't cut harder foods reliably" and switched to softer items (https://jaredlbailey.github.io/2025/11/01/Imitation-Learning.html). A Hackster project ("Cutana") uses SO-101 arms for vegetable chopping; details not verified.
-- No project was found cutting electrical wire with an SO-100/SO-101.
-- My estimate: shearing 22 AWG copper (0.33 mm2 at roughly 200 MPa shear strength) needs about 65 N at the blade. Flush cutters give perhaps 5-8x leverage, so about 8-13 N at the handle ends, which is right at the capped gripper's limit before insulation and friction. Treat real copper wire as not feasible.
-
-### Safer and more reliable "wires" (engineering suggestions, untested)
-
-| Option | Mechanism | Notes |
-| --- | --- | --- |
-| Soft solder wire or thin yarn in flush cutters or scissors held by the gripper | Gripper closes the tool | Solder is far softer than copper; closest to a real "snip". Tool needs a spring return and a printed mount |
-| Paper or ribbon strips with scissors | Same | Proven tool approach; wide strips are forgiving of position error |
-| Magnetic breakaway wires | Arm hooks or pushes the wire until a magnet joint separates | No blade at all. Add a continuity circuit: correct wire lights green, wrong wire triggers the "bomb" |
-| Brittle "wires" (dry spaghetti, pencil lead) | Arm pushes sideways until it snaps | No blade, clear visual result, cheap resets |
-| Tensioned thread and a blade on the gripper | Arm drags blade across thread | Works only with good tension and a sharp exposed blade |
-| Hot wire (nichrome) through nylon thread | Melts | Burn and fume risk at an event; not recommended |
-
-### Blade safety
-
-A learned policy moves unpredictably, and someone reaches into the workspace to reset the scene 150 or more times. If a blade is used: guard it so only a slot is exposed, set `--robot.max_relative_target=<deg>` (field verified in `SOFollowerConfig`) to limit per-step motion, put arm power on a switch within reach, wear eye protection, and never reset while a rollout process is alive. Note `disable_torque_on_disconnect` defaults to true, so the arm drops when a script exits.
-
----
-
-## Recommended technical plan for 2 days
-
-### Architecture
-
-1. **Scene:** mock device rigidly fixed in a jig with 3 wire slots, own lamp, top camera plus wrist camera at 640x480, 30 fps, MJPG.
-2. **Selector:** OpenCV script on the top camera; fixed region per slot; mean hue decides which slot holds the requested color; shows the decision on screen.
-3. **Skills:** three per-slot ACT policies, each trained on "cut the wire in slot k" with wire colors shuffled.
-4. **Executor:** script launches `lerobot-rollout --strategy.type=base --policy.path=<slot_k> --duration=25`, then re-reads the camera to verify the cut.
-5. **Fallback:** one clean recorded episode per slot, replayable with `lerobot-replay`.
-6. **Second arm (optional):** not learned. Replay a "present the device" episode with `--robot.disable_torque_on_disconnect=false` so it keeps holding (untested), and record all cutting data with that arm in place.
-
-### Data budget (about 150 of the 200-episode ceiling)
-
-| Block | Episodes | Purpose |
-| --- | --- | --- |
-| Pipeline smoke test | 10 (throwaway) | Record, train 3-5k steps, rollout once. Proves the whole chain on Windows before real data |
-| Slot 1 / 2 / 3 base | 40 + 40 + 40 | Separate datasets, `--dataset.single_task="cut the wire in the left slot"` etc., colors shuffled every 5 episodes |
-| DAgger corrections | ~10 per slot = 30 | Day 2, targeted at observed failures |
-| Reserve | 20-50 | One stretch experiment (LED visual prompt, or SmolVLA on the merged set via HF Jobs) |
-
-Size check: 40 episodes x ~15 s x 30 fps is about 18k frames per slot. Ten epochs at batch 8 is about 22k steps per policy, about 67k steps for all three. From the docs' anchor (4090: ~28k steps in 30-60 min), expect roughly 1-3 h per policy on a laptop GPU; this is an extrapolation and depends on the actual card. Set `--save_freq=5000` and compare checkpoints on the robot rather than trusting the loss.
-
-### Schedule
-
-- **Day 1 morning:** calibrate, fix cameras and jig, build the cutting tool, write the HSV selector. Run the 10-episode smoke test end to end, including `lerobot-rollout`. Replay an episode ten times to measure repeatability.
-- **Day 1 afternoon:** record 120 base episodes with one operator. Review a sample in the visualizer and delete bad ones. Check every cadence line.
-- **Day 1 evening and night:** train the three policies (sequentially on the laptop, or in parallel with `--job.target=a10g-small`).
-- **Day 2 morning:** 10 rollouts per slot, tally successes. DAgger corrections on the weakest slots, merge, fine-tune 10-20k steps from the existing checkpoint.
-- **Day 2 afternoon:** integrate selector and executor, add the verify step, rehearse the demo, freeze by mid-afternoon. Stretch experiment only if all three slots already work.
-
-### Decision points
-
-- Smoke test fails by day 1 lunch: stop adding features and fix the pipeline.
-- A slot is below about 6/10 after DAgger: use replay for that slot in the demo.
-- All slots at 8/10 or better by day 2 noon: try the LED visual-prompt single policy or the SmolVLA stretch.
+- **LeRobot caps the gripper servo.** `so_follower.py` at v0.7.0 writes, for the gripper motor only: `Max_Torque_Limit = 500` ("50% of max torque to avoid burnout"), `Protection_Current = 250` ("50% of max current"), `Overload_Torque = 25` ("25% torque when overloaded"). Source: https://github.com/huggingface/lerobot/blob/v0.7.0/src/lerobot/robots/so_follower/so_follower.py . On our arm even 500 stripped the gripper's gears; the team caps it at 200 (`kb/gripper-torque-limit.md`).
+- **Payload and repeatability:** TheRobotStudio publishes no rated payload or repeatability. Third-party figures conflict (about 150 g to about 500 g). Assume millimetre-level, not sub-millimetre, positioning from hobby servos with gear backlash and printed links.
+- `--robot.max_relative_target=<deg>` (field verified in `SOFollowerConfig`) limits per-step motion. `disable_torque_on_disconnect` defaults to true, so the arm drops when a script exits.
 
 ---
 
 ## Unverified
 
-- **No command in this document was executed.** Flags are quoted from the v0.7.0 docs or read from config dataclasses; behaviour on this Windows machine is untested.
+- **No command in this document was executed when it was written** (the ones the team later ran are in `kb/`). Flags are quoted from the v0.7.0 docs or read from config dataclasses; behaviour on this Windows machine is untested.
 - ArmnetBench per-policy and per-task numbers, and the forum, model-card and blog details, came through an automated page reader. Re-check against the originals before quoting them to judges.
 - Per-policy inference rates on SO-101: not published in the v0.7.0 docs.
-- Laptop training-time estimates: extrapolated from desktop and cloud figures; the team's GPU model and VRAM are unknown to me.
 - `--dataset.episodes` / `--dataset.exclude_episodes` CLI form: fields exist in `DatasetConfig`; exact CLI syntax not seen in docs.
 - How to write the camera `backend` value inline (`backend: 700` versus `backend: DSHOW`): field and enum verified, parsing form not.
 - Whether `libsvtav1` and `h264_nvenc` are available in the PyAV build installed on Windows.
@@ -578,7 +489,6 @@ Size check: 40 episodes x ~15 s x 30 fps is about 18k frames per slot. Ten epoch
 - Windows dataset cache path: docs give `~/.cache/huggingface/lerobot/{repo-id}`; the Windows equivalent under the user profile is assumed.
 - Second arm holding its pose after `lerobot-replay` exits with `--robot.disable_torque_on_disconnect=false`, and servo heating while holding.
 - Whether `bi_so_follower` issue #3244 is fully fixed in 0.7.0 (inferred from the config, not from the issue thread).
-- Gripper force, wire shear force, payload and repeatability figures are my estimates or conflicting third-party numbers. No official SO-101 figures exist.
-- All "safer wire" options are suggestions; none was found tested on an SO-101.
+- Payload and repeatability figures are conflicting third-party numbers. No official SO-101 figures exist.
 - LeLab compatibility with a pinned 0.7.0 pip environment.
 - No community evidence was found, either way, for SmolVLA following color instructions at ~50 episodes per instruction on SO-101.

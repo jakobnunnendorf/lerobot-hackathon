@@ -329,7 +329,7 @@ class _HandoverArm:
         self.arm.send(action_of(np.concatenate([joints_deg, [gripper]])))
 
 
-# The values of the command Balazs ran on the arm with Tian's branch (docs/hand-tracking-test.md section 2b on
+# The values of the command Balazs ran on the arm with Tian's branch (docs/hand-tracking.md; first run from
 # TianK003/hand-tracking-test; board 7064755928, "works fine"): hover 28 cm, every target at least 20 cm up, half speed.
 # celebrate: Tian's 3 close-open cycles after the drop (3bb344d, dry run only so far).
 @dataclass

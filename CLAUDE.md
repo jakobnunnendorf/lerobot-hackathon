@@ -4,40 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Team project for the [Bilbao Physical AI Hackathon](https://hackathonbilbao.eus/home-page-eus): 5 people, about 2 days (started 2026-11-20, deadline Sunday 2026-11-22 11:00), one LeRobot SO-101 arm (leader + follower) and two cameras. Optimise for a working robot demo by the deadline, not for clean abstractions.
+Team project from the [Bilbao Physical AI Hackathon](https://hackathonbilbao.eus/home-page-eus) (2026-11-20 to 2026-11-22): five people, one LeRobot SO-101 arm (leader + follower), a top and a wrist camera. The hackathon is over; the repo is kept as a clean, working record of the demo. `README.md` says what the robot does; `docs/HISTORY.md` says how the project got there, with every model and dataset.
 
-**The idea** (chosen by the team on 2026-11-20; the earlier bomb-defusal and cable-cutting ideas are dropped): a bowl holds one target ball (yellow and green stripes) among red and blue balls. There are no gray tinfoil balls any more: the foil datasets are older data, and a foil ball is neither red nor blue. If the target ball can be seen, the arm picks it up wherever it lies. If it cannot be seen, the arm picks one red or blue ball, drops it into the hole of its colour (red hole, blue hole) and looks again. Holding the target ball, it puts it into a human hand and shakes hands if a hand is detected, and puts it down otherwise. Full description, build plan and open questions: `ideas/ball-picking-and-handover.md`.
+**The task:** a bowl holds one target ball (yellow and green stripes) among red and blue balls. The arm picks the target wherever it lies, digging it out when it is buried, checks it in the wrist camera, and drops it into an open palm it tracks with the top camera. Older datasets use grey tinfoil balls instead of red and blue; a foil ball is neither red nor blue.
 
 ## How the demo is structured
 
-Read `ideas/ball-picking-and-handover.md` before writing demo code. The parts that span several files:
-
-- **A supervisor decides, skills act.** A decision tree over the two camera feeds picks the next skill: target ball visible well enough to grasp? PICK, otherwise CLEAR (one red or blue ball into the hole of its colour) and look again; holding the ball and a hand is seen? GIVE then SHAKE, otherwise PUT DOWN. It decides only while the arm is parked, because the arm hides the bowl from the camera while it works.
-- **Skills are separate and short.** PICK and CLEAR are learned policies. Clearing is being built as one policy per colour (CLEAR RED, CLEAR BLUE); as of 2026-11-22 01:00 these are not reliable on the arm (empty grasps in the first table tests), so read the board for their current state before you build on them. GIVE, PUT DOWN and SHAKE start as replays of one recorded episode each; GIVE becomes a learned policy if time allows. One dataset per skill, each with its own task sentence, all with the same camera names, resolution and `--robot.id`.
-- **Two anchor poses make skills chain.** HOME (above the bowl, gripper open) and CARRY (above the bowl, gripper closed on the target ball). Every demonstration and every replay starts and ends in one of them. CLEAR goes from HOME to HOME. GIVE and PUT DOWN demonstrations start with the ball already held.
+- **One robot program owns the arm.** `scripts/supervisor/run_supervisor.py` (started by `scripts/supervisor/demo_chain.sh`) connects the follower and both cameras once, loads every policy up front and runs a plain 30 Hz loop (`get_observation`, `predict_action`, `send_action`). `lerobot-rollout` and `RolloutController` own one policy and one connection and cannot switch policies, and `lerobot-replay` opens its own connection, so replays (dance) run in the same loop. See `decisions/supervisor.md`.
+- **A supervisor decides, skills act.** A state machine runs a round: REST → PICK (learned ACT, with a grasp check on the gripper at each close) → VERIFY_HOLD (gripper reading and a wrong-ball check in the wrist camera) → GIVE (rule-based hand following, `scripts/handover/`) or PUT_DOWN → REST. LOOK and CLEAR_GRAY (a top-camera visibility check before PICK) still exist in `machine.py` but are off in the demo chain. DANCE, BITE and STEP (spoken multi-step plans with per-colour clearing policies) are extra round types.
 - **A policy never reports that it is done.** Each skill has a time budget, then the supervisor checks the result (gripper reading, camera).
-- **Voice is an add-on with one contract.** A separate process in its own environment turns speech into one JSON line (`target`, `destination`) sent to the supervisor over a local socket. Keyboard keys send the same commands. The destination only changes which skill runs after PICK. Choosing the ball colour by voice needs a different pick skill and is a stretch goal.
-- **The learned skills are ACT policies, one per skill.** Training runs in the cloud; inference has to run on a team laptop, and the only GPU laptop has 8 GB. pi0.5 was tested there on 2026-11-20 and ran out of memory while loading. See `kb/machines.md`.
+- **The pick policy is ACT.** pi0.5 ran out of memory on the 8 GB laptop GPU; a SmolVLA fine-tune picked 0 of 4 on the arm. The current model and every alternative are in `docs/HISTORY.md` and `decisions/hidden-ball-picking.md`. `n_action_steps` (how many of the 100 predicted actions run before replanning) is a run-time flag and matters more than retraining did.
+- **Other processes never talk to the motors.** The hand tracker (`scripts/handtrack/`, MediaPipe, its own environment because its OpenCV clashes with LeRobot's) and the dashboard (`scripts/dashboard/`) read camera frames from shared memory and talk to the robot program over local sockets: commands TCP 8765, hand positions TCP 8766, status UDP 8767, hand overlay UDP 8771. Nothing they do may slow the 30 Hz loop.
 
-## Coordination (read before doing any work)
+## Working in this repo
 
-Five people work here in parallel, each with their own agent. The only coordination channel is **GitHub issue #1, the message board**.
-
-- Before starting: `gh issue view 1 --comments` and read the latest comments, so you do not duplicate or collide with someone else's work.
-- Post a comment (`gh issue comment 1 --body-file <file>`) when you claim a task, finish one, get blocked, or hand work over. Start it with who you work for and the kind of update, e.g. `**[agent of @TianK003] CLAIM**`, `DONE`, `BLOCKED`, `HANDOFF`, `QUESTION`. Mention a person with `@login` only when they need to act.
-- Do not open more issues for coordination; everything goes on #1.
-- To be told when someone posts, run `bash scripts/watch_board.sh <state file outside the repo> 43200 60` as a background command. It polls once a minute, skips your own agent's comments, and exits with the new comments as soon as someone else posts; then start it again. Use the long window: a short one makes the script return every few minutes and wakes the session for nothing. The `board-watcher` agent (Haiku, `.claude/agents/board-watcher.md`) wraps the same script and adds a summary. Neither posts anything.
-- **Agents never commit to `main`. Work on a branch and open a pull request.**
-  - Start every piece of work, docs included, on its own branch named `<github-login>/<topic>`, created from an up-to-date `main`.
-  - Commit regularly: whenever something works and before you switch tasks. Push the branch at least once an hour so work never exists only on one laptop.
-  - When the work is ready, open a pull request into `main` (`gh pr create`) and post its link on the board. Keep pull requests small: one topic each, opened the same day the work started.
-  - **Ask the person you work for before merging.** The one exception: if they told you at the start of the task to merge it yourself, merge without asking again. That permission covers that task only, not the next one.
-  - After the feature freeze (Saturday 21:00, see `docs/roadmap.md`) `main` is the demo branch. From then on every merge is asked, whatever was said earlier.
-  - Before merging, bring the branch up to date with `main` and check that `uv sync` and the two smoke scripts still pass if code or dependencies changed. Delete the branch after the merge.
-  - A change that others depend on (dependencies, shared scripts, anything the demo runs) is also announced on the board before it is merged.
-  - Never force-push `main`.
-- `docs/roadmap.md` defines the stop points and the human check-ins. At a check-in gate, stop and ask the human instead of continuing on your own.
-- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration). Prepare the command and hand it to the person at the table. The same goes for deleting datasets or checkpoints and for starting paid cloud jobs. The full list is in `docs/roadmap.md`. Exception: on molnrb's robot laptop the person at the table lets their agent open recording windows itself (`so101-collect` skill); do not copy this elsewhere without your own person's say-so.
+- **Never commit to `main`.** Work on a branch named `<github-login>/<topic>` from an up-to-date `main`, open a pull request, and ask the person you work for before merging, unless they said at the start of the task that you may merge it. Never force-push `main`.
+- Before merging a change to code or dependencies, check that `uv sync` and the smoke scripts still pass.
+- **Never run a command that moves the robot** (`lerobot-teleoperate`, `lerobot-record`, `lerobot-replay`, `lerobot-rollout`, calibration, `demo_chain.sh`, `eval_pick.sh`). Prepare the command and hand it to the person at the table. The same goes for deleting or overwriting datasets, episodes or checkpoints, changing the `lerobot` or `torch` pins, and starting paid cloud jobs.
+- Report robot results as raw counts ("7/10"), never as "works" or "mostly works".
 
 ## Commands
 
@@ -47,44 +31,42 @@ uv run python tests/cuda.py              # torch build, CUDA availability, GPU m
 uv run python tests/lerobot_check.py     # builds an ACT policy, one train step + one inference step, prints PASS
 ```
 
-There is no pytest suite, linter or build step. The files in `tests/` are standalone smoke scripts; run the one you need with `uv run python tests/<file>.py`.
+There is no pytest suite, linter or build step. The files in `tests/` are standalone smoke and scenario scripts; run the one you need with `uv run python tests/<file>.py` (for example `tests/supervisor_scenarios.py` for the state machine, `tests/dashboard_smoke.py` for the dashboard).
 
-**Any work on the striped-ball data** (intake, labelling, finding events, tracing a robot failure to the data, building a training set or choosing an architecture, splits and evals, recording plans, merging datasets): load the `so101-data` skill (`.claude/skills/so101-data/SKILL.md`) and read the section for your task. **Before every training run or architecture decision, take the data distribution into account.** The full reference is `research/DATASET_GUIDE.md`.
+**Any work on the striped-ball data** (labelling, finding events, tracing a robot failure to the data, building a training set, splits and evals, merging datasets): load the `so101-data` skill (`.claude/skills/so101-data/SKILL.md`) and read the section for your task. Take the data distribution into account before every training run. The full reference is `research/DATASET_GUIDE.md`.
 
-**Hands-on robot work** (teleop, recording, checking or uploading a dataset, training, running a model on the arm, fixing the arm, cameras or USB): load the `so101-robot` skill (`.claude/skills/so101-robot/SKILL.md`) first and use `scripts/so101/`. It holds the working commands for our setup and the fixes for every failure seen so far.
-
-Robot work goes through the LeRobot CLIs, always behind `uv run` (`lerobot-find-port`, `lerobot-calibrate`, `lerobot-teleoperate`, `lerobot-record`, `lerobot-train`). `README.md` has the full SO-101 invocations. Its examples use macOS port names (`/dev/tty.usbmodem...`); on Windows the ports are `COMx`.
+**Hands-on robot work** (teleop, recording, checking or uploading a dataset, training, running a model on the arm, fixing the arm, cameras or USB): load the `so101-robot` skill (`.claude/skills/so101-robot/SKILL.md`) first and use `scripts/so101/`. Runbooks for people are in `docs/` (`docs/README.md` lists them).
 
 ## Things that are easy to get wrong
 
 - **The follower gripper's torque is capped at 200 of 1000. Never raise it above 200** (`Torque_Limit` or `Max_Torque_Limit`, in code, flags or by hand). LeRobot's default 500 stripped the gripper servo's gears on 2026-11-22. Every program that connects the follower calls `scripts/so101/gripper_limit.py` right after `connect()` to write the live `Torque_Limit`; do the same in any new one. LeRobot writes `Max_Torque_Limit` 500 (EEPROM) on every connect and the servo reloads `Torque_Limit` from it at power-up, hence the write after every connect. Details: `kb/gripper-torque-limit.md`.
-- **LeRobot is a pinned dependency (0.7.0), not vendored.** Its source sits in `.venv/Lib/site-packages/lerobot` (Windows) or `.venv/lib/python3.12/site-packages/lerobot`. Config and flag names change between LeRobot releases, so check them there or in the version-matched docs (https://huggingface.co/docs/lerobot/v0.7.0/en/index) instead of relying on memory of another version.
-- **0.7.0 changed the CLI.** According to `research/lerobot-training-feasibility.md` (read from the v0.7.0 docs and source, not yet run on our machines): policies are run on the robot with `lerobot-rollout`, not with `lerobot-record`; `lerobot-record` adds a timestamp to the dataset name unless `--dataset.no_stamp=true`; experiment tracking flags are `--trackio.*`; the two-arm types are `bi_so_follower` and `bi_so_leader`. That file has the full commands. When one is confirmed on hardware, record it in `kb/`.
-- **Several skills in one demo need our own control loop.** Read from the v0.7.0 source, not yet run (`research/lerobot-multi-skill-runner.md` has the details and an untested sketch): `lerobot-rollout` and `RolloutController` own exactly one policy and one robot connection and cannot switch policies. The demo therefore connects the robot once, loads all policies up front and runs a plain 30 Hz loop (`get_observation`, `predict_action`, `send_action`). `lerobot-replay` also opens its own connection, so replays inside the demo are done in that same loop.
 - **Never reset, disconnect or reconnect the robot while it holds the ball.** `RolloutController.reset()` moves all six joints including the gripper back to the pose at connect time, `disconnect()` switches torque off by default, and `connect()` briefly switches it off as well. Switching skills inside one loop sends nothing, so the arm holds.
+- **LeRobot is a pinned dependency (0.7.0), not vendored.** Its source sits in `.venv/Lib/site-packages/lerobot` (Windows) or `.venv/lib/python3.12/site-packages/lerobot`. Config and flag names change between releases, so check them there or in the version-matched docs (https://huggingface.co/docs/lerobot/v0.7.0/en/index), not from memory of another version. In 0.7.0, `lerobot-record` adds a timestamp to the dataset name unless `--dataset.no_stamp=true`, and experiment tracking flags are `--trackio.*` (`research/lerobot-training-feasibility.md`).
 - **ACT ignores the task sentence.** `set_task`, `/subtask` and the planner only affect language-conditioned policies (SmolVLA, pi0.5 and similar).
-- **Only the control loop talks to the motors.** Vision code runs in another thread or process and reads frames with `cameras[name].read_latest()` or from a shared copy of the observation. Slowing the control loop below the recorded 30 fps hurts the policy.
-- **Hand detection (MediaPipe) goes in its own environment and process.** Its OpenCV package clashes with the one LeRobot installs (from web research, not yet tried here).
-- **torch comes from the CUDA 12.8 wheel index for every platform** (`[tool.uv.sources]` in `pyproject.toml`). `uv.lock` therefore has only Linux and Windows torch wheels and no macOS one, while `README.md` still describes a macOS/`mps` setup. As of 2026-11-20 this mismatch is open on the board; check there before touching the torch pins.
-- `pyproject.toml` and `uv.lock` are committed together whenever dependencies change (`uv add <pkg>`).
+- **Fine-tune, do not resume, when the data changes** (`--policy.path`, `research/continue-training-from-checkpoint.md`). Held-out loss has not predicted arm behaviour for our policies; choose checkpoints on the arm (`kb/act-model-facts.md`).
+- **On Windows, LeRobot turns a Hub policy id into `user\repo` and fails**, and checkpoint `last` symlinks need a privilege Windows does not give. Pass a local snapshot path to `--policy.path` there; both work on Linux and WSL. The robot laptop drives the arm from WSL; Windows and WSL keep separate calibration files and dataset caches.
+- **torch comes from the CUDA 12.8 wheel index for every platform** (`[tool.uv.sources]` in `pyproject.toml`). `uv.lock` therefore has Linux and Windows torch wheels and no macOS one.
+- `pyproject.toml` and `uv.lock` are committed together whenever dependencies change (`uv add <pkg>`). The dashboard, hand tracker, voice, calibration, curation and recolouring tools have their own `requirements.txt` and environments.
 - `outputs/`, `data/`, `wandb/` and `*.safetensors` are git-ignored. Datasets and checkpoints go to the Hugging Face Hub, never into git.
 
 ## Decisions get documented, code does not
 
-The repo records *why* things are the way they are, so nobody explores the same search space twice. It does not describe *what* the code does: the code says that itself, and at this point agents read the code, not people.
+The repo records *why* things are the way they are, so nobody explores the same search space twice. It does not describe *what* the code does: the code says that itself.
 
 - **Read `decisions/` before you explore an approach.** If the question already has a record, start from it. Do not retry an alternative listed there unless its "Revisit if" condition holds, and if you do retry it, add the result to that same file.
-- **Write a decision record whenever you choose between alternatives or drop something you tried.** Use `decisions/<question>.md`, one file per question; `decisions/README.md` has the format. Failed attempts are the most valuable part: record them while the question is still open. Put the record in the same pull request as the code or config it explains. A choice with no real alternative needs no record.
-- **No documentation layer about the code.** No architecture walkthroughs, module overviews, API docs or READMEs that retell what a script does; they go stale and agents read the code directly. Runbooks for the people at the table (which command to run, what to check) still belong in `docs/`.
+- **Write a decision record whenever you choose between alternatives or drop something you tried.** Use `decisions/<question>.md`, one file per question; `decisions/README.md` has the format. Failed attempts are the most valuable part. Put the record in the same pull request as the code or config it explains. A choice with no real alternative needs no record.
+- **No documentation layer about the code.** No architecture walkthroughs, module overviews, API docs or READMEs that retell what a script does. Runbooks for the people at the table (which command to run, what to check) belong in `docs/`.
 - **Code is clean, concise and self-explanatory.** Use clear names and small functions, not comments.
 - **The only comments are about decisions**: why it is done this way, which alternative was tried or rejected, or a constraint the code cannot show (`# no reset() here: it moves the gripper back to its connect pose and drops the ball`). No comments that restate the code, no section banners, no docstrings that repeat the signature, no commented-out code, no change notes. If the reasoning takes more than two lines, write a decision record and point to it (`# see decisions/skill-policies.md`). When you change code, delete or fix comments that no longer hold.
 
 ## Where things go
 
-- `scripts/` - our own code (data collection helpers, perception, demo app).
-- `tests/` - smoke scripts (see above).
-- `decisions/` - one file per question: what was chosen, why, and what else was considered or tried, with results. See the section above.
-- `kb/` - knowledge base: verified facts about our setup that the team learned the hard way (port mapping, calibration notes, camera settings, training settings that worked or failed). One topic per file. Facts only: a choice, and the alternatives behind it, goes in `decisions/` and links to the facts it rests on.
-- `ideas/` - candidate project ideas, one file per idea, each with a status line.
-- `research/` - external research with source links (hackathon rules, the ball-picking idea, LeRobot feasibility and the multi-skill runner). `research/README.md` says which files belong to dropped ideas.
-- `docs/` - all other documentation (roadmap, runbooks, demo script, pitch). Only `README.md` and this file stay at the repo root.
+- `scripts/` - our code (robot program, dashboard, perception, data tools, training).
+- `tests/` - smoke and scenario scripts (see above).
+- `docs/` - runbooks for people (`docs/README.md` is the index) and `docs/HISTORY.md`.
+- `decisions/` - one file per question: what was chosen, why, and what else was considered or tried, with results.
+- `kb/` - verified facts about our setup (hardware, calibration, model facts, settings that worked or failed). One topic per file. Facts only; choices go in `decisions/` and link to the facts.
+- `research/` - external research with source links, and offline analyses of our own data.
+- `images/` - pictures used by `README.md`.
+- `logs/training/` - loss logs and plots of the main training runs.
+- Only `README.md`, `LICENSE` (CC BY-NC 4.0: non-commercial use with attribution) and this file stay at the repo root.

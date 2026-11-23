@@ -4,7 +4,7 @@ Verified facts the team learned while working, so nobody has to rediscover them.
 
 Good entries: which USB port is which arm on whose laptop, calibration quirks, camera indices and settings that work, training settings that worked or failed (with the run name), hardware fixes.
 
-Not for: ideas (`ideas/`), choices between alternatives and why (`decisions/`), external research (`research/`), plans and runbooks (`docs/`).
+Not for: choices between alternatives and why (`decisions/`), external research (`research/`), step-by-step instructions (`docs/`).
 
 Template:
 

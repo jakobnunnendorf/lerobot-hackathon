@@ -1,7 +1,6 @@
 # How does the team test and show the demo chain?
 
-- Date: 2026-11-21
-- Status: decided by Tian; built on `TianK003/dashboard`; tested with `scripts/dashboard/fake_robot.py`, not yet on the arm.
+- Status: DECIDED (2026-11-21, Tian). Tested with `scripts/dashboard/fake_robot.py`, then the front end of the demo-chain rounds on the arm from the evening of 2026-11-21 to the deadline.
 
 ## Decision
 
@@ -19,7 +18,7 @@ A browser page, `scripts/dashboard/server.py`, runs in WSL on the robot laptop a
   - `save_episode` counts saved episodes.
 
   So the datasets and molnrb's installed patches (SPACE, wait before the first episode, banners and voice) stay as they are. The terminal keys keep working when the session has a TTY.
-  - **A session uploads its dataset when it ends** (default on, 20 episodes per session; Tian and Jakob, 2026-11-21, board 7067885958), so the training that follows the recording sees each batch (`decisions/continual-training.md`). It uses the same `push_to_hub` as PR #6's `upload_dataset.py`, in the session's own process, after `lerobot-record` returns.
+  - **A session uploads its dataset when it ends** (default on, 20 episodes per session; Tian and Jakob, 2026-11-21, board 7067885958), so a training run that follows the recording sees each batch (`decisions/continual-training.md`, on the unmerged branch `TianK003/train-follow`, PR #48). It uses the same `push_to_hub` as PR #6's `upload_dataset.py`, in the session's own process, after `lerobot-record` returns.
     - **The next session waits for the upload**, because both read and write the same files; a copy for the upload would cost about 2 GB per session.
     - **A failed upload leaves the dataset on the laptop**, and the page offers a retry (`--upload-only`).
     - Rejected: `--dataset.push_to_hub=true` inside `lerobot-record`. A failed push there gives no retry without recording again.
@@ -35,7 +34,9 @@ A browser page, `scripts/dashboard/server.py`, runs in WSL on the robot laptop a
   - Rejected: adding the landmarks to the TCP lines on 8766. That contract with the robot program was agreed on the board and is left as it is.
   - Rejected: sending them in `/events`. It ticks at 4 Hz, too slow for a skeleton that follows a moving hand.
   - Rejected: drawing on the JPEG in the server. It would have to match tracker results to frames, and the page could not switch the overlay off.
-- **Red and blue tiles are greyed out.** The only training data is "Pick up the striped ball from the bowl of red and blue balls" (`molnrb/so101_pick_rb_mixed`), so there is no red or blue pick skill. The tiles turn on when the supervisor reports a `pick_colour` skill.
+- **Red and blue tiles are greyed out.** The only training data is "Pick up the striped ball from the bowl of red and blue balls" (`molnrb/so101_pick_rb_mixed`), so there is no red or blue pick skill. The tiles turn on when the supervisor reports a `pick_colour` skill; none existed at the deadline.
+- **The Bite tile is greyed out as "coming soon"** (2026-11-22): finger biting did not work on the arm by the deadline (`decisions/finger-biting.md`).
+- **"Max picks − n +" in the Live panel** changes the running robot program's `--max-pick-attempts` live (1-20), also mid-round, so a deeply buried ball can get more tries without a restart.
 
 ## Alternatives
 

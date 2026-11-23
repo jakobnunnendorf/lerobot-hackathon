@@ -41,7 +41,7 @@ Read only the result line: `wsl -e bash -lc 'cat ~/so101/logs/collect_last.txt'`
 | `NOT PUSHED` | Visibility missing in `datasets.json`: ask, set it, then `upload_dataset.py` |
 | `PUSH FAILED` | Read the last 20 lines of the log named in the line |
 
-To share it, post the Hub link on the board (issue #1) only if the person asks.
+Share the Hub link only if the person asks.
 
 ## Known
 

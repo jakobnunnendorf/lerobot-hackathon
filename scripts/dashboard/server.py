@@ -1,5 +1,5 @@
 # One page for testing and showing the demo chain: start chains (tiles, chat, push-to-talk), both camera feeds, the
-# supervisor's state and live values, round results for the board. Runbook: docs/demo-chain-test.md. Why it works this
+# supervisor's state and live values, round results. Runbook: docs/demo.md. Why it works this
 # way: decisions/dashboard.md. It never starts or moves the arm itself; it only sends commands to a running supervisor.
 import argparse
 import asyncio

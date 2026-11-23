@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage (WSL on the robot laptop): bash scripts/supervisor/demo_chain.sh [--step 20000] [more run_supervisor.py flags]
 # The old pick model: PICK_POLICY=Space0code/act_redblue_from_foil bash scripts/supervisor/demo_chain.sh --step 015000
-# The demo chain voice -> PICK (learned) -> GIVE (hand following) -> REST on one connection. Runbook: docs/demo-chain-test.md.
+# The demo chain voice -> PICK (learned) -> GIVE (hand following) -> REST on one connection. Runbook: docs/demo.md.
 # Multi-step plans ("take out 2 red, then the striped ball"): set CLEAR_RED_POLICY / CLEAR_BLUE_POLICY (Hub id or local
 # dir, optionally @step, as PICK_POLICY) in ~/.so101.env or on the command line; a colour left unset refuses its plans.
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1
@@ -23,7 +23,7 @@ if [ "${1:-}" = "--step" ]; then
   shift 2
 fi
 if [ -z "${PUT_DOWN_POSE:-}" ]; then
-  echo "Set PUT_DOWN_POSE in ~/.so101.env first: 5 joints over the bowl (docs/demo-chain-test.md, step 2)."
+  echo "Set PUT_DOWN_POSE in ~/.so101.env first: 5 joints over the bowl (docs/demo.md)."
   exit 1
 fi
 
